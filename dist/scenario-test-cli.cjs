@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/*! scenario-test v0.1.2 */
+/*! scenario-test v0.1.3 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -67996,7 +67996,7 @@ async function readWorkbookRows(filePath, options = {}) {
 }
 
 // src/init-templates.js
-var DEFAULT_LIBRARY_URL = "http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.1.2/dist/scenario-test.umd.js";
+var DEFAULT_LIBRARY_URL = "http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.1.3/dist/scenario-test.umd.js";
 function createProjectFiles(libraryUrl) {
   return {
     "dev/\u573A\u666F\u6D4B\u8BD5/index.html": `<!doctype html>
@@ -68042,12 +68042,12 @@ function createProjectFiles(libraryUrl) {
 `,
     "dev/\u573A\u666F\u6D4B\u8BD5/README.md": `# \u573A\u666F\u6D4B\u8BD5
 
-\u672C\u76EE\u5F55\u4FDD\u5B58\u5F53\u524D\u9879\u76EE\u7684\u73AF\u5883\u914D\u7F6E\u3001\u573A\u666F\u3001\u9879\u76EE\u63D2\u4EF6\u548C\u8FD0\u884C\u4EA7\u7269\u3002\u516C\u5171\u8FD0\u884C\u65F6\u7531 GitLab Release \u63D0\u4F9B\uFF0C\u4E0D\u590D\u5236\u5230\u672C\u9879\u76EE\u3002
+\u672C\u76EE\u5F55\u4FDD\u5B58\u5F53\u524D\u9879\u76EE\u7684\u73AF\u5883\u914D\u7F6E\u3001\u573A\u666F\u3001\u9879\u76EE\u63D2\u4EF6\u548C\u56FA\u5B9A\u7248\u672C\u7684 CLI \u8FD0\u884C\u65F6\u3002\u6D4F\u89C8\u5668\u8FD0\u884C\u65F6\u7531 GitLab Release \u63D0\u4F9B\u3002
 
 \u6D4F\u89C8\u5668\u5165\u53E3\u4E3A \`index.html\`\u3002CLI \u4F7F\u7528\u53D1\u5E03\u7684 \`scenario-test-cli.cjs\`\uFF1A
 
 \`\`\`powershell
-node scenario-test-cli.cjs --config dev/\u573A\u666F\u6D4B\u8BD5/scenario.config.js --env local --all
+node dev/\u573A\u666F\u6D4B\u8BD5/scenario-test-cli.cjs --config dev/\u573A\u666F\u6D4B\u8BD5/scenario.config.js --env local --all
 \`\`\`
 
 \u4E0D\u8981\u5728\u914D\u7F6E\u6216\u573A\u666F\u4E2D\u5199\u5165\u771F\u5B9E Token\u3001Secret\u3001\u4E2A\u4EBA\u4FE1\u606F\u6216\u751F\u4EA7\u5730\u5740\u3002\u654F\u611F\u53D8\u91CF\u901A\u8FC7\u73AF\u5883\u53D8\u91CF\u6216\u6D4F\u89C8\u5668\u73AF\u5883\u914D\u7F6E\u8F93\u5165\u3002
@@ -68115,7 +68115,7 @@ function parseArgs(argv) {
   return args;
 }
 function printHelp() {
-  console.log(`scenario-test 0.1.2
+  console.log(`scenario-test 0.1.3
 
 Usage:
   node scenario-test-cli.cjs --config ./scenario.config.js --env local --all
@@ -68142,6 +68142,15 @@ function writeProjectFile(projectRoot, relativePath, content, force) {
   import_node_fs4.default.writeFileSync(target, content, "utf8");
   return true;
 }
+function copyRuntimeCli(projectRoot, force) {
+  const source = import_node_path4.default.resolve(process.argv[1]);
+  const target = import_node_path4.default.resolve(projectRoot, "dev", "\u573A\u666F\u6D4B\u8BD5", "scenario-test-cli.cjs");
+  if (import_node_fs4.default.existsSync(target) && !force) return false;
+  if (!source.endsWith(".cjs")) return null;
+  import_node_fs4.default.mkdirSync(import_node_path4.default.dirname(target), { recursive: true });
+  import_node_fs4.default.copyFileSync(source, target);
+  return true;
+}
 function initCommand(args) {
   const projectRoot = import_node_path4.default.resolve(args.project || process.cwd());
   const libraryUrl = args.libraryUrl || DEFAULT_LIBRARY_URL;
@@ -68150,10 +68159,14 @@ function initCommand(args) {
   for (const [relativePath, content] of Object.entries(createProjectFiles(libraryUrl))) {
     (writeProjectFile(projectRoot, relativePath, content, args.force) ? created : skipped).push(relativePath);
   }
+  const runtimeCli = copyRuntimeCli(projectRoot, args.force);
+  if (runtimeCli === true) created.push("dev/\u573A\u666F\u6D4B\u8BD5/scenario-test-cli.cjs");
+  else if (runtimeCli === false) skipped.push("dev/\u573A\u666F\u6D4B\u8BD5/scenario-test-cli.cjs");
   console.log(`\u5DF2\u521D\u59CB\u5316\u9879\u76EE: ${projectRoot}`);
   if (created.length) console.log(`\u5DF2\u521B\u5EFA: ${created.join(", ")}`);
   if (skipped.length) console.log(`\u5DF2\u4FDD\u7559\u73B0\u6709\u6587\u4EF6: ${skipped.join(", ")}`);
   console.log(`\u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0: ${import_node_path4.default.join(projectRoot, "dev", "\u573A\u666F\u6D4B\u8BD5", "index.html")}`);
+  if (runtimeCli === null) console.log("\u63D0\u793A: \u8BF7\u4F7F\u7528 dist/scenario-test-cli.cjs \u6267\u884C init\uFF0C\u624D\u80FD\u81EA\u52A8\u5199\u5165\u9879\u76EE CLI\u3002");
 }
 function resolveConfigPath(value) {
   const candidate = import_node_path4.default.resolve(value || "scenario.config.js");

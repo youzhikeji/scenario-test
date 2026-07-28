@@ -30,7 +30,7 @@ function parseArgs(argv) {
 }
 
 function printHelp() {
-    console.log(`scenario-test 0.1.2
+    console.log(`scenario-test 0.1.3
 
 Usage:
   node scenario-test-cli.cjs --config ./scenario.config.js --env local --all
@@ -59,6 +59,16 @@ function writeProjectFile(projectRoot, relativePath, content, force) {
     return true;
 }
 
+function copyRuntimeCli(projectRoot, force) {
+    const source = path.resolve(process.argv[1]);
+    const target = path.resolve(projectRoot, "dev", "场景测试", "scenario-test-cli.cjs");
+    if (fs.existsSync(target) && !force) return false;
+    if (!source.endsWith(".cjs")) return null;
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.copyFileSync(source, target);
+    return true;
+}
+
 function initCommand(args) {
     const projectRoot = path.resolve(args.project || process.cwd());
     const libraryUrl = args.libraryUrl || DEFAULT_LIBRARY_URL;
@@ -67,10 +77,14 @@ function initCommand(args) {
     for (const [relativePath, content] of Object.entries(createProjectFiles(libraryUrl))) {
         (writeProjectFile(projectRoot, relativePath, content, args.force) ? created : skipped).push(relativePath);
     }
+    const runtimeCli = copyRuntimeCli(projectRoot, args.force);
+    if (runtimeCli === true) created.push("dev/场景测试/scenario-test-cli.cjs");
+    else if (runtimeCli === false) skipped.push("dev/场景测试/scenario-test-cli.cjs");
     console.log(`已初始化项目: ${projectRoot}`);
     if (created.length) console.log(`已创建: ${created.join(", ")}`);
     if (skipped.length) console.log(`已保留现有文件: ${skipped.join(", ")}`);
     console.log(`浏览器工作台: ${path.join(projectRoot, "dev", "场景测试", "index.html")}`);
+    if (runtimeCli === null) console.log("提示: 请使用 dist/scenario-test-cli.cjs 执行 init，才能自动写入项目 CLI。");
 }
 
 function resolveConfigPath(value) {
