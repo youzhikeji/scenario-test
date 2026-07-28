@@ -17,6 +17,7 @@ test("init 创建项目入口，且默认不覆盖现有文件", () => {
         assert.match(fs.readFileSync(indexPath, "utf8"), /\.\/scenario-test\.umd\.js/);
         assert.match(fs.readFileSync(configPath, "utf8"), /ScenarioTest\.registerConfig/);
         assert.match(fs.readFileSync(path.join(project, "scenario-test", "scenario-test.umd.js"), "utf8"), /ScenarioTest/);
+        assert.match(fs.readFileSync(path.join(project, "scenario-test", "AI_SCENARIO_PROMPT.md"), "utf8"), /AI 场景生成 Prompt/);
         assert.equal(fs.existsSync(path.join(project, ".codex", "skills", "scenario-test", "SKILL.md")), false);
 
         fs.writeFileSync(configPath, "// 用户配置\n", "utf8");
