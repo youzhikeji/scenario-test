@@ -38,6 +38,25 @@ const legacyStyle = (function () {
             #scenario-test-root > header #envNameLabel { color: var(--workspace-muted) !important; }
             #scenario-test-root > header #scenarioTitle { color: var(--workspace-text) !important; font-size: 13px !important; }
 
+            #scenario-test-root.theme-claude-code {
+                --workspace-bg: #f1ebe3;
+                --workspace-surface: #fffcf8;
+                --workspace-text: #302b27;
+                --workspace-muted: #786d63;
+                --workspace-line: #e5d1c0;
+                --workspace-hover: #f8e9dc;
+                --workspace-selected: #f0dac7;
+                --workspace-selected-line: #d9af8d;
+                --workspace-primary: #285a4c;
+                --workspace-danger: #b94c4a;
+                --workspace-code: #2d2925;
+            }
+
+            #scenario-test-root.theme-claude-code > header {
+                background: #fcf3ea !important;
+                box-shadow: 0 1px 5px rgba(91, 67, 49, .08) !important;
+            }
+
             .scenario-workspace { height: calc(100vh - 46px); padding: 8px !important; }
             .scenario-grid { height: 100%; gap: 8px !important; margin: 0 !important; }
             .scenario-pane {
@@ -52,33 +71,37 @@ const legacyStyle = (function () {
             #stepsList,
             #reportPanel { background: var(--workspace-surface) !important; }
 
-            .scenario-header-actions { display: flex; align-items: center; gap: 7px !important; flex-wrap: nowrap !important; }
+            .scenario-header-actions { display: flex; align-items: center; gap: 6px !important; flex-wrap: nowrap !important; }
             .scenario-header-select,
             .scenario-header-step,
             .scenario-header-button {
                 height: 32px;
                 border: 1px solid var(--workspace-line);
-                border-radius: 3px;
+                border-radius: 5px;
                 background: var(--workspace-surface);
                 box-shadow: none !important;
             }
-            .scenario-header-select { display: flex; align-items: center; padding: 0 7px; color: #475569; }
-            .scenario-header-select__label { font-size: 12px; white-space: nowrap; }
-            .scenario-header-select select { min-height: 30px; font-size: 12px !important; }
-            .scenario-header-select__arrow { position: absolute; top: 9px; right: 7px; width: 12px; height: 12px; color: #94a3b8; pointer-events: none; }
+            .scenario-header-select { display: flex; align-items: center; padding: 0 8px; color: var(--workspace-muted); transition: border-color .15s ease, background-color .15s ease, box-shadow .15s ease; }
+            .scenario-header-select__label { font-size: 11px; font-weight: 700; white-space: nowrap; }
+            .scenario-header-select select { min-width: 78px; min-height: 30px; padding-left: 4px !important; color: var(--workspace-text) !important; font-size: 12px !important; font-weight: 600; }
+            .scenario-header-select select option { background: var(--workspace-surface); color: var(--workspace-text); }
+            .scenario-header-select:focus-within { border-color: var(--workspace-primary); box-shadow: 0 0 0 3px rgba(40, 90, 76, .12) !important; }
+            .scenario-header-select__arrow { position: absolute; top: 9px; right: 7px; width: 12px; height: 12px; color: var(--workspace-muted); pointer-events: none; }
             .scenario-header-step { display: flex; align-items: stretch; overflow: hidden; }
-            .scenario-header-button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 0 11px; font-size: 12px !important; font-weight: 600; color: #585149; }
+            .scenario-header-button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 0 11px; font-size: 12px !important; font-weight: 700; color: var(--workspace-text); }
             .scenario-header-button--secondary { border: 0; border-radius: 0; }
-            .scenario-header-step__arrow { display: inline-flex; align-items: center; justify-content: center; width: 21px; border-left: 1px solid var(--workspace-line); color: #94a3b8; }
+            .scenario-header-step__arrow { display: inline-flex; align-items: center; justify-content: center; width: 24px; border-left: 1px solid var(--workspace-line); color: var(--workspace-muted); }
             .scenario-header-button--primary { border-color: var(--workspace-primary) !important; background: var(--workspace-primary) !important; color: #ffffff !important; }
             .scenario-header-button--primary:disabled { cursor: wait; opacity: .78; }
             .scenario-header-button--running { background: #334155 !important; }
             .scenario-header-button--config { padding: 0 9px; }
-            .scenario-header-text-action { height: 32px; padding: 0 4px; border: 0; background: transparent; color: #64748b; font-size: 12px !important; font-weight: 600; }
+            .scenario-header-text-action { height: 32px; padding: 0 5px; border: 0; background: transparent; color: var(--workspace-muted); font-size: 12px !important; font-weight: 700; }
             .scenario-header-text-action--danger { color: var(--workspace-danger); }
             .scenario-header-text-action:disabled { opacity: .42; cursor: not-allowed; }
             .scenario-header-actions button:hover:not(:disabled), .scenario-header-select:hover { background: var(--workspace-hover); }
-            .scenario-header-button--primary:hover:not(:disabled) { background: #020617 !important; }
+            .scenario-header-button--primary:hover:not(:disabled) { background: #1c453a !important; }
+            #scenario-test-root.theme-claude-code .scenario-header-select { background: #fff4e9; }
+            #scenario-test-root.theme-claude-code .scenario-header-button--config { background: #fff4e9; border-color: #dfc9b6; }
 
             .scenario-pane--scenarios > div:first-child { padding: 14px 12px !important; border-color: #f0ece6 !important; }
             .scenario-pane--scenarios > div:first-child > div:first-child { font-size: 15px !important; }
@@ -240,10 +263,13 @@ const legacyStyle = (function () {
         document.head.appendChild(style);
     }
 
-    function applyTheme() {
-        document.body.classList.remove('theme-claude-code');
+    function applyTheme(theme) {
+        var selectedTheme = theme === 'claude-code' ? 'claude-code' : 'default';
+        var root = document.getElementById('scenario-test-root');
+        if (root) root.classList.toggle('theme-claude-code', selectedTheme === 'claude-code');
+        document.body.classList.toggle('theme-claude-code', selectedTheme === 'claude-code');
         var select = document.getElementById('themeSelect');
-        if (select) select.value = 'default';
+        if (select) select.value = selectedTheme;
         injectStyles();
     }
 

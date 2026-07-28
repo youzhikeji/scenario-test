@@ -56,6 +56,10 @@ try {
         assert.equal(await page.locator("#stepsList li").count(), 1);
         assert.equal(await page.locator("#scenarioVar_exampleToken").getAttribute("type"), "text");
         assert.equal(await page.locator("#scenarioVar_expectedStatus").inputValue(), "UP");
+        await page.locator("#themeSelect").selectOption("claude-code");
+        assert.equal(await page.locator("#scenario-test-root").evaluate((node) => node.classList.contains("theme-claude-code")), true);
+        assert.equal(await page.locator("#scenario-test-root").evaluate((node) => getComputedStyle(node).getPropertyValue("--workspace-bg").trim()), "#f1ebe3");
+        assert.match(await page.locator(".scenario-header-actions").textContent(), /风格/);
 
         await page.locator("#scenarioVar_expectedStatus").fill("DOWN");
         await page.locator("#saveSettingsBtn").click();

@@ -18,8 +18,8 @@
 4. 创建并推送同名 Tag：
 
    ```powershell
-   git tag -a v0.2.7 -m "v0.2.7"
-   git push origin v0.2.7
+   git tag -a v0.2.8 -m "v0.2.8"
+   git push origin v0.2.8
    ```
 
 5. AI 安装 Prompt 下载该 Tag 的 CLI 后，`init` 会将 UMD 和 CLI 写入项目目录，由浏览器加载本地文件：

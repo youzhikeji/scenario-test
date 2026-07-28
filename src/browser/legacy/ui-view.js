@@ -50,6 +50,7 @@ const legacyView = (function () {
                     <svg class="scenario-header-select__arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                 </div>
                 <div class="scenario-header-select relative">
+                    <span class="scenario-header-select__label">风格：</span>
                     <select id="themeSelect" aria-label="切换界面风格" class="appearance-none bg-transparent py-1 pl-2 pr-5 text-[10px] font-medium text-slate-700 outline-none cursor-pointer">
                         <option value="default">本地开发</option>
                         <option value="claude-code">暖调风格</option>
