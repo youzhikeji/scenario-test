@@ -7,7 +7,7 @@ import test from "node:test";
 
 const root = path.resolve(import.meta.dirname, "..");
 
-test("init 创建项目入口和 Codex 场景测试 Skill，且默认不覆盖现有文件", () => {
+test("init 创建项目入口，且默认不覆盖现有文件", () => {
     const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-init-"));
     try {
         const first = spawnSync(process.execPath, [
@@ -19,10 +19,9 @@ test("init 创建项目入口和 Codex 场景测试 Skill，且默认不覆盖�
         assert.equal(first.status, 0, first.stderr);
         const indexPath = path.join(project, "dev", "场景测试", "index.html");
         const configPath = path.join(project, "dev", "场景测试", "scenario.config.js");
-        const skillPath = path.join(project, ".codex", "skills", "scenario-test", "SKILL.md");
         assert.match(fs.readFileSync(indexPath, "utf8"), /releases\.example\.test/);
         assert.match(fs.readFileSync(configPath, "utf8"), /ScenarioTest\.registerConfig/);
-        assert.match(fs.readFileSync(skillPath, "utf8"), /场景测试规则/);
+        assert.equal(fs.existsSync(path.join(project, ".codex", "skills", "scenario-test", "SKILL.md")), false);
 
         fs.writeFileSync(configPath, "// 用户配置\n", "utf8");
         const second = spawnSync(process.execPath, [path.join(root, "src/cli.js"), "init", "--project", project], { encoding: "utf8" });

@@ -80,20 +80,20 @@ ScenarioTest.registerScenario("health", ScenarioTest.defineScenario({
 业务项目可固定引用 GitLab Release 的单文件产物，无需拉取源码：
 
 ```html
-<script src="http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.1.3/dist/scenario-test.umd.js"></script>
+<script src="http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.1.4/dist/scenario-test.umd.js"></script>
 ```
 
 不要引用 `master`，应固定使用已发布的 Tag。
 
 ## 初始化项目
 
-CLI 可创建业务项目所需的最小目录、浏览器入口、配置、示例场景、项目级 Codex Skill，并把当前版本 CLI 写入项目：
+CLI 可创建业务项目所需的最小目录、浏览器入口、配置、示例场景，并把当前版本 CLI 写入项目：
 
 ```powershell
 node scenario-test-cli.cjs init --project D:\project
 ```
 
-首次使用先下载 Release 的 `scenario-test-cli.cjs` 并用它运行 `init`；`init` 会将它复制为 `dev/场景测试/scenario-test-cli.cjs`。默认写入当前 Release 的 UMD 地址；需要私有镜像或其他版本时指定 `--library-url <url>`。已有文件默认保留，只有传入 `--force` 才覆盖。生成的 `.codex/skills/scenario-test/SKILL.md` 让 Codex 在该项目内处理场景测试时自动获得 DSL、安全和目录规则。
+首次使用可将 [AI 安装 Prompt](docs/AI_INSTALL_PROMPT.md) 粘贴给当前项目中的 AI 助手；它会下载 Release 的 `scenario-test-cli.cjs` 并运行 `init`。`init` 会将 CLI 复制为 `dev/场景测试/scenario-test-cli.cjs`。默认写入当前 Release 的 UMD 地址；需要私有镜像或其他版本时指定 `--library-url <url>`。已有文件默认保留，只有传入 `--force` 才覆盖。
 
 ## CLI
 

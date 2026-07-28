@@ -30,7 +30,7 @@ function parseArgs(argv) {
 }
 
 function printHelp() {
-    console.log(`scenario-test 0.1.3
+    console.log(`scenario-test 0.1.4
 
 Usage:
   node scenario-test-cli.cjs --config ./scenario.config.js --env local --all
