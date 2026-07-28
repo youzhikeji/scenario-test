@@ -1,4 +1,4 @@
-import { clone, isPlainObject } from "./core.js";
+import { isPlainObject } from "./core.js";
 
 const scenarioRegistry = new Map();
 const adapterRegistry = new Map();
@@ -56,9 +56,6 @@ export function registerScenario(id, scenario) {
     invariant(typeof id === "string" && id.trim(), "场景 id 不能为空");
     const normalized = defineScenario(scenario);
     scenarioRegistry.set(id, normalized);
-    // The browser compatibility runtime reads the most recently loaded script
-    // from ScenarioData. Keep this bridge for the 0.x migration window.
-    if (typeof window !== "undefined") window.ScenarioData = normalized;
     return normalized;
 }
 
@@ -83,16 +80,4 @@ export function getAdapter(name) {
 
 export function listAdapters() {
     return new Map(adapterRegistry);
-}
-
-export function normalizeLegacyConfig(value) {
-    if (!value) return null;
-    console.warn("[scenario-test] window.GlobalConfig 已废弃，请迁移到 defineConfig/registerConfig。");
-    return defineConfig(clone(value));
-}
-
-export function normalizeLegacyScenario(value) {
-    if (!value) return null;
-    console.warn("[scenario-test] window.ScenarioData 已废弃，请迁移到 defineScenario/registerScenario。");
-    return defineScenario(clone(value));
 }

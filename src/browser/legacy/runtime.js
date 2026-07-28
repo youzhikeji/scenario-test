@@ -29,6 +29,10 @@ export function createLegacyRuntime(options) {
     var esc = core.esc;
     var fmt = core.fmt;
     var safeJson = core.safeJson;
+    var appConfig = options.config || {};
+    var getRegisteredScenario = options.getScenario || function () { return null; };
+
+    if (uiAdhoc.setConfig) uiAdhoc.setConfig(appConfig);
 
     // ===== 全局交互桥接（挂载至 window.__R 供 DOM 内联 onclick 调用）=====
     window.__R = {
@@ -88,7 +92,7 @@ export function createLegacyRuntime(options) {
 
     // ===== 存储与配置辅助 =====
     function getStorageKeys() {
-        var cfg = window.GlobalConfig || {};
+        var cfg = appConfig;
         var keys = cfg.storageKeys || {};
         return {
             baseUrl: keys.baseUrl || 'scenario.testing.baseUrl',
@@ -101,14 +105,14 @@ export function createLegacyRuntime(options) {
     }
 
     function getEnvironments() {
-        var cfg = window.GlobalConfig || {};
+        var cfg = appConfig;
         return (Array.isArray(cfg.envs) ? cfg.envs : []).filter(function (env) {
             return env && env.key;
         });
     }
 
     function getDefaultEnvironment() {
-        var cfg = window.GlobalConfig || {};
+        var cfg = appConfig;
         var environments = getEnvironments();
         var defaultKey = cfg.defaultEnvKey;
         return environments.filter(function (env) { return env.key === defaultKey; })[0] || environments[0] || null;
@@ -161,7 +165,7 @@ export function createLegacyRuntime(options) {
     }
 
     function getConfiguredScenarioVariables() {
-        var config = window.GlobalConfig || {};
+        var config = appConfig;
         return isPlainObject(config.scenarioVars) ? config.scenarioVars : {};
     }
 
@@ -196,7 +200,7 @@ export function createLegacyRuntime(options) {
     }
 
     function getEffectiveBaseUrl() {
-        var cfg = window.GlobalConfig || {};
+        var cfg = appConfig;
         var keys = getStorageKeys();
         var environment = getSelectedEnvironment();
         var stored = '';
@@ -209,7 +213,7 @@ export function createLegacyRuntime(options) {
     }
 
     function getEffectiveAuthorization() {
-        var cfg = window.GlobalConfig || {};
+        var cfg = appConfig;
         var keys = getStorageKeys();
         var environment = getSelectedEnvironment();
         try {
@@ -252,7 +256,7 @@ export function createLegacyRuntime(options) {
     }
 
     function buildScenarioRuntimeVars() {
-        var cfg = window.GlobalConfig || {};
+        var cfg = appConfig;
         var scenario = state.scenario || {};
         var scenarioVars = getScenarioVariableValues();
         var missing = getScenarioVariableDefinitions().filter(function (def) {
@@ -657,7 +661,7 @@ export function createLegacyRuntime(options) {
 
     async function runScenario() {
         if (!state.scenario || state.running) return;
-        var cfg = window.GlobalConfig || {};
+        var cfg = appConfig;
         var runtime;
         try {
             runtime = createExecutionRuntime();
@@ -705,7 +709,7 @@ export function createLegacyRuntime(options) {
 
     async function runNextStep() {
         if (!state.scenario || state.running) return;
-        var cfg = window.GlobalConfig || {};
+        var cfg = appConfig;
         var list = Array.isArray(state.scenario.steps) ? state.scenario.steps : [];
         if (!list.length) return;
         if (!state.stepRuntime || state.nextStepIndex >= list.length) {
@@ -960,7 +964,7 @@ export function createLegacyRuntime(options) {
     }
 
     async function fetchDiscoveredScenarios() {
-        var cfg = window.GlobalConfig || {};
+        var cfg = appConfig;
         if (!Array.isArray(cfg.scenarios) || cfg.scenarios.length === 0) {
             return;
         }
@@ -993,13 +997,20 @@ export function createLegacyRuntime(options) {
                 state.scenarioScript.remove();
                 state.scenarioScript = null;
             }
-            window.ScenarioData = undefined;
             var script = document.createElement('script');
             script.src = './' + file + '?ts=' + Date.now();
             script.onload = function () {
                 state.scenarioScript = script;
                 state.scenarioFile = file;
-                state.scenario = clone(window.ScenarioData || {});
+                var entry = (appConfig.scenarios || []).filter(function (item) {
+                    return (item.url || item.file || item.path) === file;
+                })[0];
+                var scenario = getRegisteredScenario(entry && entry.id);
+                if (!scenario) {
+                    rejectLoad(new Error('场景文件必须通过 ScenarioTest.registerScenario 注册: ' + file));
+                    return;
+                }
+                state.scenario = clone(scenario);
                 state.steps = [];
                 state.stepRuntime = null;
                 state.stepCheckpoints = [];

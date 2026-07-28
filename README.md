@@ -7,12 +7,12 @@
 将下列 Prompt 粘贴给当前项目的 AI 助手，即可安装到默认的 `scenario-test` 目录。将 `scenario-test` 替换为团队约定的项目内相对目录，例如 `dev/场景测试`；不要使用绝对路径。
 
 ```text
-请在当前项目根目录安装 scenario-test v0.1.5，目标目录为 scenario-test。
+请在当前项目根目录安装 scenario-test v0.2.0，目标目录为 scenario-test。
 
 1. 确认 Node.js 版本不低于 18；不满足时停止并说明原因。
 2. 不克隆公共库源码，不执行 npm install，不修改业务代码、构建配置或已有场景文件。
 3. 仅从以下固定版本地址下载 CLI 到系统临时目录：
-   http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.1.5/dist/scenario-test-cli.cjs
+   http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.2.0/dist/scenario-test-cli.cjs
 4. 使用 node <临时 CLI 路径> init --project . --dir "scenario-test" 执行初始化；不要传 --force。
 5. 检查并报告 scenario-test/index.html、scenario-test/scenario.config.js、scenario-test/scenarios/health.js 和 scenario-test/scenario-test-cli.cjs 是已创建还是已保留。
 6. 不启动服务、不调用任何业务接口、不写入 Token、Secret 或真实测试数据。
@@ -102,7 +102,7 @@ ScenarioTest.registerScenario("health", ScenarioTest.defineScenario({
 业务项目可固定引用 GitLab Release 的单文件产物，无需拉取源码：
 
 ```html
-<script src="http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.1.5/dist/scenario-test.umd.js"></script>
+<script src="http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.2.0/dist/scenario-test.umd.js"></script>
 ```
 
 不要引用 `master`，应固定使用已发布的 Tag。
@@ -158,9 +158,9 @@ CLI 从变量定义的 `env` 字段读取环境变量，敏感值不应写入配
 - `generatedVars`：`timestamp`、`uuidHex`、`md5`、`signature`。
 - `prepareXlsx` 由官方 Excel 适配器执行。
 
-## 兼容说明
+## 迁移说明
 
-`0.x` 版本仍可加载 `window.GlobalConfig` 和 `window.ScenarioData`，运行时会输出废弃提示。新场景应使用 `registerConfig` 和 `registerScenario`；下一主版本将移除旧全局格式适配器。
+`v0.2.0` 起不再支持 `window.GlobalConfig` 和 `window.ScenarioData`。配置必须使用 `ScenarioTest.registerConfig(ScenarioTest.defineConfig(...))`，场景必须使用 `ScenarioTest.registerScenario(id, ScenarioTest.defineScenario(...))`。
 
 公共库不得包含项目地址、真实机构或个人数据、API Key、Secret，以及任何项目专属接口清理逻辑。
 

@@ -10,6 +10,7 @@ const legacyAdhoc = (function () {
     var sanitizeSensitive = core.sanitizeSensitive || function (v) { return v; };
     var clone = core.clone || function (v) { return JSON.parse(JSON.stringify(v)); };
     var isPlainObject = core.isPlainObject || function (v) { return Object.prototype.toString.call(v) === '[object Object]'; };
+    var appConfig = {};
 
     var adhocState = {
         request: null,
@@ -71,7 +72,7 @@ const legacyAdhoc = (function () {
 
     function buildAdhocRequest(step, activeRuntime, currentScenario) {
         var runtime = activeRuntime || {
-            vars: Object.assign({}, (window.GlobalConfig || {}).vars || {}, (currentScenario || {}).vars || {}),
+            vars: Object.assign({}, appConfig.vars || {}, (currentScenario || {}).vars || {}),
             lastResponse: null,
             lastResponseBody: null
         };
@@ -111,7 +112,7 @@ const legacyAdhoc = (function () {
             path: path,
             params: params,
             request: { headers: headers, body: body },
-            timeoutMs: Number((window.GlobalConfig || {}).requestTimeoutMs || 30000)
+            timeoutMs: Number(appConfig.requestTimeoutMs || 30000)
         };
     }
 
@@ -254,7 +255,7 @@ const legacyAdhoc = (function () {
             adhocState.running = true;
             showAdhocError('');
             syncAdhocFormDisabled(true);
-            var result = await executeStepFn(step, runtime, window.GlobalConfig || {});
+            var result = await executeStepFn(step, runtime, appConfig);
             adhocState.result = result;
             renderAdhocResult(result);
         } catch (error) {
@@ -290,6 +291,7 @@ const legacyAdhoc = (function () {
     }
 
     return {
+        setConfig: function (config) { appConfig = config || {}; },
         buildAdhocRequest: buildAdhocRequest,
         buildAdhocStep: buildAdhocStep,
         openAdhocModal: openAdhocModal,

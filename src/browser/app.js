@@ -1,5 +1,5 @@
 import { sanitizeSensitive } from "../core.js";
-import { defineConfig, getConfig, normalizeLegacyConfig } from "../registry.js";
+import { defineConfig, getConfig, getScenario } from "../registry.js";
 import { createLegacyRuntime } from "./legacy/runtime.js";
 import { TAILWIND_CSS } from "./tailwind.generated.js";
 
@@ -7,7 +7,7 @@ function resolveMount(mount) {
     return typeof mount === "string" ? document.querySelector(mount) : mount;
 }
 
-function toLegacyConfig(config) {
+function toRuntimeConfig(config) {
     const prefix = config.storagePrefix || "scenario-test";
     const scenarioVars = { ...(config.vars || {}) };
     for (const definition of config.variables || []) {
@@ -52,16 +52,13 @@ export function createApp(options = {}) {
         throw new Error("当前页面只能挂载一个场景测试工作台");
     }
 
-    const legacyInput = typeof window !== "undefined" ? normalizeLegacyConfig(window.GlobalConfig) : null;
-    const config = defineConfig(options.config || getConfig() || legacyInput || {});
+    const config = defineConfig(options.config || getConfig() || {});
     const previousId = mount.id;
-    const previousConfig = window.GlobalConfig;
     mount.id = "scenario-test-root";
     mount.classList.add("scenario-test-root");
-    window.GlobalConfig = toLegacyConfig(config);
     ensureTailwindStyles();
 
-    const runtime = createLegacyRuntime({ mount, config });
+    const runtime = createLegacyRuntime({ mount, config: toRuntimeConfig(config), getScenario });
     let destroyed = false;
 
     function loadScenario(idOrUrl) {
@@ -75,7 +72,6 @@ export function createApp(options = {}) {
         mount.replaceChildren();
         mount.classList.remove("scenario-test-root");
         mount.id = previousId;
-        window.GlobalConfig = previousConfig;
         destroyed = true;
     }
 

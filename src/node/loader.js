@@ -4,8 +4,6 @@ import vm from "node:vm";
 import {
     getConfig,
     getScenario,
-    normalizeLegacyConfig,
-    normalizeLegacyScenario,
     registerScenario
 } from "../registry.js";
 
@@ -37,11 +35,9 @@ export function loadConfigFile(filePath, api) {
     const exported = loaded.exports?.default || loaded.exports;
     const registeredConfig = getConfig();
     const config = (registeredConfig !== previousConfig ? registeredConfig : null)
-        || loaded.window.ProjectScenarioConfig
-        || loaded.window.GlobalConfig
         || (exported && Object.keys(exported).length ? exported : null);
     if (!config) throw new Error(`配置文件未注册配置: ${filePath}`);
-    return loaded.window.GlobalConfig === config ? normalizeLegacyConfig(config) : api.defineConfig(config);
+    return api.defineConfig(config);
 }
 
 export function loadScenarioFile(filePath, id, api) {
@@ -49,10 +45,6 @@ export function loadScenarioFile(filePath, id, api) {
     if (existing) return existing;
     const loaded = executeDefinitionFile(filePath, api);
     let scenario = getScenario(id);
-    if (!scenario && loaded.window.ScenarioData) {
-        scenario = normalizeLegacyScenario(loaded.window.ScenarioData);
-        registerScenario(id, scenario);
-    }
     const exported = loaded.exports?.default || loaded.exports;
     if (!scenario && exported && Array.isArray(exported.steps)) scenario = registerScenario(id, exported);
     if (!scenario) throw new Error(`场景文件未注册 ${id}: ${filePath}`);

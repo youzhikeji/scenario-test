@@ -35,3 +35,23 @@ test("CLI 从公共 JS 配置执行场景", async () => {
         fs.rmSync(directory, { recursive: true, force: true });
     }
 });
+
+test("CLI 拒绝旧 window 全局配置与场景格式", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-legacy-"));
+    const cli = path.resolve(import.meta.dirname, "../dist/scenario-test-cli.cjs");
+    try {
+        fs.mkdirSync(path.join(directory, "scenarios"));
+        fs.writeFileSync(path.join(directory, "scenario.config.js"), `window.GlobalConfig={envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1"}],scenarios:[{id:"health",url:"scenarios/health.js"}]};`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/health.js"), `window.ScenarioData={name:"Health",steps:[]};`, "utf8");
+        const result = await new Promise((resolve) => {
+            const child = spawn(process.execPath, [cli, "--config", path.join(directory, "scenario.config.js"), "--all"], { stdio: ["ignore", "pipe", "pipe"] });
+            let stderr = "";
+            child.stderr.on("data", (chunk) => { stderr += chunk; });
+            child.on("close", (code) => resolve({ code, stderr }));
+        });
+        assert.notEqual(result.code, 0);
+        assert.match(result.stderr, /配置文件未注册配置/);
+    } finally {
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});

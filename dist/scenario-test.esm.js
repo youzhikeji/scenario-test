@@ -1,4 +1,4 @@
-/*! scenario-test v0.1.5 */
+/*! scenario-test v0.2.0 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -469,7 +469,6 @@ function registerScenario(id, scenario) {
   invariant(typeof id === "string" && id.trim(), "\u573A\u666F id \u4E0D\u80FD\u4E3A\u7A7A");
   const normalized = defineScenario(scenario);
   scenarioRegistry.set(id, normalized);
-  if (typeof window !== "undefined") window.ScenarioData = normalized;
   return normalized;
 }
 function getScenario(id) {
@@ -489,16 +488,6 @@ function getAdapter(name) {
 }
 function listAdapters() {
   return new Map(adapterRegistry);
-}
-function normalizeLegacyConfig(value) {
-  if (!value) return null;
-  console.warn("[scenario-test] window.GlobalConfig \u5DF2\u5E9F\u5F03\uFF0C\u8BF7\u8FC1\u79FB\u5230 defineConfig/registerConfig\u3002");
-  return defineConfig(clone(value));
-}
-function normalizeLegacyScenario(value) {
-  if (!value) return null;
-  console.warn("[scenario-test] window.ScenarioData \u5DF2\u5E9F\u5F03\uFF0C\u8BF7\u8FC1\u79FB\u5230 defineScenario/registerScenario\u3002");
-  return defineScenario(clone(value));
 }
 
 // src/engine.js
@@ -1887,6 +1876,7 @@ var legacyAdhoc = function() {
   var isPlainObject2 = core.isPlainObject || function(v) {
     return Object.prototype.toString.call(v) === "[object Object]";
   };
+  var appConfig = {};
   var adhocState = {
     request: null,
     result: null,
@@ -1946,7 +1936,7 @@ var legacyAdhoc = function() {
   }
   function buildAdhocRequest(step, activeRuntime, currentScenario) {
     var runtime = activeRuntime || {
-      vars: Object.assign({}, (window.GlobalConfig || {}).vars || {}, (currentScenario || {}).vars || {}),
+      vars: Object.assign({}, appConfig.vars || {}, (currentScenario || {}).vars || {}),
       lastResponse: null,
       lastResponseBody: null
     };
@@ -1983,7 +1973,7 @@ var legacyAdhoc = function() {
       path,
       params,
       request: { headers, body },
-      timeoutMs: Number((window.GlobalConfig || {}).requestTimeoutMs || 3e4)
+      timeoutMs: Number(appConfig.requestTimeoutMs || 3e4)
     };
   }
   function showAdhocError(message) {
@@ -2110,7 +2100,7 @@ var legacyAdhoc = function() {
       adhocState.running = true;
       showAdhocError("");
       syncAdhocFormDisabled(true);
-      var result = await executeStepFn(step, runtime, window.GlobalConfig || {});
+      var result = await executeStepFn(step, runtime, appConfig);
       adhocState.result = result;
       renderAdhocResult(result);
     } catch (error) {
@@ -2144,6 +2134,9 @@ var legacyAdhoc = function() {
     }
   }
   return {
+    setConfig: function(config) {
+      appConfig = config || {};
+    },
     buildAdhocRequest,
     buildAdhocStep,
     openAdhocModal,
@@ -2178,6 +2171,11 @@ function createLegacyRuntime(options) {
   var esc = core.esc;
   var fmt = core.fmt;
   var safeJson = core.safeJson;
+  var appConfig = options.config || {};
+  var getRegisteredScenario = options.getScenario || function() {
+    return null;
+  };
+  if (uiAdhoc.setConfig) uiAdhoc.setConfig(appConfig);
   window.__R = {
     toggle: function(el, event) {
       if (event && event.target.closest("button")) return;
@@ -2231,7 +2229,7 @@ function createLegacyRuntime(options) {
     lastReport: null
   };
   function getStorageKeys() {
-    var cfg = window.GlobalConfig || {};
+    var cfg = appConfig;
     var keys = cfg.storageKeys || {};
     return {
       baseUrl: keys.baseUrl || "scenario.testing.baseUrl",
@@ -2243,13 +2241,13 @@ function createLegacyRuntime(options) {
     };
   }
   function getEnvironments() {
-    var cfg = window.GlobalConfig || {};
+    var cfg = appConfig;
     return (Array.isArray(cfg.envs) ? cfg.envs : []).filter(function(env) {
       return env && env.key;
     });
   }
   function getDefaultEnvironment() {
-    var cfg = window.GlobalConfig || {};
+    var cfg = appConfig;
     var environments = getEnvironments();
     var defaultKey = cfg.defaultEnvKey;
     return environments.filter(function(env) {
@@ -2301,7 +2299,7 @@ function createLegacyRuntime(options) {
     return getEnvironmentStorageKey(keys.scenarioVars + "." + name, environment);
   }
   function getConfiguredScenarioVariables() {
-    var config = window.GlobalConfig || {};
+    var config = appConfig;
     return isPlainObject2(config.scenarioVars) ? config.scenarioVars : {};
   }
   function getStoredScenarioVariables() {
@@ -2332,7 +2330,7 @@ function createLegacyRuntime(options) {
     return stored;
   }
   function getEffectiveBaseUrl() {
-    var cfg = window.GlobalConfig || {};
+    var cfg = appConfig;
     var keys = getStorageKeys();
     var environment = getSelectedEnvironment();
     var stored = "";
@@ -2344,7 +2342,7 @@ function createLegacyRuntime(options) {
     return String(stored || environment && environment.baseUrl || cfg.baseUrl || window.location.origin || "").replace(/\/+$/, "");
   }
   function getEffectiveAuthorization() {
-    var cfg = window.GlobalConfig || {};
+    var cfg = appConfig;
     var keys = getStorageKeys();
     var environment = getSelectedEnvironment();
     try {
@@ -2383,7 +2381,7 @@ function createLegacyRuntime(options) {
     return String(Date.now()) + String(Math.random()).slice(2);
   }
   function buildScenarioRuntimeVars() {
-    var cfg = window.GlobalConfig || {};
+    var cfg = appConfig;
     var scenario = state.scenario || {};
     var scenarioVars = getScenarioVariableValues();
     var missing = getScenarioVariableDefinitions().filter(function(def) {
@@ -2767,7 +2765,7 @@ function createLegacyRuntime(options) {
   }
   async function runScenario2() {
     if (!state.scenario || state.running) return;
-    var cfg = window.GlobalConfig || {};
+    var cfg = appConfig;
     var runtime;
     try {
       runtime = createExecutionRuntime();
@@ -2813,7 +2811,7 @@ function createLegacyRuntime(options) {
   }
   async function runNextStep() {
     if (!state.scenario || state.running) return;
-    var cfg = window.GlobalConfig || {};
+    var cfg = appConfig;
     var list = Array.isArray(state.scenario.steps) ? state.scenario.steps : [];
     if (!list.length) return;
     if (!state.stepRuntime || state.nextStepIndex >= list.length) {
@@ -3051,7 +3049,7 @@ function createLegacyRuntime(options) {
     });
   }
   async function fetchDiscoveredScenarios() {
-    var cfg = window.GlobalConfig || {};
+    var cfg = appConfig;
     if (!Array.isArray(cfg.scenarios) || cfg.scenarios.length === 0) {
       return;
     }
@@ -3082,13 +3080,20 @@ function createLegacyRuntime(options) {
         state.scenarioScript.remove();
         state.scenarioScript = null;
       }
-      window.ScenarioData = void 0;
       var script = document.createElement("script");
       script.src = "./" + file + "?ts=" + Date.now();
       script.onload = function() {
         state.scenarioScript = script;
         state.scenarioFile = file;
-        state.scenario = clone2(window.ScenarioData || {});
+        var entry = (appConfig.scenarios || []).filter(function(item) {
+          return (item.url || item.file || item.path) === file;
+        })[0];
+        var scenario = getRegisteredScenario(entry && entry.id);
+        if (!scenario) {
+          rejectLoad(new Error("\u573A\u666F\u6587\u4EF6\u5FC5\u987B\u901A\u8FC7 ScenarioTest.registerScenario \u6CE8\u518C: " + file));
+          return;
+        }
+        state.scenario = clone2(scenario);
         state.steps = [];
         state.stepRuntime = null;
         state.stepCheckpoints = [];
@@ -3204,7 +3209,7 @@ var TAILWIND_CSS = '*, ::before, ::after {\n  --tw-border-spacing-x: 0;\n  --tw-
 function resolveMount(mount) {
   return typeof mount === "string" ? document.querySelector(mount) : mount;
 }
-function toLegacyConfig(config) {
+function toRuntimeConfig(config) {
   const prefix = config.storagePrefix || "scenario-test";
   const scenarioVars = { ...config.vars || {} };
   for (const definition of config.variables || []) {
@@ -3246,15 +3251,12 @@ function createApp(options = {}) {
   if (document.getElementById("scenario-test-root") && mount.id !== "scenario-test-root") {
     throw new Error("\u5F53\u524D\u9875\u9762\u53EA\u80FD\u6302\u8F7D\u4E00\u4E2A\u573A\u666F\u6D4B\u8BD5\u5DE5\u4F5C\u53F0");
   }
-  const legacyInput = typeof window !== "undefined" ? normalizeLegacyConfig(window.GlobalConfig) : null;
-  const config = defineConfig(options.config || getConfig() || legacyInput || {});
+  const config = defineConfig(options.config || getConfig() || {});
   const previousId = mount.id;
-  const previousConfig = window.GlobalConfig;
   mount.id = "scenario-test-root";
   mount.classList.add("scenario-test-root");
-  window.GlobalConfig = toLegacyConfig(config);
   ensureTailwindStyles();
-  const runtime = createLegacyRuntime({ mount, config });
+  const runtime = createLegacyRuntime({ mount, config: toRuntimeConfig(config), getScenario });
   let destroyed = false;
   function loadScenario(idOrUrl) {
     const entry = config.scenarios.find((item) => item.id === idOrUrl || item.url === idOrUrl || item.file === idOrUrl);
@@ -3266,7 +3268,6 @@ function createApp(options = {}) {
     mount.replaceChildren();
     mount.classList.remove("scenario-test-root");
     mount.id = previousId;
-    window.GlobalConfig = previousConfig;
     destroyed = true;
   }
   return {
@@ -3308,8 +3309,6 @@ export {
   listAdapters,
   maskSecret,
   md5,
-  normalizeLegacyConfig,
-  normalizeLegacyScenario,
   parseBody,
   registerAdapter,
   registerConfig,
