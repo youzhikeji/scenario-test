@@ -872,6 +872,19 @@ export function createLegacyRuntime(options) {
         var saveBtn = document.getElementById('saveSettingsBtn');
         var clearBtn = document.getElementById('clearSettingsBtn');
         var keys = getStorageKeys();
+        var noticeTimer = null;
+
+        function showSettingsNotice(message) {
+            var notice = document.getElementById('settingsNotice');
+            if (!notice) return;
+            if (noticeTimer) window.clearTimeout(noticeTimer);
+            notice.textContent = message;
+            notice.classList.remove('hidden');
+            noticeTimer = window.setTimeout(function () {
+                notice.textContent = '';
+                notice.classList.add('hidden');
+            }, 2500);
+        }
 
         function selectEnvironment(envKey) {
             persistSetting(keys.environment, envKey);
@@ -899,6 +912,7 @@ export function createLegacyRuntime(options) {
                 persistSetting(getEnvironmentStorageKey(keys.authorization, environment), authorization);
                 persistScenarioVariables();
                 updateHeader();
+                showSettingsNotice('当前环境设置已保存并生效');
             });
         }
         if (clearBtn) {
@@ -911,13 +925,7 @@ export function createLegacyRuntime(options) {
                 });
                 syncSettingsInputs();
                 updateHeader();
-                var originalText = clearBtn.textContent;
-                clearBtn.textContent = '已恢复配置值';
-                clearBtn.disabled = true;
-                window.setTimeout(function () {
-                    clearBtn.textContent = originalText;
-                    clearBtn.disabled = false;
-                }, 1200);
+                showSettingsNotice('当前环境覆盖已清除，已恢复配置值');
             });
         }
     }

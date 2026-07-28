@@ -59,12 +59,13 @@ try {
 
         await page.locator("#scenarioVar_expectedStatus").fill("DOWN");
         await page.locator("#saveSettingsBtn").click();
+        assert.match(await page.locator("#settingsNotice").textContent(), /已保存并生效/);
         await page.locator("#runBtn").click();
         await page.waitForFunction(() => !document.querySelector("#runBtn").disabled && document.querySelector('#stepsList li[data-passed="false"]'));
         assert.equal(await page.locator('#stepsList li[data-passed="false"]').count(), 1);
 
         await page.locator("#clearSettingsBtn").click();
-        assert.match(await page.locator("#clearSettingsBtn").textContent(), /已恢复配置值/);
+        assert.match(await page.locator("#settingsNotice").textContent(), /已恢复配置值/);
         assert.equal(await page.locator("#scenarioVar_expectedStatus").inputValue(), "UP");
 
         await page.locator("#runBtn").click();

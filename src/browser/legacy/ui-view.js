@@ -101,7 +101,8 @@ const legacyView = (function () {
                 </div>
                 <div class="mt-4 flex flex-wrap items-center justify-between border-t border-slate-700 pt-3">
                     <div class="text-[11px] text-slate-400 flex items-center gap-2"><span>当前生效 Base URL:</span> <span id="baseUrlLabel" class="font-mono text-emerald-400"></span><span id="authLabel" class="font-mono text-amber-400 border-l border-slate-600 pl-2" style="display:none">Token: <span id="authValue"></span></span></div>
-                    <div class="flex gap-2 mt-2 sm:mt-0">
+                    <div class="flex flex-wrap items-center justify-end gap-2 mt-2 sm:mt-0">
+                        <span id="settingsNotice" role="status" aria-live="polite" class="hidden text-xs font-medium text-emerald-400"></span>
                         <button id="saveSettingsBtn" class="px-4 py-1.5 rounded-md bg-emerald-500 text-white text-xs font-bold hover:bg-emerald-600 transition-colors shadow-sm">保存并生效</button>
                         <button id="clearSettingsBtn" class="px-4 py-1.5 rounded-md bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold hover:bg-slate-600 transition-colors">清除当前环境覆盖</button>
                     </div>

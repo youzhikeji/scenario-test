@@ -1,4 +1,4 @@
-/*! scenario-test v0.2.5 */
+/*! scenario-test v0.2.6 */
 var ScenarioTest = (() => {
   var __create = Object.create;
   var __defProp = Object.defineProperty;
@@ -1513,7 +1513,8 @@ var ScenarioTest = (() => {
                 </div>
                 <div class="mt-4 flex flex-wrap items-center justify-between border-t border-slate-700 pt-3">
                     <div class="text-[11px] text-slate-400 flex items-center gap-2"><span>\u5F53\u524D\u751F\u6548 Base URL:</span> <span id="baseUrlLabel" class="font-mono text-emerald-400"></span><span id="authLabel" class="font-mono text-amber-400 border-l border-slate-600 pl-2" style="display:none">Token: <span id="authValue"></span></span></div>
-                    <div class="flex gap-2 mt-2 sm:mt-0">
+                    <div class="flex flex-wrap items-center justify-end gap-2 mt-2 sm:mt-0">
+                        <span id="settingsNotice" role="status" aria-live="polite" class="hidden text-xs font-medium text-emerald-400"></span>
                         <button id="saveSettingsBtn" class="px-4 py-1.5 rounded-md bg-emerald-500 text-white text-xs font-bold hover:bg-emerald-600 transition-colors shadow-sm">\u4FDD\u5B58\u5E76\u751F\u6548</button>
                         <button id="clearSettingsBtn" class="px-4 py-1.5 rounded-md bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold hover:bg-slate-600 transition-colors">\u6E05\u9664\u5F53\u524D\u73AF\u5883\u8986\u76D6</button>
                     </div>
@@ -2977,6 +2978,18 @@ var ScenarioTest = (() => {
       var saveBtn = document.getElementById("saveSettingsBtn");
       var clearBtn = document.getElementById("clearSettingsBtn");
       var keys = getStorageKeys();
+      var noticeTimer = null;
+      function showSettingsNotice(message) {
+        var notice = document.getElementById("settingsNotice");
+        if (!notice) return;
+        if (noticeTimer) window.clearTimeout(noticeTimer);
+        notice.textContent = message;
+        notice.classList.remove("hidden");
+        noticeTimer = window.setTimeout(function() {
+          notice.textContent = "";
+          notice.classList.add("hidden");
+        }, 2500);
+      }
       function selectEnvironment(envKey) {
         persistSetting(keys.environment, envKey);
         syncSettingsInputs();
@@ -3006,6 +3019,7 @@ var ScenarioTest = (() => {
           persistSetting(getEnvironmentStorageKey(keys.authorization, environment), authorization);
           persistScenarioVariables();
           updateHeader();
+          showSettingsNotice("\u5F53\u524D\u73AF\u5883\u8BBE\u7F6E\u5DF2\u4FDD\u5B58\u5E76\u751F\u6548");
         });
       }
       if (clearBtn) {
@@ -3018,13 +3032,7 @@ var ScenarioTest = (() => {
           });
           syncSettingsInputs();
           updateHeader();
-          var originalText = clearBtn.textContent;
-          clearBtn.textContent = "\u5DF2\u6062\u590D\u914D\u7F6E\u503C";
-          clearBtn.disabled = true;
-          window.setTimeout(function() {
-            clearBtn.textContent = originalText;
-            clearBtn.disabled = false;
-          }, 1200);
+          showSettingsNotice("\u5F53\u524D\u73AF\u5883\u8986\u76D6\u5DF2\u6E05\u9664\uFF0C\u5DF2\u6062\u590D\u914D\u7F6E\u503C");
         });
       }
     }
