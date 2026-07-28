@@ -52,7 +52,7 @@ function createRequestSignal(parentSignal, timeoutMs) {
 
 function buildGeneratedVars(scenario, baseVars, environmentVariables) {
     const runId = String(Date.now());
-    const vars = { ...(baseVars || {}), ...(scenario.vars || {}), runId, runNo: runId.slice(-6) };
+    const vars = { ...(scenario.vars || {}), ...(baseVars || {}), runId, runNo: runId.slice(-6) };
     for (const [name, environmentName] of Object.entries(scenario.envVars || {})) {
         const value = environmentVariables?.[environmentName] ?? vars[name];
         if (value === undefined || value === null || value === "") {

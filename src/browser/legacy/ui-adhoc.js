@@ -72,7 +72,7 @@ const legacyAdhoc = (function () {
 
     function buildAdhocRequest(step, activeRuntime, currentScenario) {
         var runtime = activeRuntime || {
-            vars: Object.assign({}, appConfig.vars || {}, (currentScenario || {}).vars || {}),
+            vars: Object.assign({}, (currentScenario || {}).vars || {}, appConfig.vars || {}),
             lastResponse: null,
             lastResponseBody: null
         };

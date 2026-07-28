@@ -1,6 +1,6 @@
-export const DEFAULT_LIBRARY_URL = "http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.2.1/dist/scenario-test.umd.js";
+export const DEFAULT_LIBRARY_URL = "http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.2.2/dist/scenario-test.umd.js";
 
-export function createProjectFiles(libraryUrl, directory = "dev/场景测试") {
+export function createProjectFiles(libraryUrl, directory = "scenario-test") {
     return {
         [`${directory}/index.html`]: `<!doctype html>
 <html lang="zh-CN">
@@ -54,7 +54,7 @@ export function createProjectFiles(libraryUrl, directory = "dev/场景测试") {
 node ${directory}/scenario-test-cli.cjs --config ${directory}/scenario.config.js --env local --all
 \`\`\`
 
-不要在配置或场景中写入真实 Token、Secret、个人信息或生产地址。敏感变量通过环境变量或浏览器环境配置输入。
+私有项目可在 \`vars\` 设置启动初始凭据，浏览器设置可按环境覆盖；公共仓库、示例和运行时不得写入真实业务凭据。
 `
     };
 }

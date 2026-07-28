@@ -55,6 +55,16 @@ try {
         await page.waitForFunction(() => document.querySelectorAll("[data-scenario-file]").length === 2);
         assert.equal(await page.locator("#stepsList li").count(), 1);
         assert.equal(await page.locator("#scenarioVar_exampleToken").getAttribute("type"), "password");
+        assert.equal(await page.locator("#scenarioVar_expectedStatus").inputValue(), "UP");
+
+        await page.locator("#scenarioVar_expectedStatus").fill("DOWN");
+        await page.locator("#saveSettingsBtn").click();
+        await page.locator("#runBtn").click();
+        await page.waitForFunction(() => !document.querySelector("#runBtn").disabled && document.querySelector('#stepsList li[data-passed="false"]'));
+        assert.equal(await page.locator('#stepsList li[data-passed="false"]').count(), 1);
+
+        await page.locator("#clearSettingsBtn").click();
+        assert.equal(await page.locator("#scenarioVar_expectedStatus").inputValue(), "UP");
 
         await page.locator("#runBtn").click();
         await page.waitForFunction(() => !document.querySelector("#runBtn").disabled && document.querySelector('#stepsList li[data-passed="true"]'));

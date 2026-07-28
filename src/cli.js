@@ -31,7 +31,7 @@ function parseArgs(argv) {
 }
 
 function printHelp() {
-    console.log(`scenario-test 0.2.1
+    console.log(`scenario-test 0.2.2
 
 Usage:
   node scenario-test-cli.cjs --config ./scenario.config.js --env local --all
@@ -48,7 +48,7 @@ Options:
   --authorization <v>   临时设置 Authorization
   --port <number>       浏览器服务端口，默认 4300
   --project <dir>       初始化业务项目的目标目录
-  --dir <path>          场景测试目录，默认 dev/场景测试
+  --dir <path>          场景测试目录，默认 scenario-test
   --library-url <url>   初始化时写入的 UMD Release 地址
   --force               覆盖 init 已生成的同名文件`);
 }
@@ -62,7 +62,7 @@ function writeProjectFile(projectRoot, relativePath, content, force) {
 }
 
 function resolveInitDirectory(projectRoot, value) {
-    const directory = String(value || "dev/场景测试").trim().replace(/\\/g, "/").replace(/^\.\/+/, "").replace(/\/+$/, "");
+    const directory = String(value || "scenario-test").trim().replace(/\\/g, "/").replace(/^\.\/+/, "").replace(/\/+$/, "");
     const target = path.resolve(projectRoot, directory);
     const relative = path.relative(projectRoot, target);
     if (!directory || path.isAbsolute(directory) || relative.startsWith("..") || path.isAbsolute(relative)) {

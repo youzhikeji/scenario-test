@@ -1,4 +1,4 @@
-/*! scenario-test v0.2.1 */
+/*! scenario-test v0.2.2 */
 var ScenarioTest = (() => {
   var __create = Object.create;
   var __defProp = Object.defineProperty;
@@ -567,7 +567,7 @@ var ScenarioTest = (() => {
   }
   function buildGeneratedVars(scenario, baseVars, environmentVariables) {
     const runId = String(Date.now());
-    const vars = { ...baseVars || {}, ...scenario.vars || {}, runId, runNo: runId.slice(-6) };
+    const vars = { ...scenario.vars || {}, ...baseVars || {}, runId, runNo: runId.slice(-6) };
     for (const [name, environmentName] of Object.entries(scenario.envVars || {})) {
       const value = environmentVariables?.[environmentName] ?? vars[name];
       if (value === void 0 || value === null || value === "") {
@@ -1981,7 +1981,7 @@ var ScenarioTest = (() => {
     }
     function buildAdhocRequest(step, activeRuntime, currentScenario) {
       var runtime = activeRuntime || {
-        vars: Object.assign({}, appConfig.vars || {}, (currentScenario || {}).vars || {}),
+        vars: Object.assign({}, (currentScenario || {}).vars || {}, appConfig.vars || {}),
         lastResponse: null,
         lastResponseBody: null
       };

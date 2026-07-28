@@ -4,8 +4,12 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
     ],
     defaultEnvKey: "mock",
     requestTimeoutMs: 5000,
+    vars: {
+        expectedStatus: "UP"
+    },
     variables: [
-        { name: "exampleToken", label: "示例 Token", sensitive: true, defaultValue: "" }
+        { name: "exampleToken", label: "示例 Token", sensitive: true, defaultValue: "" },
+        { name: "expectedStatus", label: "期望状态", defaultValue: "" }
     ],
     scenarios: [
         { id: "health", name: "健康检查示例", url: "scenarios/health.js" },

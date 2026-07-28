@@ -17,8 +17,8 @@ test("init 创建项目入口，且默认不覆盖现有文件", () => {
             "--library-url", "https://releases.example.test/scenario-test.umd.js"
         ], { encoding: "utf8" });
         assert.equal(first.status, 0, first.stderr);
-        const indexPath = path.join(project, "dev", "场景测试", "index.html");
-        const configPath = path.join(project, "dev", "场景测试", "scenario.config.js");
+        const indexPath = path.join(project, "scenario-test", "index.html");
+        const configPath = path.join(project, "scenario-test", "scenario.config.js");
         assert.match(fs.readFileSync(indexPath, "utf8"), /releases\.example\.test/);
         assert.match(fs.readFileSync(configPath, "utf8"), /ScenarioTest\.registerConfig/);
         assert.equal(fs.existsSync(path.join(project, ".codex", "skills", "scenario-test", "SKILL.md")), false);

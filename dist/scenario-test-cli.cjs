@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/*! scenario-test v0.2.1 */
+/*! scenario-test v0.2.2 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -65109,7 +65109,7 @@ function createRequestSignal(parentSignal, timeoutMs) {
 }
 function buildGeneratedVars(scenario, baseVars, environmentVariables) {
   const runId = String(Date.now());
-  const vars = { ...baseVars || {}, ...scenario.vars || {}, runId, runNo: runId.slice(-6) };
+  const vars = { ...scenario.vars || {}, ...baseVars || {}, runId, runNo: runId.slice(-6) };
   for (const [name, environmentName] of Object.entries(scenario.envVars || {})) {
     const value = environmentVariables?.[environmentName] ?? vars[name];
     if (value === void 0 || value === null || value === "") {
@@ -66523,7 +66523,7 @@ var legacyAdhoc = function() {
   }
   function buildAdhocRequest(step, activeRuntime, currentScenario) {
     var runtime = activeRuntime || {
-      vars: Object.assign({}, appConfig.vars || {}, (currentScenario || {}).vars || {}),
+      vars: Object.assign({}, (currentScenario || {}).vars || {}, appConfig.vars || {}),
       lastResponse: null,
       lastResponseBody: null
     };
@@ -68009,8 +68009,8 @@ async function readWorkbookRows(filePath, options = {}) {
 }
 
 // src/init-templates.js
-var DEFAULT_LIBRARY_URL = "http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.2.1/dist/scenario-test.umd.js";
-function createProjectFiles(libraryUrl, directory = "dev/\u573A\u666F\u6D4B\u8BD5") {
+var DEFAULT_LIBRARY_URL = "http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.2.2/dist/scenario-test.umd.js";
+function createProjectFiles(libraryUrl, directory = "scenario-test") {
   return {
     [`${directory}/index.html`]: `<!doctype html>
 <html lang="zh-CN">
@@ -68064,7 +68064,7 @@ function createProjectFiles(libraryUrl, directory = "dev/\u573A\u666F\u6D4B\u8BD
 node ${directory}/scenario-test-cli.cjs --config ${directory}/scenario.config.js --env local --all
 \`\`\`
 
-\u4E0D\u8981\u5728\u914D\u7F6E\u6216\u573A\u666F\u4E2D\u5199\u5165\u771F\u5B9E Token\u3001Secret\u3001\u4E2A\u4EBA\u4FE1\u606F\u6216\u751F\u4EA7\u5730\u5740\u3002\u654F\u611F\u53D8\u91CF\u901A\u8FC7\u73AF\u5883\u53D8\u91CF\u6216\u6D4F\u89C8\u5668\u73AF\u5883\u914D\u7F6E\u8F93\u5165\u3002
+\u79C1\u6709\u9879\u76EE\u53EF\u5728 \`vars\` \u8BBE\u7F6E\u542F\u52A8\u521D\u59CB\u51ED\u636E\uFF0C\u6D4F\u89C8\u5668\u8BBE\u7F6E\u53EF\u6309\u73AF\u5883\u8986\u76D6\uFF1B\u516C\u5171\u4ED3\u5E93\u3001\u793A\u4F8B\u548C\u8FD0\u884C\u65F6\u4E0D\u5F97\u5199\u5165\u771F\u5B9E\u4E1A\u52A1\u51ED\u636E\u3002
 `
   };
 }
@@ -68096,7 +68096,7 @@ function parseArgs(argv) {
   return args;
 }
 function printHelp() {
-  console.log(`scenario-test 0.2.1
+  console.log(`scenario-test 0.2.2
 
 Usage:
   node scenario-test-cli.cjs --config ./scenario.config.js --env local --all
@@ -68113,7 +68113,7 @@ Options:
   --authorization <v>   \u4E34\u65F6\u8BBE\u7F6E Authorization
   --port <number>       \u6D4F\u89C8\u5668\u670D\u52A1\u7AEF\u53E3\uFF0C\u9ED8\u8BA4 4300
   --project <dir>       \u521D\u59CB\u5316\u4E1A\u52A1\u9879\u76EE\u7684\u76EE\u6807\u76EE\u5F55
-  --dir <path>          \u573A\u666F\u6D4B\u8BD5\u76EE\u5F55\uFF0C\u9ED8\u8BA4 dev/\u573A\u666F\u6D4B\u8BD5
+  --dir <path>          \u573A\u666F\u6D4B\u8BD5\u76EE\u5F55\uFF0C\u9ED8\u8BA4 scenario-test
   --library-url <url>   \u521D\u59CB\u5316\u65F6\u5199\u5165\u7684 UMD Release \u5730\u5740
   --force               \u8986\u76D6 init \u5DF2\u751F\u6210\u7684\u540C\u540D\u6587\u4EF6`);
 }
@@ -68125,7 +68125,7 @@ function writeProjectFile(projectRoot, relativePath, content, force) {
   return true;
 }
 function resolveInitDirectory(projectRoot, value) {
-  const directory = String(value || "dev/\u573A\u666F\u6D4B\u8BD5").trim().replace(/\\/g, "/").replace(/^\.\/+/, "").replace(/\/+$/, "");
+  const directory = String(value || "scenario-test").trim().replace(/\\/g, "/").replace(/^\.\/+/, "").replace(/\/+$/, "");
   const target = import_node_path4.default.resolve(projectRoot, directory);
   const relative = import_node_path4.default.relative(projectRoot, target);
   if (!directory || import_node_path4.default.isAbsolute(directory) || relative.startsWith("..") || import_node_path4.default.isAbsolute(relative)) {
