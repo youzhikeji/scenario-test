@@ -1,16 +1,26 @@
 # AI 安装 Prompt
 
-在目标项目根目录打开 AI 助手，将下面内容完整粘贴。它不要求克隆公共库源码，也不安装 npm 依赖。
+在目标项目根目录打开 AI 助手，将下面内容完整粘贴。它不要求克隆公共库源码，也不安装 npm 依赖或生成 AI Skill。
 
 ```text
-请在当前项目中安装 scenario-test v0.1.4，不要克隆或下载公共库源码，也不要修改业务代码。
+请在当前项目根目录安装 scenario-test v0.1.4。目标目录固定为 dev/场景测试。
 
-在项目根目录执行以下 PowerShell 逻辑：
-1. 从 http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.1.4/dist/scenario-test-cli.cjs 下载 CLI 到系统临时目录的 scenario-test-bootstrap.cjs。
-2. 使用 node <临时 CLI 路径> init --project . 初始化当前项目。
-3. 确认生成 dev/场景测试/index.html、dev/场景测试/scenario.config.js、dev/场景测试/scenarios/health.js 和 dev/场景测试/scenario-test-cli.cjs。
-4. 不覆盖任何已有的项目文件；不要启动服务、调用业务接口或写入真实密钥。
-5. 最后只报告生成的文件和后续运行命令。
+执行要求：
+1. 先确认当前目录是项目根目录，且 Node.js 版本不低于 18；不满足时停止并说明原因。
+2. 不克隆公共库源码，不执行 npm install，不修改业务代码、构建配置或已有场景文件。
+3. 仅从以下固定版本地址下载 CLI 到系统临时目录：
+   http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.1.4/dist/scenario-test-cli.cjs
+4. 使用 node <临时 CLI 路径> init --project . 执行初始化；不要传 --force。
+5. init 会保留已有文件。检查并报告以下文件是否已创建或已保留：
+   - dev/场景测试/index.html
+   - dev/场景测试/scenario.config.js
+   - dev/场景测试/scenarios/health.js
+   - dev/场景测试/scenario-test-cli.cjs
+6. 不启动服务、不调用任何业务接口、不写入 Token、Secret 或真实测试数据。
+7. 最后只给出安装结果，以及后续运行命令：
+   node dev/场景测试/scenario-test-cli.cjs --config dev/场景测试/scenario.config.js --env local --all
+
+如果下载、Node.js 检查或初始化失败，停止后报告具体失败原因，不尝试替代安装方式。
 ```
 
 安装完成后，项目内 CLI 的使用方式为：
