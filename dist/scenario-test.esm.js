@@ -1,4 +1,4 @@
-/*! scenario-test v0.2.2 */
+/*! scenario-test v0.2.3 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -3005,6 +3005,13 @@ function createLegacyRuntime(options) {
         });
         syncSettingsInputs();
         updateHeader();
+        var originalText = clearBtn.textContent;
+        clearBtn.textContent = "\u5DF2\u6062\u590D\u914D\u7F6E\u503C";
+        clearBtn.disabled = true;
+        window.setTimeout(function() {
+          clearBtn.textContent = originalText;
+          clearBtn.disabled = false;
+        }, 1200);
       });
     }
   }

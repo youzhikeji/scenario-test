@@ -912,6 +912,13 @@ export function createLegacyRuntime(options) {
                 });
                 syncSettingsInputs();
                 updateHeader();
+                var originalText = clearBtn.textContent;
+                clearBtn.textContent = '已恢复配置值';
+                clearBtn.disabled = true;
+                window.setTimeout(function () {
+                    clearBtn.textContent = originalText;
+                    clearBtn.disabled = false;
+                }, 1200);
             });
         }
     }

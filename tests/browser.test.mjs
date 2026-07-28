@@ -64,6 +64,7 @@ try {
         assert.equal(await page.locator('#stepsList li[data-passed="false"]').count(), 1);
 
         await page.locator("#clearSettingsBtn").click();
+        assert.match(await page.locator("#clearSettingsBtn").textContent(), /已恢复配置值/);
         assert.equal(await page.locator("#scenarioVar_expectedStatus").inputValue(), "UP");
 
         await page.locator("#runBtn").click();

@@ -31,7 +31,7 @@ function parseArgs(argv) {
 }
 
 function printHelp() {
-    console.log(`scenario-test 0.2.2
+    console.log(`scenario-test 0.2.3
 
 Usage:
   node scenario-test-cli.cjs --config ./scenario.config.js --env local --all

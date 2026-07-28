@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/*! scenario-test v0.2.2 */
+/*! scenario-test v0.2.3 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -67592,6 +67592,13 @@ function createLegacyRuntime(options) {
         });
         syncSettingsInputs();
         updateHeader();
+        var originalText = clearBtn.textContent;
+        clearBtn.textContent = "\u5DF2\u6062\u590D\u914D\u7F6E\u503C";
+        clearBtn.disabled = true;
+        window.setTimeout(function() {
+          clearBtn.textContent = originalText;
+          clearBtn.disabled = false;
+        }, 1200);
       });
     }
   }
@@ -68009,7 +68016,7 @@ async function readWorkbookRows(filePath, options = {}) {
 }
 
 // src/init-templates.js
-var DEFAULT_LIBRARY_URL = "http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.2.2/dist/scenario-test.umd.js";
+var DEFAULT_LIBRARY_URL = "http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.2.3/dist/scenario-test.umd.js";
 function createProjectFiles(libraryUrl, directory = "scenario-test") {
   return {
     [`${directory}/index.html`]: `<!doctype html>
@@ -68096,7 +68103,7 @@ function parseArgs(argv) {
   return args;
 }
 function printHelp() {
-  console.log(`scenario-test 0.2.2
+  console.log(`scenario-test 0.2.3
 
 Usage:
   node scenario-test-cli.cjs --config ./scenario.config.js --env local --all
