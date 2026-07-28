@@ -80,7 +80,7 @@ ScenarioTest.registerScenario("health", ScenarioTest.defineScenario({
 业务项目可固定引用 GitLab Release 的单文件产物，无需拉取源码：
 
 ```html
-<script src="http://192.168.1.239/zhangqianfeng/scenario-test/-/releases/v0.1.1/downloads/scenario-test.umd.js"></script>
+<script src="http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.1.2/dist/scenario-test.umd.js"></script>
 ```
 
 不要引用 `master`，应固定使用已发布的 Tag。

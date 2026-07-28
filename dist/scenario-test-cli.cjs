@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/*! scenario-test v0.1.1 */
+/*! scenario-test v0.1.2 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -67996,7 +67996,7 @@ async function readWorkbookRows(filePath, options = {}) {
 }
 
 // src/init-templates.js
-var DEFAULT_LIBRARY_URL = "http://192.168.1.239/zhangqianfeng/scenario-test/-/releases/v0.1.1/downloads/scenario-test.umd.js";
+var DEFAULT_LIBRARY_URL = "http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.1.2/dist/scenario-test.umd.js";
 function createProjectFiles(libraryUrl) {
   return {
     "dev/\u573A\u666F\u6D4B\u8BD5/index.html": `<!doctype html>
@@ -68115,7 +68115,7 @@ function parseArgs(argv) {
   return args;
 }
 function printHelp() {
-  console.log(`scenario-test 0.1.1
+  console.log(`scenario-test 0.1.2
 
 Usage:
   node scenario-test-cli.cjs --config ./scenario.config.js --env local --all

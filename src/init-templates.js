@@ -1,4 +1,4 @@
-export const DEFAULT_LIBRARY_URL = "http://192.168.1.239/zhangqianfeng/scenario-test/-/releases/v0.1.1/downloads/scenario-test.umd.js";
+export const DEFAULT_LIBRARY_URL = "http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.1.2/dist/scenario-test.umd.js";
 
 export function createProjectFiles(libraryUrl) {
     return {

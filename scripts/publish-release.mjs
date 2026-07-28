@@ -1,4 +1,4 @@
-const required = ["CI_API_V4_URL", "CI_PROJECT_ID", "CI_COMMIT_TAG", "GITLAB_RELEASE_TOKEN"];
+const required = ["CI_API_V4_URL", "CI_PROJECT_ID", "CI_COMMIT_TAG", "CI_PROJECT_URL", "GITLAB_RELEASE_TOKEN"];
 for (const name of required) {
     if (!process.env[name]) throw new Error(`发布缺少 CI 变量 ${name}`);
 }
@@ -7,6 +7,7 @@ const {
     CI_API_V4_URL: apiUrl,
     CI_PROJECT_ID: projectId,
     CI_COMMIT_TAG: tag,
+    CI_PROJECT_URL: projectUrl,
     GITLAB_RELEASE_TOKEN: token
 } = process.env;
 
@@ -17,22 +18,10 @@ const files = [
     "scenario-test-cli.cjs",
     "adapters/xlsx.cjs"
 ];
-const packageUrl = `${apiUrl}/projects/${encodeURIComponent(projectId)}/packages/generic/scenario-test/${encodeURIComponent(tag)}`;
-
-for (const filePath of files) {
-    const response = await fetch(`${packageUrl}/${filePath}`, {
-        method: "PUT",
-        headers: { "PRIVATE-TOKEN": token },
-        body: fs.readFileSync(path.join("dist", filePath))
-    });
-    if (!response.ok && response.status !== 409) {
-        throw new Error(`GitLab Generic Package 上传失败 (${response.status}): ${await response.text()}`);
-    }
-}
-
 const assets = files.map((filePath) => ({
     name: filePath.split("/").at(-1),
-    url: `${packageUrl}/${filePath}`,
+    // dist is committed with the tag, so this URL is immutable and does not depend on CI artifacts.
+    url: `${projectUrl}/-/raw/${encodeURIComponent(tag)}/dist/${filePath}`,
     filepath: `/${filePath}`,
     link_type: "other"
 }));
@@ -66,5 +55,3 @@ if (!response.ok) {
 }
 
 console.log(`已创建 GitLab Release: ${tag}`);
-import fs from "node:fs";
-import path from "node:path";

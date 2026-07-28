@@ -1,4 +1,4 @@
-/*! scenario-test v0.1.1 */
+/*! scenario-test v0.1.2 */
 var ScenarioTest = (() => {
   var __create = Object.create;
   var __defProp = Object.defineProperty;
