@@ -812,7 +812,7 @@ export function createLegacyRuntime(options) {
             var value = stored[def.name] || '';
             return '<label class="flex flex-col gap-1.5">' +
                 '<span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">' + esc(def.label) + ' (' + esc(def.name) + ')</span>' +
-                '<input id="scenarioVar_' + esc(def.name) + '" type="' + (def.sensitive ? 'password' : 'text') + '" value="' + esc(value) + '" placeholder="请输入 ' + esc(def.label) + '" class="px-3 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">' +
+                '<input id="scenarioVar_' + esc(def.name) + '" type="text" value="' + esc(value) + '" placeholder="请输入 ' + esc(def.label) + '" class="px-3 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">' +
                 '</label>';
         }).join('');
     }

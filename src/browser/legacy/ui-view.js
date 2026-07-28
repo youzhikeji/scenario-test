@@ -92,7 +92,7 @@ const legacyView = (function () {
                     </label>
                     <label class="flex flex-col gap-1.5">
                         <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Authorization Token</span>
-                        <input id="authorizationInput" type="password" placeholder="留空则请求不带 Authorization" class="px-3 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">
+                        <input id="authorizationInput" type="text" placeholder="留空则请求不带 Authorization" class="px-3 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">
                     </label>
                 </div>
                 <div class="mt-4 border-t border-slate-700 pt-3">

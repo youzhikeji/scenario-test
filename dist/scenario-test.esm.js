@@ -1,4 +1,4 @@
-/*! scenario-test v0.2.3 */
+/*! scenario-test v0.2.4 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -1490,7 +1490,7 @@ var legacyView = function() {
                     </label>
                     <label class="flex flex-col gap-1.5">
                         <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Authorization Token</span>
-                        <input id="authorizationInput" type="password" placeholder="\u7559\u7A7A\u5219\u8BF7\u6C42\u4E0D\u5E26 Authorization" class="px-3 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">
+                        <input id="authorizationInput" type="text" placeholder="\u7559\u7A7A\u5219\u8BF7\u6C42\u4E0D\u5E26 Authorization" class="px-3 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">
                     </label>
                 </div>
                 <div class="mt-4 border-t border-slate-700 pt-3">
@@ -2908,7 +2908,7 @@ function createLegacyRuntime(options) {
     var stored = getStoredScenarioVariables();
     container.innerHTML = defs.map(function(def) {
       var value = stored[def.name] || "";
-      return '<label class="flex flex-col gap-1.5"><span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">' + esc(def.label) + " (" + esc(def.name) + ')</span><input id="scenarioVar_' + esc(def.name) + '" type="' + (def.sensitive ? "password" : "text") + '" value="' + esc(value) + '" placeholder="\u8BF7\u8F93\u5165 ' + esc(def.label) + '" class="px-3 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"></label>';
+      return '<label class="flex flex-col gap-1.5"><span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">' + esc(def.label) + " (" + esc(def.name) + ')</span><input id="scenarioVar_' + esc(def.name) + '" type="text" value="' + esc(value) + '" placeholder="\u8BF7\u8F93\u5165 ' + esc(def.label) + '" class="px-3 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"></label>';
     }).join("");
   }
   function syncSettingsInputs() {

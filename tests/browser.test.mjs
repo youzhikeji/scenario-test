@@ -54,7 +54,7 @@ try {
         await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "networkidle" });
         await page.waitForFunction(() => document.querySelectorAll("[data-scenario-file]").length === 2);
         assert.equal(await page.locator("#stepsList li").count(), 1);
-        assert.equal(await page.locator("#scenarioVar_exampleToken").getAttribute("type"), "password");
+        assert.equal(await page.locator("#scenarioVar_exampleToken").getAttribute("type"), "text");
         assert.equal(await page.locator("#scenarioVar_expectedStatus").inputValue(), "UP");
 
         await page.locator("#scenarioVar_expectedStatus").fill("DOWN");
