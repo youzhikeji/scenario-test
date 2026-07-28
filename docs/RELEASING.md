@@ -1,8 +1,8 @@
 # 发布流程
 
-`master` 只包含可发布代码。发布由 Git Tag 触发 GitLab CI：校验、构建 `dist/`、创建 Release，并将浏览器和 CLI 运行时上传到内部静态资源服务。
+`master` 只包含可发布代码。`dist/` 随版本提交，消费者通过 AI 安装 Prompt 下载 CLI 并在项目内执行 `init`，不依赖 GitLab CI、GitLab Pages 或静态资源服务。
 
-`dist/` 随每个版本 Tag 提交。Release 资产指向该 Tag 的 Raw 文件，不依赖会过期的流水线 Artifact 或 GitLab Generic Package Registry。
+`dist/` 随每个版本 Tag 提交。GitLab Raw 只作为 Node.js 下载源，不作为浏览器脚本地址。
 
 ## 发布步骤
 
@@ -22,23 +22,7 @@
    git push origin v0.2.7
    ```
 
-5. 等待 GitLab `release` 和 `static_publish` Job 成功。`release` 创建 GitLab Release；`static_publish` 原子发布以下版本地址：
-
-   ```text
-   http://192.168.1.199:8088/scenario-test/<tag>/scenario-test.umd.js
-   http://192.168.1.199:8088/scenario-test/<tag>/scenario-test-cli.cjs
-   ```
-
-项目 CI/CD 变量必须配置受保护且掩码的 `GITLAB_RELEASE_TOKEN`，它需要当前项目的 API 权限以创建 Release。变量只在 GitLab CI 中使用，不写入仓库。
-
-静态发布还需要两个受保护的 **File** 类型变量：
-
-- `SCENARIO_TEST_STATIC_SSH_KEY`：`scenario-publisher@192.168.1.199` 的私钥。
-- `SCENARIO_TEST_STATIC_KNOWN_HOSTS`：`192.168.1.199` 的 SSH known_hosts 条目。
-
-服务器上的 `scenario-publisher` 仅拥有 `/opt/scenario-test-static/public/scenario-test` 的写权限。Tag 必须是 `vX.Y.Z` 格式；同版本目录已存在时发布会失败，避免覆盖历史产物。
-
-`init` 会下载 Release UMD 到项目目录，由浏览器加载本地文件：
+5. AI 安装 Prompt 下载该 Tag 的 CLI 后，`init` 会将 UMD 和 CLI 写入项目目录，由浏览器加载本地文件：
 
 ```html
 <script src="./scenario-test.umd.js"></script>
