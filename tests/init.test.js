@@ -31,3 +31,17 @@ test("init 创建项目入口，且默认不覆盖现有文件", () => {
         fs.rmSync(project, { recursive: true, force: true });
     }
 });
+
+test("init 支持自定义项目内场景目录", () => {
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-init-dir-"));
+    try {
+        const result = spawnSync(process.execPath, [
+            path.join(root, "src/cli.js"), "init", "--project", project, "--dir", "scenario-test"
+        ], { encoding: "utf8" });
+        assert.equal(result.status, 0, result.stderr);
+        assert.equal(fs.existsSync(path.join(project, "scenario-test", "index.html")), true);
+        assert.equal(fs.existsSync(path.join(project, "dev", "场景测试", "index.html")), false);
+    } finally {
+        fs.rmSync(project, { recursive: true, force: true });
+    }
+});

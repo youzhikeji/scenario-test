@@ -80,7 +80,7 @@ ScenarioTest.registerScenario("health", ScenarioTest.defineScenario({
 业务项目可固定引用 GitLab Release 的单文件产物，无需拉取源码：
 
 ```html
-<script src="http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.1.4/dist/scenario-test.umd.js"></script>
+<script src="http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.1.5/dist/scenario-test.umd.js"></script>
 ```
 
 不要引用 `master`，应固定使用已发布的 Tag。
@@ -90,10 +90,32 @@ ScenarioTest.registerScenario("health", ScenarioTest.defineScenario({
 CLI 可创建业务项目所需的最小目录、浏览器入口、配置、示例场景，并把当前版本 CLI 写入项目：
 
 ```powershell
-node scenario-test-cli.cjs init --project D:\project
+node scenario-test-cli.cjs init --project D:\project --dir "scenario-test"
 ```
 
-首次使用可将 [AI 安装 Prompt](docs/AI_INSTALL_PROMPT.md) 粘贴给当前项目中的 AI 助手；它会下载 Release 的 `scenario-test-cli.cjs` 并运行 `init`。`init` 会将 CLI 复制为 `dev/场景测试/scenario-test-cli.cjs`。默认写入当前 Release 的 UMD 地址；需要私有镜像或其他版本时指定 `--library-url <url>`。已有文件默认保留，只有传入 `--force` 才覆盖。
+`--dir` 决定场景测试在项目中的目录，默认是 `dev/场景测试`，也可使用中性的 `scenario-test`。首次使用可将下方的 AI 安装 Prompt 粘贴给当前项目中的 AI 助手；它会下载 Release 的 `scenario-test-cli.cjs` 并运行 `init`。`init` 会将 CLI 复制到指定目录。默认写入当前 Release 的 UMD 地址；需要私有镜像或其他版本时指定 `--library-url <url>`。已有文件默认保留，只有传入 `--force` 才覆盖。
+
+### AI 安装 Prompt
+
+将下列 Prompt 粘贴给当前项目的 AI 助手。将 `scenario-test` 替换为团队约定的项目内相对目录，例如 `dev/场景测试`；不要使用绝对路径。
+
+```text
+请在当前项目根目录安装 scenario-test v0.1.5，目标目录为 scenario-test。
+
+1. 确认 Node.js 版本不低于 18；不满足时停止并说明原因。
+2. 不克隆公共库源码，不执行 npm install，不修改业务代码、构建配置或已有场景文件。
+3. 仅从以下固定版本地址下载 CLI 到系统临时目录：
+   http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.1.5/dist/scenario-test-cli.cjs
+4. 使用 node <临时 CLI 路径> init --project . --dir "scenario-test" 执行初始化；不要传 --force。
+5. 检查并报告 scenario-test/index.html、scenario-test/scenario.config.js、scenario-test/scenarios/health.js 和 scenario-test/scenario-test-cli.cjs 是已创建还是已保留。
+6. 不启动服务、不调用任何业务接口、不写入 Token、Secret 或真实测试数据。
+7. 最后只给出安装结果，以及后续运行命令：
+   node scenario-test/scenario-test-cli.cjs --config scenario-test/scenario.config.js --env local --all
+
+如果下载、Node.js 检查或初始化失败，停止后报告具体失败原因，不尝试替代安装方式。
+```
+
+完整独立版本见 [AI 安装 Prompt](docs/AI_INSTALL_PROMPT.md)。
 
 ## CLI
 

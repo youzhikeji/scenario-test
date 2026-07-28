@@ -8,7 +8,7 @@ import { createXlsxAdapter, readWorkbookRows } from "./adapters/xlsx.js";
 import { DEFAULT_LIBRARY_URL, createProjectFiles } from "./init-templates.js";
 
 function parseArgs(argv) {
-    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", port: 4300, project: "", libraryUrl: "", force: false };
+    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", port: 4300, project: "", dir: "", libraryUrl: "", force: false };
     let start = 0;
     if (["run", "serve", "init"].includes(argv[0])) { args.command = argv[0]; start = 1; }
     for (let index = start; index < argv.length; index += 1) {
@@ -20,6 +20,7 @@ function parseArgs(argv) {
         else if (["--token", "--authorization"].includes(item)) args.authorization = argv[++index] || "";
         else if (item === "--port") args.port = Number(argv[++index] || 4300);
         else if (item === "--project") args.project = argv[++index] || "";
+        else if (item === "--dir") args.dir = argv[++index] || "";
         else if (item === "--library-url") args.libraryUrl = argv[++index] || "";
         else if (item === "--force") args.force = true;
         else if (item === "--all") args.all = true;
@@ -30,7 +31,7 @@ function parseArgs(argv) {
 }
 
 function printHelp() {
-    console.log(`scenario-test 0.1.4
+    console.log(`scenario-test 0.1.5
 
 Usage:
   node scenario-test-cli.cjs --config ./scenario.config.js --env local --all
@@ -47,6 +48,7 @@ Options:
   --authorization <v>   临时设置 Authorization
   --port <number>       浏览器服务端口，默认 4300
   --project <dir>       初始化业务项目的目标目录
+  --dir <path>          场景测试目录，默认 dev/场景测试
   --library-url <url>   初始化时写入的 UMD Release 地址
   --force               覆盖 init 已生成的同名文件`);
 }
@@ -59,9 +61,19 @@ function writeProjectFile(projectRoot, relativePath, content, force) {
     return true;
 }
 
-function copyRuntimeCli(projectRoot, force) {
+function resolveInitDirectory(projectRoot, value) {
+    const directory = String(value || "dev/场景测试").trim().replace(/\\/g, "/").replace(/^\.\/+/, "").replace(/\/+$/, "");
+    const target = path.resolve(projectRoot, directory);
+    const relative = path.relative(projectRoot, target);
+    if (!directory || path.isAbsolute(directory) || relative.startsWith("..") || path.isAbsolute(relative)) {
+        throw new Error("--dir 必须是项目内的相对目录");
+    }
+    return directory;
+}
+
+function copyRuntimeCli(projectRoot, directory, force) {
     const source = path.resolve(process.argv[1]);
-    const target = path.resolve(projectRoot, "dev", "场景测试", "scenario-test-cli.cjs");
+    const target = path.resolve(projectRoot, directory, "scenario-test-cli.cjs");
     if (fs.existsSync(target) && !force) return false;
     if (!source.endsWith(".cjs")) return null;
     fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -71,19 +83,21 @@ function copyRuntimeCli(projectRoot, force) {
 
 function initCommand(args) {
     const projectRoot = path.resolve(args.project || process.cwd());
+    const directory = resolveInitDirectory(projectRoot, args.dir);
     const libraryUrl = args.libraryUrl || DEFAULT_LIBRARY_URL;
     const created = [];
     const skipped = [];
-    for (const [relativePath, content] of Object.entries(createProjectFiles(libraryUrl))) {
+    for (const [relativePath, content] of Object.entries(createProjectFiles(libraryUrl, directory))) {
         (writeProjectFile(projectRoot, relativePath, content, args.force) ? created : skipped).push(relativePath);
     }
-    const runtimeCli = copyRuntimeCli(projectRoot, args.force);
-    if (runtimeCli === true) created.push("dev/场景测试/scenario-test-cli.cjs");
-    else if (runtimeCli === false) skipped.push("dev/场景测试/scenario-test-cli.cjs");
+    const cliPath = `${directory}/scenario-test-cli.cjs`;
+    const runtimeCli = copyRuntimeCli(projectRoot, directory, args.force);
+    if (runtimeCli === true) created.push(cliPath);
+    else if (runtimeCli === false) skipped.push(cliPath);
     console.log(`已初始化项目: ${projectRoot}`);
     if (created.length) console.log(`已创建: ${created.join(", ")}`);
     if (skipped.length) console.log(`已保留现有文件: ${skipped.join(", ")}`);
-    console.log(`浏览器工作台: ${path.join(projectRoot, "dev", "场景测试", "index.html")}`);
+    console.log(`浏览器工作台: ${path.join(projectRoot, directory, "index.html")}`);
     if (runtimeCli === null) console.log("提示: 请使用 dist/scenario-test-cli.cjs 执行 init，才能自动写入项目 CLI。");
 }
 

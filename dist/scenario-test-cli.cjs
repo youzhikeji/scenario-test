@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/*! scenario-test v0.1.4 */
+/*! scenario-test v0.1.5 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -67996,10 +67996,10 @@ async function readWorkbookRows(filePath, options = {}) {
 }
 
 // src/init-templates.js
-var DEFAULT_LIBRARY_URL = "http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.1.4/dist/scenario-test.umd.js";
-function createProjectFiles(libraryUrl) {
+var DEFAULT_LIBRARY_URL = "http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.1.5/dist/scenario-test.umd.js";
+function createProjectFiles(libraryUrl, directory = "dev/\u573A\u666F\u6D4B\u8BD5") {
   return {
-    "dev/\u573A\u666F\u6D4B\u8BD5/index.html": `<!doctype html>
+    [`${directory}/index.html`]: `<!doctype html>
 <html lang="zh-CN">
 <head>
     <meta charset="utf-8">
@@ -68016,7 +68016,7 @@ function createProjectFiles(libraryUrl) {
 </body>
 </html>
 `,
-    "dev/\u573A\u666F\u6D4B\u8BD5/scenario.config.js": `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+    [`${directory}/scenario.config.js`]: `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
     envs: [
         { key: "local", name: "\u672C\u5730\u5F00\u53D1", baseUrl: "http://localhost:8080" }
     ],
@@ -68028,7 +68028,7 @@ function createProjectFiles(libraryUrl) {
     ]
 }));
 `,
-    "dev/\u573A\u666F\u6D4B\u8BD5/scenarios/health.js": `ScenarioTest.registerScenario("health", ScenarioTest.defineScenario({
+    [`${directory}/scenarios/health.js`]: `ScenarioTest.registerScenario("health", ScenarioTest.defineScenario({
     name: "\u5065\u5EB7\u68C0\u67E5",
     steps: [
         {
@@ -68040,14 +68040,14 @@ function createProjectFiles(libraryUrl) {
     ]
 }));
 `,
-    "dev/\u573A\u666F\u6D4B\u8BD5/README.md": `# \u573A\u666F\u6D4B\u8BD5
+    [`${directory}/README.md`]: `# \u573A\u666F\u6D4B\u8BD5
 
 \u672C\u76EE\u5F55\u4FDD\u5B58\u5F53\u524D\u9879\u76EE\u7684\u73AF\u5883\u914D\u7F6E\u3001\u573A\u666F\u3001\u9879\u76EE\u63D2\u4EF6\u548C\u56FA\u5B9A\u7248\u672C\u7684 CLI \u8FD0\u884C\u65F6\u3002\u6D4F\u89C8\u5668\u8FD0\u884C\u65F6\u7531 GitLab Release \u63D0\u4F9B\u3002
 
 \u6D4F\u89C8\u5668\u5165\u53E3\u4E3A \`index.html\`\u3002CLI \u4F7F\u7528\u53D1\u5E03\u7684 \`scenario-test-cli.cjs\`\uFF1A
 
 \`\`\`powershell
-node dev/\u573A\u666F\u6D4B\u8BD5/scenario-test-cli.cjs --config dev/\u573A\u666F\u6D4B\u8BD5/scenario.config.js --env local --all
+node ${directory}/scenario-test-cli.cjs --config ${directory}/scenario.config.js --env local --all
 \`\`\`
 
 \u4E0D\u8981\u5728\u914D\u7F6E\u6216\u573A\u666F\u4E2D\u5199\u5165\u771F\u5B9E Token\u3001Secret\u3001\u4E2A\u4EBA\u4FE1\u606F\u6216\u751F\u4EA7\u5730\u5740\u3002\u654F\u611F\u53D8\u91CF\u901A\u8FC7\u73AF\u5883\u53D8\u91CF\u6216\u6D4F\u89C8\u5668\u73AF\u5883\u914D\u7F6E\u8F93\u5165\u3002
@@ -68057,7 +68057,7 @@ node dev/\u573A\u666F\u6D4B\u8BD5/scenario-test-cli.cjs --config dev/\u573A\u666
 
 // src/cli.js
 function parseArgs(argv) {
-  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", port: 4300, project: "", libraryUrl: "", force: false };
+  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", port: 4300, project: "", dir: "", libraryUrl: "", force: false };
   let start = 0;
   if (["run", "serve", "init"].includes(argv[0])) {
     args.command = argv[0];
@@ -68072,6 +68072,7 @@ function parseArgs(argv) {
     else if (["--token", "--authorization"].includes(item)) args.authorization = argv[++index] || "";
     else if (item === "--port") args.port = Number(argv[++index] || 4300);
     else if (item === "--project") args.project = argv[++index] || "";
+    else if (item === "--dir") args.dir = argv[++index] || "";
     else if (item === "--library-url") args.libraryUrl = argv[++index] || "";
     else if (item === "--force") args.force = true;
     else if (item === "--all") args.all = true;
@@ -68081,7 +68082,7 @@ function parseArgs(argv) {
   return args;
 }
 function printHelp() {
-  console.log(`scenario-test 0.1.4
+  console.log(`scenario-test 0.1.5
 
 Usage:
   node scenario-test-cli.cjs --config ./scenario.config.js --env local --all
@@ -68098,6 +68099,7 @@ Options:
   --authorization <v>   \u4E34\u65F6\u8BBE\u7F6E Authorization
   --port <number>       \u6D4F\u89C8\u5668\u670D\u52A1\u7AEF\u53E3\uFF0C\u9ED8\u8BA4 4300
   --project <dir>       \u521D\u59CB\u5316\u4E1A\u52A1\u9879\u76EE\u7684\u76EE\u6807\u76EE\u5F55
+  --dir <path>          \u573A\u666F\u6D4B\u8BD5\u76EE\u5F55\uFF0C\u9ED8\u8BA4 dev/\u573A\u666F\u6D4B\u8BD5
   --library-url <url>   \u521D\u59CB\u5316\u65F6\u5199\u5165\u7684 UMD Release \u5730\u5740
   --force               \u8986\u76D6 init \u5DF2\u751F\u6210\u7684\u540C\u540D\u6587\u4EF6`);
 }
@@ -68108,9 +68110,18 @@ function writeProjectFile(projectRoot, relativePath, content, force) {
   import_node_fs4.default.writeFileSync(target, content, "utf8");
   return true;
 }
-function copyRuntimeCli(projectRoot, force) {
+function resolveInitDirectory(projectRoot, value) {
+  const directory = String(value || "dev/\u573A\u666F\u6D4B\u8BD5").trim().replace(/\\/g, "/").replace(/^\.\/+/, "").replace(/\/+$/, "");
+  const target = import_node_path4.default.resolve(projectRoot, directory);
+  const relative = import_node_path4.default.relative(projectRoot, target);
+  if (!directory || import_node_path4.default.isAbsolute(directory) || relative.startsWith("..") || import_node_path4.default.isAbsolute(relative)) {
+    throw new Error("--dir \u5FC5\u987B\u662F\u9879\u76EE\u5185\u7684\u76F8\u5BF9\u76EE\u5F55");
+  }
+  return directory;
+}
+function copyRuntimeCli(projectRoot, directory, force) {
   const source = import_node_path4.default.resolve(process.argv[1]);
-  const target = import_node_path4.default.resolve(projectRoot, "dev", "\u573A\u666F\u6D4B\u8BD5", "scenario-test-cli.cjs");
+  const target = import_node_path4.default.resolve(projectRoot, directory, "scenario-test-cli.cjs");
   if (import_node_fs4.default.existsSync(target) && !force) return false;
   if (!source.endsWith(".cjs")) return null;
   import_node_fs4.default.mkdirSync(import_node_path4.default.dirname(target), { recursive: true });
@@ -68119,19 +68130,21 @@ function copyRuntimeCli(projectRoot, force) {
 }
 function initCommand(args) {
   const projectRoot = import_node_path4.default.resolve(args.project || process.cwd());
+  const directory = resolveInitDirectory(projectRoot, args.dir);
   const libraryUrl = args.libraryUrl || DEFAULT_LIBRARY_URL;
   const created = [];
   const skipped = [];
-  for (const [relativePath, content] of Object.entries(createProjectFiles(libraryUrl))) {
+  for (const [relativePath, content] of Object.entries(createProjectFiles(libraryUrl, directory))) {
     (writeProjectFile(projectRoot, relativePath, content, args.force) ? created : skipped).push(relativePath);
   }
-  const runtimeCli = copyRuntimeCli(projectRoot, args.force);
-  if (runtimeCli === true) created.push("dev/\u573A\u666F\u6D4B\u8BD5/scenario-test-cli.cjs");
-  else if (runtimeCli === false) skipped.push("dev/\u573A\u666F\u6D4B\u8BD5/scenario-test-cli.cjs");
+  const cliPath = `${directory}/scenario-test-cli.cjs`;
+  const runtimeCli = copyRuntimeCli(projectRoot, directory, args.force);
+  if (runtimeCli === true) created.push(cliPath);
+  else if (runtimeCli === false) skipped.push(cliPath);
   console.log(`\u5DF2\u521D\u59CB\u5316\u9879\u76EE: ${projectRoot}`);
   if (created.length) console.log(`\u5DF2\u521B\u5EFA: ${created.join(", ")}`);
   if (skipped.length) console.log(`\u5DF2\u4FDD\u7559\u73B0\u6709\u6587\u4EF6: ${skipped.join(", ")}`);
-  console.log(`\u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0: ${import_node_path4.default.join(projectRoot, "dev", "\u573A\u666F\u6D4B\u8BD5", "index.html")}`);
+  console.log(`\u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0: ${import_node_path4.default.join(projectRoot, directory, "index.html")}`);
   if (runtimeCli === null) console.log("\u63D0\u793A: \u8BF7\u4F7F\u7528 dist/scenario-test-cli.cjs \u6267\u884C init\uFF0C\u624D\u80FD\u81EA\u52A8\u5199\u5165\u9879\u76EE CLI\u3002");
 }
 function resolveConfigPath(value) {
