@@ -1,0 +1,1122 @@
+import legacyCore from './core.js';
+import legacyStyle from './ui-style.js';
+import legacyView from './ui-view.js';
+import legacyAdhoc from './ui-adhoc.js';
+
+export function createLegacyRuntime(options) {
+    'use strict';
+
+    // ===== 模块注入依赖 =====
+    var core = legacyCore;
+    var uiStyle = legacyStyle;
+    var uiView = legacyView;
+    var uiAdhoc = legacyAdhoc;
+
+    var clone = core.clone;
+    var isPlainObject = core.isPlainObject;
+    var resolveString = core.resolveString;
+    var resolve = core.resolve;
+    var headerValue = core.headerValue;
+    var hasHeader = core.hasHeader;
+    var headersToObject = core.headersToObject;
+    var joinUrl = core.joinUrl;
+    var buildUrl = core.buildUrl;
+    var parseBody = core.parseBody;
+    var evaluateAssertion = core.evaluateAssertion;
+    var buildAssertions = core.buildAssertions;
+    var applyExtract = core.applyExtract;
+    var md5 = core.md5;
+    var esc = core.esc;
+    var fmt = core.fmt;
+    var safeJson = core.safeJson;
+
+    // ===== 全局交互桥接（挂载至 window.__R 供 DOM 内联 onclick 调用）=====
+    window.__R = {
+        toggle: function (el, event) {
+            if (event && event.target.closest('button')) return;
+            var selection = window.getSelection && window.getSelection();
+            if (selection && !selection.isCollapsed && selection.toString().trim()) return;
+            var panel = el.nextElementSibling;
+            var chevron = el.querySelector('.chevron');
+            if (panel.classList.contains('open')) {
+                panel.classList.remove('open');
+                if (chevron) chevron.classList.remove('rotate-180');
+            } else {
+                panel.classList.add('open');
+                if (chevron) chevron.classList.add('rotate-180');
+            }
+        },
+        filter: function (type) {
+            document.querySelectorAll('.filter-btn').forEach(function (b) {
+                var active = b.dataset.f === type;
+                var activeCls = '';
+                if (type === 'all') activeCls = 'font-bold text-blue-700 bg-white border border-blue-200 rounded shadow-sm';
+                else if (type === 'pass') activeCls = 'font-bold text-emerald-700 bg-white border border-emerald-200 rounded shadow-sm';
+                else if (type === 'fail') activeCls = 'font-bold text-rose-700 bg-white border border-rose-200 rounded shadow-sm';
+                b.className = 'filter-btn px-3 py-1 text-xs ' + (active ? activeCls : 'font-medium text-slate-600 hover:bg-white rounded');
+            });
+            document.querySelectorAll('#stepsList li').forEach(function (li) {
+                var status = li.dataset.passed;
+                li.style.display = (type === 'all' || (type === 'pass' && status === 'true') || (type === 'fail' && status === 'false')) ? '' : 'none';
+            });
+        },
+        search: function (q) {
+            var lower = q.toLowerCase();
+            document.querySelectorAll('#stepsList li').forEach(function (li) {
+                li.style.display = li.dataset.search.includes(lower) ? '' : 'none';
+            });
+        }
+    };
+
+    // ===== 应用状态管理 =====
+    var state = {
+        scenario: null,
+        scenarioFile: '',
+        scenarioScript: null,
+        steps: [],
+        running: false,
+        activeRuntime: null,
+        executionMode: 'idle',
+        stepRuntime: null,
+        stepCheckpoints: [],
+        debugRuntimes: [],
+        nextStepIndex: 0,
+        scenarioSearch: '',
+        discoveredFiles: [],
+        lastReport: null
+    };
+
+    // ===== 存储与配置辅助 =====
+    function getStorageKeys() {
+        var cfg = window.GlobalConfig || {};
+        var keys = cfg.storageKeys || {};
+        return {
+            baseUrl: keys.baseUrl || 'scenario.testing.baseUrl',
+            authorization: keys.authorization || 'scenario.testing.authorization',
+            environment: keys.environment || 'scenario.testing.environment',
+            theme: keys.theme || 'scenario.testing.theme',
+            scenarioVars: keys.scenarioVars || 'scenario.testing.scenarioVars',
+            pinnedScenarios: keys.pinnedScenarios || 'scenario.testing.pinnedScenarios'
+        };
+    }
+
+    function getEnvironments() {
+        var cfg = window.GlobalConfig || {};
+        return (Array.isArray(cfg.envs) ? cfg.envs : []).filter(function (env) {
+            return env && env.key;
+        });
+    }
+
+    function getDefaultEnvironment() {
+        var cfg = window.GlobalConfig || {};
+        var environments = getEnvironments();
+        var defaultKey = cfg.defaultEnvKey;
+        return environments.filter(function (env) { return env.key === defaultKey; })[0] || environments[0] || null;
+    }
+
+    function getSelectedEnvironment() {
+        var keys = getStorageKeys();
+        var environments = getEnvironments();
+        var selectedKey = '';
+        try {
+            selectedKey = window.localStorage.getItem(keys.environment) || '';
+        } catch (e) {
+            selectedKey = '';
+        }
+        return environments.filter(function (env) { return env.key === selectedKey; })[0] || getDefaultEnvironment();
+    }
+
+    function getEnvironmentStorageKey(key, environment) {
+        return key + '.' + (environment ? environment.key : 'default');
+    }
+
+    function getPinnedScenarioFiles() {
+        try {
+            var value = JSON.parse(window.localStorage.getItem(getStorageKeys().pinnedScenarios) || '[]');
+            return Array.isArray(value) ? value.filter(function (file) { return typeof file === 'string'; }) : [];
+        } catch (e) {
+            return [];
+        }
+    }
+
+    function toggleScenarioPin(file) {
+        var pins = getPinnedScenarioFiles();
+        var index = pins.indexOf(file);
+        if (index >= 0) pins.splice(index, 1);
+        else pins.unshift(file);
+        persistSetting(getStorageKeys().pinnedScenarios, JSON.stringify(pins));
+        renderScenarioSelect();
+    }
+
+    function getScenarioVariableDefinitions() {
+        if (!state.scenario || !isPlainObject(state.scenario.envVars)) return [];
+        return Object.keys(state.scenario.envVars).map(function (name) {
+            return { name: name, label: state.scenario.envVars[name] || name };
+        });
+    }
+
+    function getScenarioVariableStorageKey(name, environment) {
+        var keys = getStorageKeys();
+        return getEnvironmentStorageKey(keys.scenarioVars + '.' + name, environment);
+    }
+
+    function getConfiguredScenarioVariables() {
+        var config = window.GlobalConfig || {};
+        return isPlainObject(config.scenarioVars) ? config.scenarioVars : {};
+    }
+
+    function getStoredScenarioVariables() {
+        var environment = getSelectedEnvironment();
+        var configuredVariables = getConfiguredScenarioVariables();
+        return getScenarioVariableDefinitions().reduce(function (vars, def) {
+            try {
+                vars[def.name] = window.localStorage.getItem(getScenarioVariableStorageKey(def.name, environment)) || configuredVariables[def.name] || '';
+            } catch (e) {
+                vars[def.name] = configuredVariables[def.name] || '';
+            }
+            return vars;
+        }, {});
+    }
+
+    function persistScenarioVariables() {
+        var environment = getSelectedEnvironment();
+        getScenarioVariableDefinitions().forEach(function (def) {
+            var input = document.getElementById('scenarioVar_' + def.name);
+            persistSetting(getScenarioVariableStorageKey(def.name, environment), input ? String(input.value || '').trim() : '');
+        });
+    }
+
+    function getScenarioVariableValues() {
+        var stored = getStoredScenarioVariables();
+        getScenarioVariableDefinitions().forEach(function (def) {
+            var input = document.getElementById('scenarioVar_' + def.name);
+            if (input) stored[def.name] = String(input.value || '').trim();
+        });
+        return stored;
+    }
+
+    function getEffectiveBaseUrl() {
+        var cfg = window.GlobalConfig || {};
+        var keys = getStorageKeys();
+        var environment = getSelectedEnvironment();
+        var stored = '';
+        try {
+            stored = window.localStorage.getItem(getEnvironmentStorageKey(keys.baseUrl, environment)) || '';
+        } catch (e) {
+            stored = '';
+        }
+        return String(stored || (environment && environment.baseUrl) || cfg.baseUrl || window.location.origin || '').replace(/\/+$/, '');
+    }
+
+    function getEffectiveAuthorization() {
+        var cfg = window.GlobalConfig || {};
+        var keys = getStorageKeys();
+        var environment = getSelectedEnvironment();
+        try {
+            return window.localStorage.getItem(getEnvironmentStorageKey(keys.authorization, environment)) || (environment && environment.authorization) || cfg.authorization || '';
+        } catch (e) {
+            return (environment && environment.authorization) || cfg.authorization || '';
+        }
+    }
+
+    function persistSetting(key, value) {
+        try {
+            if (!value) {
+                window.localStorage.removeItem(key);
+            } else {
+                window.localStorage.setItem(key, value);
+            }
+        } catch (e) {
+            console.warn('保存配置失败', e);
+        }
+    }
+
+    function getEffectiveTheme() {
+        try {
+            return window.localStorage.getItem(getStorageKeys().theme) || 'default';
+        } catch (e) {
+            return 'default';
+        }
+    }
+
+    function createUuidHex() {
+        if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID().replace(/-/g, '');
+        if (window.crypto && window.crypto.getRandomValues) {
+            var values = new Uint32Array(4);
+            window.crypto.getRandomValues(values);
+            return Array.prototype.map.call(values, function (value) {
+                return ('00000000' + value.toString(16)).slice(-8);
+            }).join('');
+        }
+        return String(Date.now()) + String(Math.random()).slice(2);
+    }
+
+    function buildScenarioRuntimeVars() {
+        var cfg = window.GlobalConfig || {};
+        var scenario = state.scenario || {};
+        var scenarioVars = getScenarioVariableValues();
+        var missing = getScenarioVariableDefinitions().filter(function (def) {
+            return !scenarioVars[def.name];
+        });
+        if (missing.length) {
+            throw new Error('缺少场景凭据：' + missing.map(function (def) { return def.label; }).join('、') + '。请在“配置参数 → 当前场景凭据”中填写并保存。');
+        }
+        var runSeed = String(Date.now());
+        var vars = Object.assign({}, cfg.vars || {}, scenario.vars || {}, scenarioVars, {
+            runId: runSeed,
+            runNo: runSeed.slice(-6)
+        });
+        (scenario.generatedVars || []).forEach(function (def) {
+            if (!def || !def.name) return;
+            if (def.type === 'timestamp') {
+                vars[def.name] = Date.now();
+                return;
+            }
+            if (def.type === 'uuidHex') {
+                vars[def.name] = createUuidHex();
+                return;
+            }
+            if (def.type === 'md5') {
+                var source = (def.parts || []).map(function (name) {
+                    return vars[name] == null ? '' : String(vars[name]);
+                }).join('');
+                vars[def.name] = md5(source);
+                return;
+            }
+            if (def.type === 'signature') {
+                var params = {};
+                var paramKeys = Object.keys(def.params || {});
+                paramKeys.forEach(function (key) {
+                    var varName = def.params[key];
+                    params[key] = vars[varName];
+                });
+                var secretVal = vars[def.secretVar || 'apiSecret'];
+                vars[def.name] = core.generateSignature(params, secretVal);
+                return;
+            }
+            throw new Error('不支持的 generatedVars 类型: ' + def.type);
+        });
+        return vars;
+    }
+
+    // ===== 视图重绘桥接函数 =====
+    function renderScenarioSelect() {
+        uiView.renderScenarioSelect(state.discoveredFiles, state.scenarioFile, state.scenarioSearch, getPinnedScenarioFiles());
+    }
+
+    function renderStepsAll() {
+        uiView.renderStepsAll(state.steps, state.scenario && state.scenario.steps ? state.scenario.steps : [], state.executionMode);
+    }
+
+    function renderStatsAll(iterations) {
+        uiView.renderStatsAll(state.steps, iterations);
+    }
+
+    function renderFilterAll() {
+        uiView.renderFilterAll(state.steps);
+    }
+
+    function renderReportPanel() {
+        state.lastReport = uiView.renderReportPanel(state.steps, state.scenario, state.scenarioFile, state.executionMode, getSelectedEnvironment());
+    }
+
+    function expandStepDetails(stepIndex) {
+        var items = document.querySelectorAll('#stepsList li');
+        var item = items[stepIndex];
+        if (!item) return;
+        var panel = item.querySelector('.details-panel');
+        var chevron = item.querySelector('.chevron');
+        if (panel) panel.classList.add('open');
+        if (chevron) chevron.classList.add('rotate-180');
+    }
+
+    // ===== 执行调度引擎 =====
+    async function clearSmsRateLimit(runtime, phone, hospitalCode) {
+        var baseUrl = runtime.baseUrl;
+        var query = 'phone=' + encodeURIComponent(phone);
+        if (hospitalCode) {
+            query += '&hospitalCode=' + encodeURIComponent(hospitalCode);
+        }
+        var url = joinUrl(baseUrl, 'mobile/auth/clearSmsRateLimit?' + query);
+        try {
+            await withRuntimeTimeout(function () {
+                return fetch(url, { method: 'POST', signal: runtime.abortController.signal });
+            }, runtime, 5000);
+        } catch (e) {
+            if (runtime.abortController.signal.aborted) throw e;
+        }
+    }
+
+    async function withRuntimeTimeout(operation, runtime, timeoutMs) {
+        var timedOut = false;
+        var timer = setTimeout(function () {
+            timedOut = true;
+            runtime.abortController.abort();
+        }, timeoutMs);
+        try {
+            return await operation();
+        } catch (error) {
+            var executionError = new Error(error && error.message ? error.message : '请求执行失败');
+            executionError.scenarioTimedOut = timedOut;
+            executionError.originalError = error;
+            throw executionError;
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+
+    function waitForRetry(intervalMs, runtime) {
+        return new Promise(function (resolveWait, rejectWait) {
+            if (runtime.abortController.signal.aborted) {
+                rejectWait(new Error('执行已取消'));
+                return;
+            }
+            var timer = setTimeout(function () {
+                runtime.abortController.signal.removeEventListener('abort', onAbort);
+                resolveWait();
+            }, intervalMs);
+            function onAbort() {
+                clearTimeout(timer);
+                rejectWait(new Error('执行已取消'));
+            }
+            runtime.abortController.signal.addEventListener('abort', onAbort, { once: true });
+        });
+    }
+
+    async function executeStep(step, runtime, cfg) {
+        var request = resolve(clone(step.request || {}), runtime) || {};
+        var method = String(step.method || request.method || 'GET').toUpperCase();
+        var rawPath = step.path || request.path || '';
+        var rawParams = step.params || request.params;
+        var path = buildUrl(rawPath, rawParams, runtime);
+        var headers = request.headers && isPlainObject(request.headers) ? request.headers : {};
+        var absoluteUrl = /^https?:\/\//i.test(path);
+        var authorization = runtime.authorization;
+        var allowEnvironmentAuthorization = !absoluteUrl || request.useEnvironmentAuthorization === true;
+        if (authorization && allowEnvironmentAuthorization && !hasHeader(headers, 'Authorization')) {
+            headers.Authorization = authorization;
+        }
+        var bodyData = request.body;
+        var fetchOptions = { method: method, headers: headers, signal: runtime.abortController.signal };
+        if (bodyData !== undefined && bodyData !== null && method !== 'GET' && method !== 'HEAD') {
+            if (typeof bodyData === 'string') {
+                fetchOptions.body = bodyData;
+            } else {
+                if (!hasHeader(headers, 'Content-Type')) {
+                    headers['Content-Type'] = 'application/json';
+                }
+                fetchOptions.body = JSON.stringify(bodyData);
+            }
+        }
+        var startedAt = performance.now();
+        var timeoutMs = Number(step.timeoutMs || request.timeoutMs || cfg.requestTimeoutMs || 30000);
+        if (!isFinite(timeoutMs) || timeoutMs <= 0) timeoutMs = 30000;
+
+        async function sendRequest() {
+            var fetchResult = await withRuntimeTimeout(async function () {
+                var response = await fetch(joinUrl(runtime.baseUrl, path), fetchOptions);
+                return { response: response, text: await response.text() };
+            }, runtime, timeoutMs);
+            var response = fetchResult.response;
+            var responseHeaders = headersToObject(response.headers);
+            return {
+                status: response.status,
+                headers: responseHeaders,
+                body: parseBody(fetchResult.text, headerValue(responseHeaders, 'content-type')),
+                bodyText: fetchResult.text
+            };
+        }
+
+        var MAX_RETRIES = 2;
+        for (var attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                var responseData = await sendRequest();
+                var headerObj = responseData.headers;
+                var body = responseData.body;
+                if (step.autoClearSmsRateLimit !== false && body && body.code === 40004 && path.indexOf('sendSmsCode') >= 0 && attempt < MAX_RETRIES) {
+                    var phone = bodyData && bodyData.phone;
+                    var hospitalCode = bodyData && bodyData.hospitalCode;
+                    if (phone) {
+                        console.log('[自动清除限流] phone=' + phone + (hospitalCode ? ', hospitalCode=' + hospitalCode : '') + ' (attempt ' + (attempt + 1) + ')');
+                        await clearSmsRateLimit(runtime, phone, hospitalCode);
+                        await new Promise(function (r) { setTimeout(r, 500); });
+                        continue;
+                    }
+                }
+                runtime.lastResponse = responseData;
+                runtime.lastResponseBody = body;
+                applyExtract(step, responseData, runtime);
+                var assertions = buildAssertions(step, responseData, runtime);
+                var failedAssertion = assertions.find(function (item) { return !item.passed; });
+                var requestAttempts = 1;
+
+                if (failedAssertion && step.retryUntil) {
+                    var maxAttempts = Number(step.retryUntil.maxAttempts || 10);
+                    var intervalMs = Number(step.retryUntil.intervalMs || 2000);
+                    if (!isFinite(maxAttempts) || maxAttempts < 1) maxAttempts = 10;
+                    if (!isFinite(intervalMs) || intervalMs < 0) intervalMs = 2000;
+                    for (var retryIndex = 1; retryIndex <= maxAttempts; retryIndex += 1) {
+                        await waitForRetry(intervalMs, runtime);
+                        responseData = await sendRequest();
+                        requestAttempts = retryIndex + 1;
+                        headerObj = responseData.headers;
+                        body = responseData.body;
+                        runtime.lastResponse = responseData;
+                        runtime.lastResponseBody = body;
+                        applyExtract(step, responseData, runtime);
+                        assertions = buildAssertions(step, responseData, runtime);
+                        failedAssertion = assertions.find(function (item) { return !item.passed; });
+                        if (!failedAssertion) {
+                            return {
+                                name: step.name,
+                                method: method,
+                                path: path,
+                                status: responseData.status,
+                                duration: performance.now() - startedAt,
+                                attempts: requestAttempts,
+                                passed: true,
+                                error: '',
+                                request: { headers: headers, body: bodyData },
+                                response: { headers: headerObj, body: body, bodyText: responseData.bodyText },
+                                assertions: assertions
+                            };
+                        }
+                    }
+                }
+
+                return {
+                    name: step.name,
+                    method: method,
+                    path: path,
+                    status: responseData.status,
+                    duration: performance.now() - startedAt,
+                    attempts: requestAttempts,
+                    passed: !failedAssertion,
+                    error: failedAssertion ? failedAssertion.name : '',
+                    request: { headers: headers, body: bodyData },
+                    response: { headers: headerObj, body: body, bodyText: responseData.bodyText },
+                    assertions: assertions
+                };
+            } catch (error) {
+                var cancelled = runtime.cancelled;
+                var timedOut = error && error.scenarioTimedOut;
+                var errorMessage = cancelled ? '用户已取消执行' : (timedOut ? '请求超时（' + timeoutMs + 'ms）' : (error && error.message ? error.message : '请求执行失败'));
+                return {
+                    name: step.name,
+                    method: method,
+                    path: path,
+                    status: cancelled ? 'CANCELLED' : (timedOut ? 'TIMEOUT' : 'ERROR'),
+                    duration: performance.now() - startedAt,
+                    attempts: requestAttempts || attempt + 1,
+                    passed: false,
+                    cancelled: cancelled,
+                    timedOut: timedOut,
+                    error: errorMessage,
+                    request: { headers: headers, body: bodyData },
+                    response: { headers: {}, body: null },
+                    assertions: [{ name: cancelled ? '执行未取消' : (timedOut ? '请求未超时' : '请求执行成功'), passed: false, actual: errorMessage, expected: '无异常' }]
+                };
+            }
+        }
+    }
+
+    function createExecutionRuntime() {
+        var environment = getSelectedEnvironment();
+        var runtime = {
+            vars: buildScenarioRuntimeVars(),
+            lastResponse: null,
+            lastResponseBody: null,
+            baseUrl: getEffectiveBaseUrl(),
+            authorization: getEffectiveAuthorization(),
+            environment: environment ? clone(environment) : null,
+            startedAt: Date.now(),
+            abortController: new AbortController(),
+            cancelled: false
+        };
+        persistScenarioVariables();
+        return runtime;
+    }
+
+    function snapshotStepRuntime(runtime) {
+        return {
+            vars: clone(runtime.vars),
+            lastResponse: clone(runtime.lastResponse),
+            lastResponseBody: clone(runtime.lastResponseBody)
+        };
+    }
+
+    function rememberDebugRuntime(stepIndex, runtime) {
+        state.debugRuntimes[stepIndex] = snapshotStepRuntime(runtime);
+    }
+
+    function getDebugRuntime(stepIndex) {
+        var snapshot = state.debugRuntimes[stepIndex];
+        if (!snapshot) return null;
+        return {
+            vars: clone(snapshot.vars),
+            lastResponse: clone(snapshot.lastResponse),
+            lastResponseBody: clone(snapshot.lastResponseBody)
+        };
+    }
+
+    function restoreStepRuntime(runtime, snapshot) {
+        runtime.vars = clone(snapshot.vars);
+        runtime.lastResponse = clone(snapshot.lastResponse);
+        runtime.lastResponseBody = clone(snapshot.lastResponseBody);
+        runtime.abortController = new AbortController();
+        runtime.cancelled = false;
+    }
+
+    function refreshStepSessionView() {
+        renderStatsAll((state.scenario && state.scenario.iterations) || { run: 1, failed: 0 });
+        renderFilterAll();
+        renderStepsAll();
+        renderReportPanel();
+    }
+
+    function rewindToStep(stepIndex) {
+        if (state.running || state.executionMode !== 'step' || !state.stepRuntime || !state.stepCheckpoints[stepIndex]) return false;
+        restoreStepRuntime(state.stepRuntime, state.stepCheckpoints[stepIndex]);
+        state.steps = state.steps.slice(0, stepIndex);
+        state.stepCheckpoints = state.stepCheckpoints.slice(0, stepIndex + 1);
+        state.debugRuntimes = state.debugRuntimes.slice(0, stepIndex);
+        state.nextStepIndex = stepIndex;
+        state.lastReport = null;
+        refreshStepSessionView();
+        uiView.setRunState('idle', '已回退到第 ' + (stepIndex + 1) + ' 步');
+        return true;
+    }
+
+    function rerunStep(stepIndex) {
+        if (rewindToStep(stepIndex)) runNextStep();
+    }
+
+    function setExecutionButtonsDisabled(disabled) {
+        var runBtn = document.getElementById('runBtn');
+        var fullRunActive = disabled && state.executionMode === 'full';
+        runBtn.disabled = disabled;
+        runBtn.textContent = fullRunActive ? '执行中…' : '执行全部';
+        runBtn.classList.toggle('scenario-header-button--running', fullRunActive);
+        runBtn.setAttribute('aria-busy', fullRunActive ? 'true' : 'false');
+        document.getElementById('stepBtn').disabled = disabled;
+        var resetBtn = document.getElementById('resetBtn');
+        if (resetBtn) resetBtn.disabled = disabled;
+        document.getElementById('cancelBtn').disabled = !disabled;
+        ['environmentSelect', 'configToggleBtn'].forEach(function (id) {
+            var element = document.getElementById(id);
+            if (element) element.disabled = disabled;
+        });
+        document.querySelectorAll('#configPanel input, #configPanel select, #configPanel button').forEach(function (element) {
+            element.disabled = disabled;
+        });
+    }
+
+    function cancelExecution() {
+        var runtime = state.activeRuntime || state.stepRuntime;
+        if (!state.running || !runtime || !runtime.abortController) return;
+        runtime.cancelled = true;
+        runtime.abortController.abort();
+        uiView.setRunState('cancelled', '正在取消');
+    }
+
+    // 单步/全量执行后的进度清零：不清场景定义，只回退执行态
+    function resetExecution() {
+        if (state.running) return;
+        state.steps = [];
+        state.stepRuntime = null;
+        state.stepCheckpoints = [];
+        state.debugRuntimes = [];
+        state.activeRuntime = null;
+        state.nextStepIndex = 0;
+        state.lastReport = null;
+        state.executionMode = 'full';
+        renderStatsAll((state.scenario && state.scenario.iterations) || { run: 1, failed: 0 });
+        renderFilterAll();
+        renderStepsAll();
+        renderReportPanel();
+        uiView.setRunState('idle', '待执行');
+    }
+
+    function showExecutionConfigError(error) {
+        var message = error && error.message ? String(error.message) : '执行前检查失败';
+        var runState = /缺少场景凭据|配置/.test(message) ? '配置缺失' : '执行前失败';
+        uiView.setRunState('failed', runState);
+        document.getElementById('reportPanel').innerHTML = '<div class="rounded border border-rose-200 bg-rose-50 p-3 text-rose-700">' + esc(message) + '</div>';
+    }
+
+    function finishExecutionState(runtime) {
+        if (runtime && runtime.cancelled) {
+            uiView.setRunState('cancelled', '已取消');
+            renderReportPanel();
+            return;
+        }
+        var failed = state.steps.filter(function (item) { return !item.passed; }).length;
+        uiView.setRunState(failed ? 'failed' : 'success', failed ? '存在失败' : '执行成功');
+        renderReportPanel();
+    }
+
+    async function runScenario() {
+        if (!state.scenario || state.running) return;
+        var cfg = window.GlobalConfig || {};
+        var runtime;
+        try {
+            runtime = createExecutionRuntime();
+        } catch (error) {
+            showExecutionConfigError(error);
+            return;
+        }
+        var list = Array.isArray(state.scenario.steps) ? state.scenario.steps : [];
+        var iterations = state.scenario.iterations || { run: 1, failed: 0 };
+        var failurePolicy = state.scenario.failurePolicy || 'stop';
+        state.running = true;
+        state.activeRuntime = runtime;
+        state.executionMode = 'full';
+        state.stepRuntime = null;
+        state.stepCheckpoints = [];
+        state.debugRuntimes = [];
+        state.nextStepIndex = 0;
+        state.steps = [];
+        state.lastReport = null;
+        setExecutionButtonsDisabled(true);
+        uiView.setRunState('running', '执行中');
+
+        try {
+            for (var i = 0; i < list.length; i += 1) {
+                rememberDebugRuntime(i, runtime);
+                var result = await executeStep(list[i], runtime, cfg);
+                result.stepNo = i + 1;
+                state.steps.push(result);
+                renderStatsAll(iterations);
+                renderFilterAll();
+                renderStepsAll();
+                renderReportPanel();
+                if (!result.passed && (failurePolicy !== 'continue' || runtime.abortController.signal.aborted)) break;
+            }
+            finishExecutionState(runtime);
+        } catch (error) {
+            uiView.setRunState('failed', '执行异常');
+            document.getElementById('reportPanel').innerHTML = '<div class="rounded border border-rose-200 bg-rose-50 p-3 text-rose-700">' + esc(error.message || error) + '</div>';
+        } finally {
+            state.running = false;
+            state.activeRuntime = null;
+            setExecutionButtonsDisabled(false);
+        }
+    }
+
+    async function runNextStep() {
+        if (!state.scenario || state.running) return;
+        var cfg = window.GlobalConfig || {};
+        var list = Array.isArray(state.scenario.steps) ? state.scenario.steps : [];
+        if (!list.length) return;
+        if (!state.stepRuntime || state.nextStepIndex >= list.length) {
+            try {
+                state.stepRuntime = createExecutionRuntime();
+            } catch (error) {
+                showExecutionConfigError(error);
+                return;
+            }
+            state.nextStepIndex = 0;
+            state.steps = [];
+            state.stepCheckpoints = [snapshotStepRuntime(state.stepRuntime)];
+            state.debugRuntimes = [];
+            state.lastReport = null;
+        }
+
+        var runtime = state.stepRuntime;
+        var stepIndex = state.nextStepIndex;
+        state.running = true;
+        state.activeRuntime = runtime;
+        state.executionMode = 'step';
+        setExecutionButtonsDisabled(true);
+        uiView.setRunState('running', '执行第 ' + (stepIndex + 1) + ' 步');
+        uiView.setStepLoading(true, '正在执行第 ' + (stepIndex + 1) + ' 步：' + (list[stepIndex].name || '未命名步骤'));
+
+        try {
+            rememberDebugRuntime(stepIndex, runtime);
+            var result = await executeStep(list[stepIndex], runtime, cfg);
+            result.stepNo = stepIndex + 1;
+            state.steps.push(result);
+            state.nextStepIndex += 1;
+            state.stepCheckpoints[state.nextStepIndex] = snapshotStepRuntime(runtime);
+            renderStatsAll(state.scenario.iterations || { run: 1, failed: 0 });
+            renderFilterAll();
+            renderStepsAll();
+            expandStepDetails(stepIndex);
+            renderReportPanel();
+
+            if (runtime.cancelled || result.timedOut) {
+                state.stepRuntime = null;
+                finishExecutionState(runtime);
+            } else if (state.nextStepIndex >= list.length) {
+                finishExecutionState(runtime);
+            } else {
+                uiView.setRunState(result.passed ? 'idle' : 'failed', (result.passed ? '待执行第 ' : '第 ' + (stepIndex + 1) + ' 步失败，下一步为第 ') + (state.nextStepIndex + 1) + ' 步');
+            }
+        } catch (error) {
+            state.stepRuntime = null;
+            uiView.setRunState('failed', '执行异常');
+            document.getElementById('reportPanel').innerHTML = '<div class="rounded border border-rose-200 bg-rose-50 p-3 text-rose-700">' + esc(error.message || error) + '</div>';
+        } finally {
+            uiView.setStepLoading(false);
+            state.running = false;
+            state.activeRuntime = null;
+            setExecutionButtonsDisabled(false);
+        }
+    }
+
+    // ===== 设置与头部 UI =====
+    function renderEnvironmentSelects() {
+        var environments = getEnvironments();
+        var selectedEnv = getSelectedEnvironment();
+        var selectedKey = selectedEnv ? selectedEnv.key : '';
+        ['environmentSelect', 'environmentInput'].forEach(function (id) {
+            var select = document.getElementById(id);
+            if (!select) return;
+            select.innerHTML = environments.map(function (env) {
+                var selectedAttr = env.key === selectedKey ? ' selected' : '';
+                return '<option value="' + esc(env.key) + '"' + selectedAttr + '>' + esc(env.name || env.key) + '</option>';
+            }).join('');
+        });
+    }
+
+    function renderScenarioVariableInputs() {
+        var container = document.getElementById('scenarioVarsInput');
+        if (!container) return;
+        var defs = getScenarioVariableDefinitions();
+        if (!defs.length) {
+            container.innerHTML = '<div class="text-xs text-slate-400 col-span-2">当前场景未声明 envVars</div>';
+            return;
+        }
+        var stored = getStoredScenarioVariables();
+        container.innerHTML = defs.map(function (def) {
+            var value = stored[def.name] || '';
+            return '<label class="flex flex-col gap-1.5">' +
+                '<span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">' + esc(def.label) + ' (' + esc(def.name) + ')</span>' +
+                '<input id="scenarioVar_' + esc(def.name) + '" type="text" value="' + esc(value) + '" placeholder="请输入 ' + esc(def.label) + '" class="px-3 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">' +
+                '</label>';
+        }).join('');
+    }
+
+    function syncSettingsInputs() {
+        var keys = getStorageKeys();
+        var environment = getSelectedEnvironment();
+        renderEnvironmentSelects();
+        renderScenarioVariableInputs();
+        var baseUrlInput = document.getElementById('baseUrlInput');
+        var authorizationInput = document.getElementById('authorizationInput');
+        try {
+            if (baseUrlInput) baseUrlInput.value = window.localStorage.getItem(getEnvironmentStorageKey(keys.baseUrl, environment)) || '';
+            if (authorizationInput) authorizationInput.value = window.localStorage.getItem(getEnvironmentStorageKey(keys.authorization, environment)) || '';
+        } catch (e) {
+            if (baseUrlInput) baseUrlInput.value = '';
+            if (authorizationInput) authorizationInput.value = '';
+        }
+    }
+
+    function updateHeader() {
+        var titleNode = document.getElementById('scenarioTitle');
+        var envNode = document.getElementById('envNameLabel');
+        var baseLabel = document.getElementById('baseUrlLabel');
+        var authLabel = document.getElementById('authLabel');
+        var authValue = document.getElementById('authValue');
+        var environment = getSelectedEnvironment();
+        var title = state.scenario ? (state.scenario.name || state.scenarioFile) : '未加载场景';
+        if (titleNode) titleNode.textContent = title;
+        if (envNode) envNode.textContent = environment ? (environment.name || environment.key) : '默认环境';
+        var effectiveBaseUrl = getEffectiveBaseUrl();
+        var effectiveAuth = getEffectiveAuthorization();
+        if (baseLabel) baseLabel.textContent = effectiveBaseUrl || '(未配置)';
+        if (authLabel && authValue) {
+            if (effectiveAuth) {
+                authLabel.style.display = 'inline';
+                authValue.textContent = effectiveAuth;
+            } else {
+                authLabel.style.display = 'none';
+                authValue.textContent = '';
+            }
+        }
+    }
+
+    function bindThemeEvents() {
+        var select = document.getElementById('themeSelect');
+        if (!select) return;
+        select.addEventListener('change', function (event) {
+            persistSetting(getStorageKeys().theme, event.target.value);
+            uiStyle.applyTheme(event.target.value);
+            renderScenarioSelect();
+        });
+    }
+
+    function bindSettingsEvents() {
+        var envSelectHeader = document.getElementById('environmentSelect');
+        var envSelectPanel = document.getElementById('environmentInput');
+        var saveBtn = document.getElementById('saveSettingsBtn');
+        var clearBtn = document.getElementById('clearSettingsBtn');
+        var keys = getStorageKeys();
+
+        function selectEnvironment(envKey) {
+            persistSetting(keys.environment, envKey);
+            syncSettingsInputs();
+            updateHeader();
+            renderStatsAll(state.scenario ? state.scenario.iterations : { run: 1, failed: 0 });
+            renderFilterAll();
+            renderStepsAll();
+        }
+
+        if (envSelectHeader) {
+            envSelectHeader.addEventListener('change', function (e) { selectEnvironment(e.target.value); });
+        }
+        if (envSelectPanel) {
+            envSelectPanel.addEventListener('change', function (e) { selectEnvironment(e.target.value); });
+        }
+        if (saveBtn) {
+            saveBtn.addEventListener('click', function () {
+                var environment = getSelectedEnvironment();
+                var baseUrlInput = document.getElementById('baseUrlInput');
+                var authorizationInput = document.getElementById('authorizationInput');
+                var baseUrl = String(baseUrlInput.value || '').trim().replace(/\/+$/, '');
+                var authorization = String(authorizationInput.value || '').trim();
+                persistSetting(getEnvironmentStorageKey(keys.baseUrl, environment), baseUrl);
+                persistSetting(getEnvironmentStorageKey(keys.authorization, environment), authorization);
+                persistScenarioVariables();
+                updateHeader();
+            });
+        }
+        if (clearBtn) {
+            clearBtn.addEventListener('click', function () {
+                var environment = getSelectedEnvironment();
+                persistSetting(getEnvironmentStorageKey(keys.baseUrl, environment), '');
+                persistSetting(getEnvironmentStorageKey(keys.authorization, environment), '');
+                getScenarioVariableDefinitions().forEach(function (def) {
+                    persistSetting(getScenarioVariableStorageKey(def.name, environment), '');
+                });
+                syncSettingsInputs();
+                updateHeader();
+            });
+        }
+    }
+
+    function bindReportActions() {
+        var copyMdBtn = document.getElementById('copyReportMarkdownBtn');
+        var copyJsonBtn = document.getElementById('copyReportJsonBtn');
+        if (copyMdBtn) {
+            copyMdBtn.addEventListener('click', function () {
+                if (!state.lastReport) return;
+                var text = uiView.buildMarkdownReport(state.lastReport);
+                core.copyText ? core.copyText(text) : navigator.clipboard.writeText(text);
+            });
+        }
+        if (copyJsonBtn) {
+            copyJsonBtn.addEventListener('click', function () {
+                if (!state.lastReport) return;
+                var text = safeJson(state.lastReport);
+                core.copyText ? core.copyText(text) : navigator.clipboard.writeText(text);
+            });
+        }
+    }
+
+    function extractScenarioDisplayName(sourceText) {
+        var text = String(sourceText || '');
+        var head = text;
+        var stepsAt = text.search(/\n\s*steps\s*:/);
+        if (stepsAt >= 0) head = text.slice(0, stepsAt);
+        var m = head.match(/\bname\s*:\s*"((?:[^"\\]|\\.)*)"/);
+        if (m) return m[1].replace(/\\"/g, '"');
+        m = head.match(/\bname\s*:\s*'((?:[^'\\]|\\.)*)'/);
+        if (m) return m[1].replace(/\\'/g, "'");
+        return null;
+    }
+
+    async function enrichDiscoveredScenarioNames() {
+        var list = state.discoveredFiles;
+        if (!list || !list.length) return;
+        // Browsers reject fetch(file://...) even though classic script loading is
+        // allowed. Config entries already carry their display names in this mode.
+        if (window.location.protocol === 'file:') return;
+        var results = await Promise.all(
+            list.map(async function (item, i) {
+                var path = String(item.file || '').replace(/^\.\//, '');
+                if (!path) return { i: i, displayName: null };
+                var url = './' + path + (path.indexOf('?') >= 0 ? '&' : '?') + 'ts=' + Date.now();
+                try {
+                    var response = await fetch(url);
+                    if (!response.ok) throw new Error('fetch ' + path);
+                    var text = await response.text();
+                    return { i: i, displayName: extractScenarioDisplayName(text) };
+                } catch (error) {
+                    return { i: i, displayName: null };
+                }
+            })
+        );
+        results.forEach(function (r) {
+            var row = list[r.i];
+            if (!row) return;
+            if (r.displayName) {
+                row.name = r.displayName;
+            } else if (!row.name) {
+                row.name = row.file;
+            }
+        });
+    }
+
+    async function fetchDiscoveredScenarios() {
+        var cfg = window.GlobalConfig || {};
+        if (!Array.isArray(cfg.scenarios) || cfg.scenarios.length === 0) {
+            return;
+        }
+        state.discoveredFiles = cfg.scenarios.map(function (entry) {
+            if (typeof entry === 'string') {
+                return { name: entry, file: entry };
+            }
+            return {
+                name: entry.name || entry.file || '',
+                file: entry.file || entry.path || entry.url || ''
+            };
+        });
+        await enrichDiscoveredScenarioNames();
+        renderScenarioSelect();
+    }
+
+    function setScenarioQuery(file) {
+        var url = new URL(window.location.href);
+        url.searchParams.set('scenario', file);
+        window.history.replaceState({}, '', url.toString());
+    }
+
+    function loadScenario(file) {
+        return new Promise(function (resolveLoad, rejectLoad) {
+            if (!file) {
+                rejectLoad(new Error('未指定文件'));
+                return;
+            }
+            if (state.scenarioScript) {
+                state.scenarioScript.remove();
+                state.scenarioScript = null;
+            }
+            window.ScenarioData = undefined;
+            var script = document.createElement('script');
+            script.src = './' + file + '?ts=' + Date.now();
+            script.onload = function () {
+                state.scenarioScript = script;
+                state.scenarioFile = file;
+                state.scenario = clone(window.ScenarioData || {});
+                state.steps = [];
+                state.stepRuntime = null;
+                state.stepCheckpoints = [];
+                state.debugRuntimes = [];
+                state.nextStepIndex = 0;
+                state.lastReport = null;
+
+                syncSettingsInputs();
+                updateHeader();
+                renderScenarioSelect();
+                renderStatsAll(state.scenario.iterations || { run: 1, failed: 0 });
+                renderFilterAll();
+                renderStepsAll();
+                uiView.setRunState('idle', '待执行');
+                setScenarioQuery(file);
+                resolveLoad(state.scenario);
+            };
+            script.onerror = function () {
+                rejectLoad(new Error('场景文件加载失败，请检查路径是否正确: ' + file));
+            };
+            document.head.appendChild(script);
+        });
+    }
+
+    function init() {
+        uiStyle.injectStyles();
+        uiView.buildSkeleton(options.mount);
+        uiStyle.applyTheme(getEffectiveTheme());
+        bindThemeEvents();
+        syncSettingsInputs();
+        bindSettingsEvents();
+        bindReportActions();
+
+        uiAdhoc.bindAdhocRequestEvents(
+            function (idx) {
+                return state.scenario && Array.isArray(state.scenario.steps) ? state.scenario.steps[idx] : null;
+            },
+            getDebugRuntime,
+            executeStep,
+            getSelectedEnvironment,
+            getEffectiveBaseUrl,
+            getEffectiveAuthorization
+        );
+
+        updateHeader();
+        renderScenarioSelect();
+
+        var stepsList = document.getElementById('stepsList');
+        stepsList.addEventListener('click', function (event) {
+            var target = event.target.closest('[data-step-action]');
+            if (!target) return;
+            var stepIndex = Number(target.dataset.stepIndex);
+            if (!isFinite(stepIndex) || stepIndex < 0) return;
+            if (target.dataset.stepAction === 'rewind') rewindToStep(stepIndex);
+            if (target.dataset.stepAction === 'rerun') rerunStep(stepIndex);
+        });
+
+        var scenarioList = document.getElementById('scenarioList');
+        scenarioList.addEventListener('click', function (event) {
+            var pinTarget = event.target.closest('[data-pin-file]');
+            if (pinTarget) {
+                toggleScenarioPin(pinTarget.dataset.pinFile);
+                return;
+            }
+            var target = event.target.closest('[data-scenario-file]');
+            var file = target && target.dataset.scenarioFile;
+            if (!file || state.running || file === state.scenarioFile) return;
+            loadScenario(file).catch(function (error) {
+                uiView.setRunState('failed', '加载失败');
+                document.getElementById('statsPanel').innerHTML = '<div class="text-sm text-rose-500 p-4">' + esc(error.message) + '</div>';
+            });
+        });
+
+        document.getElementById('scenarioSearchInput').addEventListener('input', function (event) {
+            state.scenarioSearch = event.target.value;
+            renderScenarioSelect();
+        });
+
+        document.getElementById('runBtn').addEventListener('click', runScenario);
+        document.getElementById('stepBtn').addEventListener('click', runNextStep);
+        document.getElementById('resetBtn').addEventListener('click', resetExecution);
+        document.getElementById('cancelBtn').addEventListener('click', cancelExecution);
+
+        function tryLoadInitial() {
+            var initial = new URLSearchParams(window.location.search).get('scenario');
+            if (!initial && state.discoveredFiles && state.discoveredFiles.length > 0) {
+                initial = state.discoveredFiles[0].file;
+            }
+
+            if (!initial) {
+                document.getElementById('statsPanel').innerHTML =
+                    '<div class="text-sm text-slate-500 p-4">请在 URL 中提供 ?scenario=scenarios/xxx.js 访问，或者在上方选择加载。</div>';
+                return;
+            }
+
+            loadScenario(initial).catch(function (error) {
+                uiView.setRunState('failed', '加载失败');
+                document.getElementById('statsPanel').innerHTML = '<div class="text-sm text-rose-500 p-4">' + esc(error.message) + '</div>';
+            });
+        }
+
+        fetchDiscoveredScenarios().then(tryLoadInitial).catch(function (e) {
+            console.warn(e);
+            tryLoadInitial();
+        });
+    }
+
+    init();
+
+    return {
+        loadScenario: loadScenario,
+        runAll: runScenario,
+        runNext: runNextStep,
+        reset: resetExecution,
+        cancel: cancelExecution,
+        rewindToStep: rewindToStep,
+        rerunStep: rerunStep,
+        getState: function () { return state; }
+    };
+}

@@ -1,0 +1,29 @@
+{
+  "name": "scenario-test",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Reusable browser and Node.js scenario testing library",
+  "type": "module",
+  "main": "dist/scenario-test.cjs",
+  "module": "dist/scenario-test.esm.js",
+  "browser": "dist/scenario-test.umd.js",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/*.test.js",
+    "test:browser": "node tests/browser.test.mjs",
+    "check": "npm run build && npm test"
+  },
+  "dependencies": {
+    "blueimp-md5": "2.19.0",
+    "exceljs": "4.4.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.8",
+    "playwright": "1.54.1",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.17"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
