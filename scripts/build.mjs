@@ -6,6 +6,7 @@ import tailwindcss from "tailwindcss";
 
 const root = path.resolve(import.meta.dirname, "..");
 const dist = path.join(root, "dist");
+const packageInfo = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 fs.rmSync(dist, { recursive: true, force: true });
 fs.mkdirSync(path.join(dist, "adapters"), { recursive: true });
 
@@ -32,7 +33,7 @@ const shared = {
     sourcemap: true,
     legalComments: "inline",
     logLevel: "info",
-    banner: { js: "/*! scenario-test v0.1.0 */" }
+    banner: { js: `/*! scenario-test v${packageInfo.version} */` }
 };
 
 await build({

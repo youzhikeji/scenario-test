@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/*! scenario-test v0.1.0 */
+/*! scenario-test v0.1.1 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -67995,11 +67995,105 @@ async function readWorkbookRows(filePath, options = {}) {
   return rows;
 }
 
+// src/init-templates.js
+var DEFAULT_LIBRARY_URL = "http://192.168.1.239/zhangqianfeng/scenario-test/-/releases/v0.1.1/downloads/scenario-test.umd.js";
+function createProjectFiles(libraryUrl) {
+  return {
+    "dev/\u573A\u666F\u6D4B\u8BD5/index.html": `<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>\u573A\u666F\u6D4B\u8BD5</title>
+</head>
+<body style="margin:0">
+    <div id="scenario-test" style="height:100vh"></div>
+    <script src="${libraryUrl}"></script>
+    <script src="./scenario.config.js"></script>
+    <script>
+        ScenarioTest.createApp({ mount: "#scenario-test", config: ScenarioTest.getConfig() });
+    </script>
+</body>
+</html>
+`,
+    "dev/\u573A\u666F\u6D4B\u8BD5/scenario.config.js": `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+    envs: [
+        { key: "local", name: "\u672C\u5730\u5F00\u53D1", baseUrl: "http://localhost:8080" }
+    ],
+    defaultEnvKey: "local",
+    requestTimeoutMs: 30000,
+    variables: [],
+    scenarios: [
+        { id: "health", name: "\u5065\u5EB7\u68C0\u67E5", url: "scenarios/health.js" }
+    ]
+}));
+`,
+    "dev/\u573A\u666F\u6D4B\u8BD5/scenarios/health.js": `ScenarioTest.registerScenario("health", ScenarioTest.defineScenario({
+    name: "\u5065\u5EB7\u68C0\u67E5",
+    steps: [
+        {
+            name: "\u670D\u52A1\u53EF\u7528",
+            method: "GET",
+            path: "actuator/health",
+            status: 200
+        }
+    ]
+}));
+`,
+    "dev/\u573A\u666F\u6D4B\u8BD5/README.md": `# \u573A\u666F\u6D4B\u8BD5
+
+\u672C\u76EE\u5F55\u4FDD\u5B58\u5F53\u524D\u9879\u76EE\u7684\u73AF\u5883\u914D\u7F6E\u3001\u573A\u666F\u3001\u9879\u76EE\u63D2\u4EF6\u548C\u8FD0\u884C\u4EA7\u7269\u3002\u516C\u5171\u8FD0\u884C\u65F6\u7531 GitLab Release \u63D0\u4F9B\uFF0C\u4E0D\u590D\u5236\u5230\u672C\u9879\u76EE\u3002
+
+\u6D4F\u89C8\u5668\u5165\u53E3\u4E3A \`index.html\`\u3002CLI \u4F7F\u7528\u53D1\u5E03\u7684 \`scenario-test-cli.cjs\`\uFF1A
+
+\`\`\`powershell
+node scenario-test-cli.cjs --config dev/\u573A\u666F\u6D4B\u8BD5/scenario.config.js --env local --all
+\`\`\`
+
+\u4E0D\u8981\u5728\u914D\u7F6E\u6216\u573A\u666F\u4E2D\u5199\u5165\u771F\u5B9E Token\u3001Secret\u3001\u4E2A\u4EBA\u4FE1\u606F\u6216\u751F\u4EA7\u5730\u5740\u3002\u654F\u611F\u53D8\u91CF\u901A\u8FC7\u73AF\u5883\u53D8\u91CF\u6216\u6D4F\u89C8\u5668\u73AF\u5883\u914D\u7F6E\u8F93\u5165\u3002
+`,
+    ".codex/skills/scenario-test/SKILL.md": `---
+name: scenario-test
+description: \u5728\u5F53\u524D\u9879\u76EE\u4E2D\u521B\u5EFA\u3001\u7EF4\u62A4\u6216\u5BA1\u67E5 scenario-test \u573A\u666F\u3001\u914D\u7F6E\u548C\u9879\u76EE\u63D2\u4EF6\u65F6\u4F7F\u7528\u3002
+---
+
+# \u573A\u666F\u6D4B\u8BD5\u89C4\u5219
+
+## \u6587\u4EF6\u8FB9\u754C
+
+- \u73AF\u5883\u3001\u53D8\u91CF\u58F0\u660E\u548C\u573A\u666F\u6E05\u5355\u653E\u5728 \`dev/\u573A\u666F\u6D4B\u8BD5/scenario.config.js\`\u3002
+- \u957F\u671F\u56DE\u5F52\u573A\u666F\u653E\u5728 \`dev/\u573A\u666F\u6D4B\u8BD5/scenarios/\`\u3002
+- \u9879\u76EE\u4E13\u5C5E Node \u6269\u5C55\u653E\u5728 \`dev/\u573A\u666F\u6D4B\u8BD5/plugins/\`\u3002
+- \u4E0D\u590D\u5236\u516C\u5171\u8FD0\u884C\u65F6\u3001\`dist/\` \u6216 vendor \u6587\u4EF6\u5230\u4E1A\u52A1\u9879\u76EE\u3002
+
+## \u573A\u666F DSL
+
+- \u573A\u666F\u901A\u8FC7 \`ScenarioTest.registerScenario(id, ScenarioTest.defineScenario({...}))\` \u6CE8\u518C\u3002
+- \u6B65\u9AA4\u652F\u6301 \`method\`\u3001\`path\`\u3001\`params\`\u3001\`request.headers\`\u3001\`request.body\`\u3001\`status\`\u3001\`assertions\`\u3001\`extract\`\u3001\`when\`\u3001\`retryUntil\`\u3002
+- \u4F7F\u7528 \`{{vars.name}}\` \u548C \`{{lastResponseBody.data}}\` \u5F15\u7528\u53D8\u91CF\u3002
+- \u9ED8\u8BA4 \`failurePolicy\` \u4E3A \`stop\`\uFF1B\u53EA\u6709\u9700\u8981\u6536\u96C6\u591A\u4E2A\u5931\u8D25\u65F6\u8BBE\u7F6E\u4E3A \`continue\`\u3002
+- \u767B\u5F55\u548C\u975E\u6807\u51C6\u8BA4\u8BC1\u53EF\u4FDD\u7559\u4E3A\u7528\u6237\u5B9A\u4E49\u7684\u666E\u901A\u6B65\u9AA4\uFF0C\u63D0\u53D6 Token \u540E\u7531\u540E\u7EED\u6B65\u9AA4\u663E\u5F0F\u5F15\u7528\u3002
+
+## \u5B89\u5168
+
+- \u4E0D\u5199\u5165 API Key\u3001Secret\u3001Authorization\u3001Cookie\u3001\u8EAB\u4EFD\u8BC1\u53F7\u3001\u624B\u673A\u53F7\u6216\u771F\u5B9E\u6D4B\u8BD5\u6570\u636E\u3002
+- \u654F\u611F\u53D8\u91CF\u5728 \`variables\` \u4E2D\u6807\u8BB0 \`sensitive: true\`\uFF0CCLI \u4F7F\u7528 \`env\` \u8BFB\u53D6\u73AF\u5883\u53D8\u91CF\u3002
+- \u5220\u9664\u6216\u6E05\u7406\u6B65\u9AA4\u5FC5\u987B\u9650\u5B9A\u573A\u666F\u4E13\u7528\u6807\u8BC6\u3001\u9694\u79BB\u6570\u636E\u548C\u660E\u786E\u6761\u4EF6\uFF0C\u5E76\u901A\u8FC7 \`when\` \u9632\u6B62\u8BEF\u5220\u3002
+- \u4E0D\u8981\u6267\u884C\u672C\u5730\u3001\u6D4B\u8BD5\u6216\u751F\u4EA7\u4E1A\u52A1\u670D\u52A1\uFF0C\u9664\u975E\u7528\u6237\u660E\u786E\u8981\u6C42\u3002
+
+## \u9A8C\u8BC1
+
+- \u65B0\u589E\u573A\u666F\u5148\u68C0\u67E5\u53D8\u91CF\u3001\u6E05\u7406\u8303\u56F4\u548C\u65AD\u8A00\u662F\u5426\u8986\u76D6\u9884\u671F\u3002
+- \u516C\u5171\u5E93\u95EE\u9898\u5728\u516C\u5171\u4ED3\u5E93\u9A8C\u8BC1\uFF1B\u4E1A\u52A1\u9879\u76EE\u53EA\u9A8C\u8BC1\u5176\u81EA\u8EAB\u914D\u7F6E\u548C\u573A\u666F\u3002
+`
+  };
+}
+
 // src/cli.js
 function parseArgs(argv) {
-  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", port: 4300 };
+  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", port: 4300, project: "", libraryUrl: "", force: false };
   let start = 0;
-  if (["run", "serve"].includes(argv[0])) {
+  if (["run", "serve", "init"].includes(argv[0])) {
     args.command = argv[0];
     start = 1;
   }
@@ -68011,6 +68105,9 @@ function parseArgs(argv) {
     else if (item === "--base-url") args.baseUrl = argv[++index] || "";
     else if (["--token", "--authorization"].includes(item)) args.authorization = argv[++index] || "";
     else if (item === "--port") args.port = Number(argv[++index] || 4300);
+    else if (item === "--project") args.project = argv[++index] || "";
+    else if (item === "--library-url") args.libraryUrl = argv[++index] || "";
+    else if (item === "--force") args.force = true;
     else if (item === "--all") args.all = true;
     else if (["--help", "-h"].includes(item)) args.help = true;
     else if (!args.scenario && args.command === "run") args.scenario = item;
@@ -68018,12 +68115,13 @@ function parseArgs(argv) {
   return args;
 }
 function printHelp() {
-  console.log(`scenario-test 0.1.0
+  console.log(`scenario-test 0.1.1
 
 Usage:
   node scenario-test-cli.cjs --config ./scenario.config.js --env local --all
   node scenario-test-cli.cjs run --config ./scenario.config.js --scenario health
   node scenario-test-cli.cjs serve --config ./scenario.config.js --port 4300
+  node scenario-test-cli.cjs init --project D:\\project
 
 Options:
   --config <file>       \u573A\u666F\u914D\u7F6E\u6587\u4EF6
@@ -68032,7 +68130,30 @@ Options:
   --scenario <id>       \u6267\u884C\u6307\u5B9A\u573A\u666F
   --all                 \u6267\u884C\u914D\u7F6E\u4E2D\u7684\u5168\u90E8\u573A\u666F
   --authorization <v>   \u4E34\u65F6\u8BBE\u7F6E Authorization
-  --port <number>       \u6D4F\u89C8\u5668\u670D\u52A1\u7AEF\u53E3\uFF0C\u9ED8\u8BA4 4300`);
+  --port <number>       \u6D4F\u89C8\u5668\u670D\u52A1\u7AEF\u53E3\uFF0C\u9ED8\u8BA4 4300
+  --project <dir>       \u521D\u59CB\u5316\u4E1A\u52A1\u9879\u76EE\u7684\u76EE\u6807\u76EE\u5F55
+  --library-url <url>   \u521D\u59CB\u5316\u65F6\u5199\u5165\u7684 UMD Release \u5730\u5740
+  --force               \u8986\u76D6 init \u5DF2\u751F\u6210\u7684\u540C\u540D\u6587\u4EF6`);
+}
+function writeProjectFile(projectRoot, relativePath, content, force) {
+  const target = import_node_path4.default.resolve(projectRoot, relativePath);
+  if (import_node_fs4.default.existsSync(target) && !force) return false;
+  import_node_fs4.default.mkdirSync(import_node_path4.default.dirname(target), { recursive: true });
+  import_node_fs4.default.writeFileSync(target, content, "utf8");
+  return true;
+}
+function initCommand(args) {
+  const projectRoot = import_node_path4.default.resolve(args.project || process.cwd());
+  const libraryUrl = args.libraryUrl || DEFAULT_LIBRARY_URL;
+  const created = [];
+  const skipped = [];
+  for (const [relativePath, content] of Object.entries(createProjectFiles(libraryUrl))) {
+    (writeProjectFile(projectRoot, relativePath, content, args.force) ? created : skipped).push(relativePath);
+  }
+  console.log(`\u5DF2\u521D\u59CB\u5316\u9879\u76EE: ${projectRoot}`);
+  if (created.length) console.log(`\u5DF2\u521B\u5EFA: ${created.join(", ")}`);
+  if (skipped.length) console.log(`\u5DF2\u4FDD\u7559\u73B0\u6709\u6587\u4EF6: ${skipped.join(", ")}`);
+  console.log(`\u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0: ${import_node_path4.default.join(projectRoot, "dev", "\u573A\u666F\u6D4B\u8BD5", "index.html")}`);
 }
 function resolveConfigPath(value) {
   const candidate = import_node_path4.default.resolve(value || "scenario.config.js");
@@ -68187,7 +68308,8 @@ async function main() {
     printHelp();
     return;
   }
-  if (args.command === "serve") await serveCommand(args);
+  if (args.command === "init") initCommand(args);
+  else if (args.command === "serve") await serveCommand(args);
   else await runCommand(args);
 }
 main().catch((error) => {

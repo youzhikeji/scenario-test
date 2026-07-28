@@ -77,6 +77,24 @@ ScenarioTest.registerScenario("health", ScenarioTest.defineScenario({
 
 工作台只操作传入的挂载容器。配置、环境、Token 和敏感变量按环境保存在浏览器本地；报告会自动脱敏。
 
+业务项目可固定引用 GitLab Release 的单文件产物，无需拉取源码：
+
+```html
+<script src="http://192.168.1.239/zhangqianfeng/scenario-test/-/releases/v0.1.1/downloads/scenario-test.umd.js"></script>
+```
+
+不要引用 `master`，应固定使用已发布的 Tag。
+
+## 初始化项目
+
+CLI 可创建业务项目所需的最小目录、浏览器入口、配置、示例场景和项目级 Codex Skill：
+
+```powershell
+node scenario-test-cli.cjs init --project D:\project
+```
+
+默认写入当前 Release 的 UMD 地址；需要私有镜像或其他版本时指定 `--library-url <url>`。已有文件默认保留，只有传入 `--force` 才覆盖。生成的 `.codex/skills/scenario-test/SKILL.md` 让 Codex 在该项目内处理场景测试时自动获得 DSL、安全和目录规则。
+
 ## CLI
 
 ```powershell
@@ -123,3 +141,5 @@ CLI 从变量定义的 `env` 字段读取环境变量，敏感值不应写入配
 `0.x` 版本仍可加载 `window.GlobalConfig` 和 `window.ScenarioData`，运行时会输出废弃提示。新场景应使用 `registerConfig` 和 `registerScenario`；下一主版本将移除旧全局格式适配器。
 
 公共库不得包含项目地址、真实机构或个人数据、API Key、Secret，以及任何项目专属接口清理逻辑。
+
+发布约定见 [docs/RELEASING.md](docs/RELEASING.md)。

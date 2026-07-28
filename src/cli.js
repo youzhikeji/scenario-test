@@ -5,11 +5,12 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import * as ScenarioTest from "./node.js";
 import { createXlsxAdapter, readWorkbookRows } from "./adapters/xlsx.js";
+import { DEFAULT_LIBRARY_URL, createProjectFiles } from "./init-templates.js";
 
 function parseArgs(argv) {
-    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", port: 4300 };
+    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", port: 4300, project: "", libraryUrl: "", force: false };
     let start = 0;
-    if (["run", "serve"].includes(argv[0])) { args.command = argv[0]; start = 1; }
+    if (["run", "serve", "init"].includes(argv[0])) { args.command = argv[0]; start = 1; }
     for (let index = start; index < argv.length; index += 1) {
         const item = argv[index];
         if (item === "--config") args.config = argv[++index] || "";
@@ -18,6 +19,9 @@ function parseArgs(argv) {
         else if (item === "--base-url") args.baseUrl = argv[++index] || "";
         else if (["--token", "--authorization"].includes(item)) args.authorization = argv[++index] || "";
         else if (item === "--port") args.port = Number(argv[++index] || 4300);
+        else if (item === "--project") args.project = argv[++index] || "";
+        else if (item === "--library-url") args.libraryUrl = argv[++index] || "";
+        else if (item === "--force") args.force = true;
         else if (item === "--all") args.all = true;
         else if (["--help", "-h"].includes(item)) args.help = true;
         else if (!args.scenario && args.command === "run") args.scenario = item;
@@ -26,12 +30,13 @@ function parseArgs(argv) {
 }
 
 function printHelp() {
-    console.log(`scenario-test 0.1.0
+    console.log(`scenario-test 0.1.1
 
 Usage:
   node scenario-test-cli.cjs --config ./scenario.config.js --env local --all
   node scenario-test-cli.cjs run --config ./scenario.config.js --scenario health
   node scenario-test-cli.cjs serve --config ./scenario.config.js --port 4300
+  node scenario-test-cli.cjs init --project D:\\project
 
 Options:
   --config <file>       场景配置文件
@@ -40,7 +45,32 @@ Options:
   --scenario <id>       执行指定场景
   --all                 执行配置中的全部场景
   --authorization <v>   临时设置 Authorization
-  --port <number>       浏览器服务端口，默认 4300`);
+  --port <number>       浏览器服务端口，默认 4300
+  --project <dir>       初始化业务项目的目标目录
+  --library-url <url>   初始化时写入的 UMD Release 地址
+  --force               覆盖 init 已生成的同名文件`);
+}
+
+function writeProjectFile(projectRoot, relativePath, content, force) {
+    const target = path.resolve(projectRoot, relativePath);
+    if (fs.existsSync(target) && !force) return false;
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, content, "utf8");
+    return true;
+}
+
+function initCommand(args) {
+    const projectRoot = path.resolve(args.project || process.cwd());
+    const libraryUrl = args.libraryUrl || DEFAULT_LIBRARY_URL;
+    const created = [];
+    const skipped = [];
+    for (const [relativePath, content] of Object.entries(createProjectFiles(libraryUrl))) {
+        (writeProjectFile(projectRoot, relativePath, content, args.force) ? created : skipped).push(relativePath);
+    }
+    console.log(`已初始化项目: ${projectRoot}`);
+    if (created.length) console.log(`已创建: ${created.join(", ")}`);
+    if (skipped.length) console.log(`已保留现有文件: ${skipped.join(", ")}`);
+    console.log(`浏览器工作台: ${path.join(projectRoot, "dev", "场景测试", "index.html")}`);
 }
 
 function resolveConfigPath(value) {
@@ -194,7 +224,8 @@ async function serveCommand(args) {
 async function main() {
     const args = parseArgs(process.argv.slice(2));
     if (args.help) { printHelp(); return; }
-    if (args.command === "serve") await serveCommand(args);
+    if (args.command === "init") initCommand(args);
+    else if (args.command === "serve") await serveCommand(args);
     else await runCommand(args);
 }
 

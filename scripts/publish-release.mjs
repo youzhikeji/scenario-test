@@ -1,0 +1,70 @@
+const required = ["CI_API_V4_URL", "CI_PROJECT_ID", "CI_COMMIT_TAG", "GITLAB_RELEASE_TOKEN"];
+for (const name of required) {
+    if (!process.env[name]) throw new Error(`发布缺少 CI 变量 ${name}`);
+}
+
+const {
+    CI_API_V4_URL: apiUrl,
+    CI_PROJECT_ID: projectId,
+    CI_COMMIT_TAG: tag,
+    GITLAB_RELEASE_TOKEN: token
+} = process.env;
+
+const files = [
+    "scenario-test.umd.js",
+    "scenario-test.esm.js",
+    "scenario-test.cjs",
+    "scenario-test-cli.cjs",
+    "adapters/xlsx.cjs"
+];
+const packageUrl = `${apiUrl}/projects/${encodeURIComponent(projectId)}/packages/generic/scenario-test/${encodeURIComponent(tag)}`;
+
+for (const filePath of files) {
+    const response = await fetch(`${packageUrl}/${filePath}`, {
+        method: "PUT",
+        headers: { "PRIVATE-TOKEN": token },
+        body: fs.readFileSync(path.join("dist", filePath))
+    });
+    if (!response.ok && response.status !== 409) {
+        throw new Error(`GitLab Generic Package 上传失败 (${response.status}): ${await response.text()}`);
+    }
+}
+
+const assets = files.map((filePath) => ({
+    name: filePath.split("/").at(-1),
+    url: `${packageUrl}/${filePath}`,
+    filepath: `/${filePath}`,
+    link_type: "other"
+}));
+
+const releaseUrl = `${apiUrl}/projects/${encodeURIComponent(projectId)}/releases/${encodeURIComponent(tag)}`;
+const existing = await fetch(releaseUrl, { headers: { "PRIVATE-TOKEN": token } });
+if (existing.ok) {
+    console.log(`GitLab Release 已存在: ${tag}`);
+    process.exit(0);
+}
+if (existing.status !== 404) {
+    throw new Error(`GitLab Release 查询失败 (${existing.status}): ${await existing.text()}`);
+}
+
+const response = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectId)}/releases`, {
+    method: "POST",
+    headers: {
+        "PRIVATE-TOKEN": token,
+        "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+        name: `Scenario Test ${tag}`,
+        tag_name: tag,
+        description: "浏览器、Node.js、CLI 和 Excel 适配器构建产物。",
+        assets: { links: assets }
+    })
+});
+
+if (!response.ok) {
+    throw new Error(`GitLab Release 创建失败 (${response.status}): ${await response.text()}`);
+}
+
+console.log(`已创建 GitLab Release: ${tag}`);
+import fs from "node:fs";
+import path from "node:path";
