@@ -10,17 +10,13 @@ const root = path.resolve(import.meta.dirname, "..");
 test("init 创建项目入口，且默认不覆盖现有文件", () => {
     const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-init-"));
     try {
-        const first = spawnSync(process.execPath, [
-            path.join(root, "src/cli.js"),
-            "init",
-            "--project", project,
-            "--library-url", "https://releases.example.test/scenario-test.umd.js"
-        ], { encoding: "utf8" });
+        const first = spawnSync(process.execPath, [path.join(root, "src/cli.js"), "init", "--project", project], { encoding: "utf8" });
         assert.equal(first.status, 0, first.stderr);
         const indexPath = path.join(project, "scenario-test", "index.html");
         const configPath = path.join(project, "scenario-test", "scenario.config.js");
-        assert.match(fs.readFileSync(indexPath, "utf8"), /releases\.example\.test/);
+        assert.match(fs.readFileSync(indexPath, "utf8"), /\.\/scenario-test\.umd\.js/);
         assert.match(fs.readFileSync(configPath, "utf8"), /ScenarioTest\.registerConfig/);
+        assert.match(fs.readFileSync(path.join(project, "scenario-test", "scenario-test.umd.js"), "utf8"), /ScenarioTest/);
         assert.equal(fs.existsSync(path.join(project, ".codex", "skills", "scenario-test", "SKILL.md")), false);
 
         fs.writeFileSync(configPath, "// 用户配置\n", "utf8");

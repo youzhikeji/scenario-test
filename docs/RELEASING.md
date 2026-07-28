@@ -18,18 +18,18 @@
 4. 创建并推送同名 Tag：
 
    ```powershell
-   git tag -a v0.2.6 -m "v0.2.6"
-   git push origin v0.2.6
+   git tag -a v0.2.7 -m "v0.2.7"
+   git push origin v0.2.7
    ```
 
 5. 等待 GitLab `release` Job 成功。Job 会创建指向当前 Tag 中 `dist/` 文件的 Release 资产。
 
 项目 CI/CD 变量必须配置受保护且掩码的 `GITLAB_RELEASE_TOKEN`，它需要当前项目的 API 权限以创建 Release。变量只在 GitLab CI 中使用，不写入仓库。
 
-浏览器项目固定引用 Release 版本，而不是 `master`：
+`init` 会下载 Release UMD 到项目目录，由浏览器加载本地文件：
 
 ```html
-<script src="http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.2.6/dist/scenario-test.umd.js"></script>
+<script src="./scenario-test.umd.js"></script>
 ```
 
 已发布 Tag 不覆盖重推。修复通过新的 patch Tag 发布。

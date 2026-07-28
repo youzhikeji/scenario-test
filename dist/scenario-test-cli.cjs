@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/*! scenario-test v0.2.6 */
+/*! scenario-test v0.2.7 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -67992,8 +67992,8 @@ async function readWorkbookRows(filePath, options = {}) {
 }
 
 // src/init-templates.js
-var DEFAULT_LIBRARY_URL = "http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.2.6/dist/scenario-test.umd.js";
-function createProjectFiles(libraryUrl, directory = "scenario-test") {
+var DEFAULT_LIBRARY_URL = "http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.2.7/dist/scenario-test.umd.js";
+function createProjectFiles(directory = "scenario-test") {
   return {
     [`${directory}/index.html`]: `<!doctype html>
 <html lang="zh-CN">
@@ -68004,7 +68004,7 @@ function createProjectFiles(libraryUrl, directory = "scenario-test") {
 </head>
 <body style="margin:0">
     <div id="scenario-test" style="height:100vh"></div>
-    <script src="${libraryUrl}"></script>
+    <script src="./scenario-test.umd.js"></script>
     <script src="./scenario.config.js"></script>
     <script>
         ScenarioTest.createApp({ mount: "#scenario-test", config: ScenarioTest.getConfig() });
@@ -68039,7 +68039,7 @@ function createProjectFiles(libraryUrl, directory = "scenario-test") {
 `,
     [`${directory}/README.md`]: `# \u573A\u666F\u6D4B\u8BD5
 
-\u672C\u76EE\u5F55\u4FDD\u5B58\u5F53\u524D\u9879\u76EE\u7684\u73AF\u5883\u914D\u7F6E\u3001\u573A\u666F\u3001\u9879\u76EE\u63D2\u4EF6\u548C\u56FA\u5B9A\u7248\u672C\u7684 CLI \u8FD0\u884C\u65F6\u3002\u6D4F\u89C8\u5668\u8FD0\u884C\u65F6\u7531 GitLab Release \u63D0\u4F9B\u3002
+\u672C\u76EE\u5F55\u4FDD\u5B58\u5F53\u524D\u9879\u76EE\u7684\u73AF\u5883\u914D\u7F6E\u3001\u573A\u666F\u3001\u9879\u76EE\u63D2\u4EF6\u548C\u56FA\u5B9A\u7248\u672C\u8FD0\u884C\u65F6\u3002\`scenario-test.umd.js\` \u7528\u4E8E\u6D4F\u89C8\u5668\uFF0C\`scenario-test-cli.cjs\` \u7528\u4E8E CLI\u3002
 
 \u6D4F\u89C8\u5668\u5165\u53E3\u4E3A \`index.html\`\u3002CLI \u4F7F\u7528\u53D1\u5E03\u7684 \`scenario-test-cli.cjs\`\uFF1A
 
@@ -68079,7 +68079,7 @@ function parseArgs(argv) {
   return args;
 }
 function printHelp() {
-  console.log(`scenario-test 0.2.6
+  console.log(`scenario-test 0.2.7
 
 Usage:
   node scenario-test-cli.cjs --config ./scenario.config.js --env local --all
@@ -68097,7 +68097,7 @@ Options:
   --port <number>       \u6D4F\u89C8\u5668\u670D\u52A1\u7AEF\u53E3\uFF0C\u9ED8\u8BA4 4300
   --project <dir>       \u521D\u59CB\u5316\u4E1A\u52A1\u9879\u76EE\u7684\u76EE\u6807\u76EE\u5F55
   --dir <path>          \u573A\u666F\u6D4B\u8BD5\u76EE\u5F55\uFF0C\u9ED8\u8BA4 scenario-test
-  --library-url <url>   \u521D\u59CB\u5316\u65F6\u5199\u5165\u7684 UMD Release \u5730\u5740
+  --library-url <url>   \u521D\u59CB\u5316\u65F6\u4E0B\u8F7D UMD \u7684 Release \u5730\u5740
   --force               \u8986\u76D6 init \u5DF2\u751F\u6210\u7684\u540C\u540D\u6587\u4EF6`);
 }
 function writeProjectFile(projectRoot, relativePath, content, force) {
@@ -68125,19 +68125,41 @@ function copyRuntimeCli(projectRoot, directory, force) {
   import_node_fs4.default.copyFileSync(source, target);
   return true;
 }
-function initCommand(args) {
+async function copyRuntimeBrowser(projectRoot, directory, libraryUrl, force) {
+  const target = import_node_path4.default.resolve(projectRoot, directory, "scenario-test.umd.js");
+  if (import_node_fs4.default.existsSync(target) && !force) return false;
+  const candidates = [
+    import_node_path4.default.resolve(import_node_path4.default.dirname(process.argv[1]), "scenario-test.umd.js"),
+    import_node_path4.default.resolve(import_node_path4.default.dirname(process.argv[1]), "../dist/scenario-test.umd.js")
+  ];
+  const source = candidates.find((candidate) => import_node_fs4.default.existsSync(candidate));
+  import_node_fs4.default.mkdirSync(import_node_path4.default.dirname(target), { recursive: true });
+  if (source) {
+    import_node_fs4.default.copyFileSync(source, target);
+    return true;
+  }
+  const response = await fetch(libraryUrl);
+  if (!response.ok) throw new Error(`\u4E0B\u8F7D\u6D4F\u89C8\u5668\u8FD0\u884C\u65F6\u5931\u8D25: ${response.status} ${response.statusText}`);
+  import_node_fs4.default.writeFileSync(target, Buffer.from(await response.arrayBuffer()));
+  return true;
+}
+async function initCommand(args) {
   const projectRoot = import_node_path4.default.resolve(args.project || process.cwd());
   const directory = resolveInitDirectory(projectRoot, args.dir);
   const libraryUrl = args.libraryUrl || DEFAULT_LIBRARY_URL;
   const created = [];
   const skipped = [];
-  for (const [relativePath, content] of Object.entries(createProjectFiles(libraryUrl, directory))) {
+  for (const [relativePath, content] of Object.entries(createProjectFiles(directory))) {
     (writeProjectFile(projectRoot, relativePath, content, args.force) ? created : skipped).push(relativePath);
   }
   const cliPath = `${directory}/scenario-test-cli.cjs`;
   const runtimeCli = copyRuntimeCli(projectRoot, directory, args.force);
   if (runtimeCli === true) created.push(cliPath);
   else if (runtimeCli === false) skipped.push(cliPath);
+  const browserPath = `${directory}/scenario-test.umd.js`;
+  const runtimeBrowser = await copyRuntimeBrowser(projectRoot, directory, libraryUrl, args.force);
+  if (runtimeBrowser === true) created.push(browserPath);
+  else if (runtimeBrowser === false) skipped.push(browserPath);
   console.log(`\u5DF2\u521D\u59CB\u5316\u9879\u76EE: ${projectRoot}`);
   if (created.length) console.log(`\u5DF2\u521B\u5EFA: ${created.join(", ")}`);
   if (skipped.length) console.log(`\u5DF2\u4FDD\u7559\u73B0\u6709\u6587\u4EF6: ${skipped.join(", ")}`);
@@ -68297,7 +68319,7 @@ async function main() {
     printHelp();
     return;
   }
-  if (args.command === "init") initCommand(args);
+  if (args.command === "init") await initCommand(args);
   else if (args.command === "serve") await serveCommand(args);
   else await runCommand(args);
 }

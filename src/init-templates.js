@@ -1,6 +1,6 @@
-export const DEFAULT_LIBRARY_URL = "http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.2.6/dist/scenario-test.umd.js";
+export const DEFAULT_LIBRARY_URL = "http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.2.7/dist/scenario-test.umd.js";
 
-export function createProjectFiles(libraryUrl, directory = "scenario-test") {
+export function createProjectFiles(directory = "scenario-test") {
     return {
         [`${directory}/index.html`]: `<!doctype html>
 <html lang="zh-CN">
@@ -11,7 +11,7 @@ export function createProjectFiles(libraryUrl, directory = "scenario-test") {
 </head>
 <body style="margin:0">
     <div id="scenario-test" style="height:100vh"></div>
-    <script src="${libraryUrl}"></script>
+    <script src="./scenario-test.umd.js"></script>
     <script src="./scenario.config.js"></script>
     <script>
         ScenarioTest.createApp({ mount: "#scenario-test", config: ScenarioTest.getConfig() });
@@ -46,7 +46,7 @@ export function createProjectFiles(libraryUrl, directory = "scenario-test") {
 `,
         [`${directory}/README.md`]: `# 场景测试
 
-本目录保存当前项目的环境配置、场景、项目插件和固定版本的 CLI 运行时。浏览器运行时由 GitLab Release 提供。
+本目录保存当前项目的环境配置、场景、项目插件和固定版本运行时。\`scenario-test.umd.js\` 用于浏览器，\`scenario-test-cli.cjs\` 用于 CLI。
 
 浏览器入口为 \`index.html\`。CLI 使用发布的 \`scenario-test-cli.cjs\`：
 

@@ -31,7 +31,7 @@ function parseArgs(argv) {
 }
 
 function printHelp() {
-    console.log(`scenario-test 0.2.6
+    console.log(`scenario-test 0.2.7
 
 Usage:
   node scenario-test-cli.cjs --config ./scenario.config.js --env local --all
@@ -49,7 +49,7 @@ Options:
   --port <number>       浏览器服务端口，默认 4300
   --project <dir>       初始化业务项目的目标目录
   --dir <path>          场景测试目录，默认 scenario-test
-  --library-url <url>   初始化时写入的 UMD Release 地址
+  --library-url <url>   初始化时下载 UMD 的 Release 地址
   --force               覆盖 init 已生成的同名文件`);
 }
 
@@ -81,19 +81,42 @@ function copyRuntimeCli(projectRoot, directory, force) {
     return true;
 }
 
-function initCommand(args) {
+async function copyRuntimeBrowser(projectRoot, directory, libraryUrl, force) {
+    const target = path.resolve(projectRoot, directory, "scenario-test.umd.js");
+    if (fs.existsSync(target) && !force) return false;
+    const candidates = [
+        path.resolve(path.dirname(process.argv[1]), "scenario-test.umd.js"),
+        path.resolve(path.dirname(process.argv[1]), "../dist/scenario-test.umd.js")
+    ];
+    const source = candidates.find((candidate) => fs.existsSync(candidate));
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    if (source) {
+        fs.copyFileSync(source, target);
+        return true;
+    }
+    const response = await fetch(libraryUrl);
+    if (!response.ok) throw new Error(`下载浏览器运行时失败: ${response.status} ${response.statusText}`);
+    fs.writeFileSync(target, Buffer.from(await response.arrayBuffer()));
+    return true;
+}
+
+async function initCommand(args) {
     const projectRoot = path.resolve(args.project || process.cwd());
     const directory = resolveInitDirectory(projectRoot, args.dir);
     const libraryUrl = args.libraryUrl || DEFAULT_LIBRARY_URL;
     const created = [];
     const skipped = [];
-    for (const [relativePath, content] of Object.entries(createProjectFiles(libraryUrl, directory))) {
+    for (const [relativePath, content] of Object.entries(createProjectFiles(directory))) {
         (writeProjectFile(projectRoot, relativePath, content, args.force) ? created : skipped).push(relativePath);
     }
     const cliPath = `${directory}/scenario-test-cli.cjs`;
     const runtimeCli = copyRuntimeCli(projectRoot, directory, args.force);
     if (runtimeCli === true) created.push(cliPath);
     else if (runtimeCli === false) skipped.push(cliPath);
+    const browserPath = `${directory}/scenario-test.umd.js`;
+    const runtimeBrowser = await copyRuntimeBrowser(projectRoot, directory, libraryUrl, args.force);
+    if (runtimeBrowser === true) created.push(browserPath);
+    else if (runtimeBrowser === false) skipped.push(browserPath);
     console.log(`已初始化项目: ${projectRoot}`);
     if (created.length) console.log(`已创建: ${created.join(", ")}`);
     if (skipped.length) console.log(`已保留现有文件: ${skipped.join(", ")}`);
@@ -252,7 +275,7 @@ async function serveCommand(args) {
 async function main() {
     const args = parseArgs(process.argv.slice(2));
     if (args.help) { printHelp(); return; }
-    if (args.command === "init") initCommand(args);
+    if (args.command === "init") await initCommand(args);
     else if (args.command === "serve") await serveCommand(args);
     else await runCommand(args);
 }
