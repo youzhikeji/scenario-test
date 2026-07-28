@@ -153,10 +153,26 @@ export function createLegacyRuntime(options) {
     }
 
     function getScenarioVariableDefinitions() {
-        if (!state.scenario || !isPlainObject(state.scenario.envVars)) return [];
-        return Object.keys(state.scenario.envVars).map(function (name) {
-            return { name: name, label: state.scenario.envVars[name] || name };
+        var definitions = {};
+        (Array.isArray(appConfig.variables) ? appConfig.variables : []).forEach(function (definition) {
+            if (!definition || !definition.name) return;
+            definitions[definition.name] = {
+                name: definition.name,
+                label: definition.label || definition.name,
+                sensitive: Boolean(definition.sensitive),
+                required: Boolean(definition.required)
+            };
         });
+        if (state.scenario && isPlainObject(state.scenario.envVars)) {
+            Object.keys(state.scenario.envVars).forEach(function (name) {
+                definitions[name] = Object.assign({}, definitions[name] || {}, {
+                    name: name,
+                    label: state.scenario.envVars[name] || name,
+                    required: true
+                });
+            });
+        }
+        return Object.keys(definitions).map(function (name) { return definitions[name]; });
     }
 
     function getScenarioVariableStorageKey(name, environment) {
@@ -260,7 +276,7 @@ export function createLegacyRuntime(options) {
         var scenario = state.scenario || {};
         var scenarioVars = getScenarioVariableValues();
         var missing = getScenarioVariableDefinitions().filter(function (def) {
-            return !scenarioVars[def.name];
+            return def.required && !scenarioVars[def.name];
         });
         if (missing.length) {
             throw new Error('缺少场景凭据：' + missing.map(function (def) { return def.label; }).join('、') + '。请在“配置参数 → 当前场景凭据”中填写并保存。');
@@ -788,7 +804,7 @@ export function createLegacyRuntime(options) {
         if (!container) return;
         var defs = getScenarioVariableDefinitions();
         if (!defs.length) {
-            container.innerHTML = '<div class="text-xs text-slate-400 col-span-2">当前场景未声明 envVars</div>';
+            container.innerHTML = '<div class="text-xs text-slate-400 col-span-2">未声明可配置变量</div>';
             return;
         }
         var stored = getStoredScenarioVariables();
@@ -796,7 +812,7 @@ export function createLegacyRuntime(options) {
             var value = stored[def.name] || '';
             return '<label class="flex flex-col gap-1.5">' +
                 '<span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">' + esc(def.label) + ' (' + esc(def.name) + ')</span>' +
-                '<input id="scenarioVar_' + esc(def.name) + '" type="text" value="' + esc(value) + '" placeholder="请输入 ' + esc(def.label) + '" class="px-3 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">' +
+                '<input id="scenarioVar_' + esc(def.name) + '" type="' + (def.sensitive ? 'password' : 'text') + '" value="' + esc(value) + '" placeholder="请输入 ' + esc(def.label) + '" class="px-3 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">' +
                 '</label>';
         }).join('');
     }

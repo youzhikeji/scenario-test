@@ -96,7 +96,7 @@ const legacyView = (function () {
                     </label>
                 </div>
                 <div class="mt-4 border-t border-slate-700 pt-3">
-                    <div class="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">当前场景凭据</div>
+                    <div class="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">场景变量</div>
                     <div id="scenarioVarsInput" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
                 </div>
                 <div class="mt-4 flex flex-wrap items-center justify-between border-t border-slate-700 pt-3">

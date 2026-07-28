@@ -1,4 +1,4 @@
-export const DEFAULT_LIBRARY_URL = "http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.2.0/dist/scenario-test.umd.js";
+export const DEFAULT_LIBRARY_URL = "http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.2.1/dist/scenario-test.umd.js";
 
 export function createProjectFiles(libraryUrl, directory = "dev/场景测试") {
     return {
@@ -25,6 +25,7 @@ export function createProjectFiles(libraryUrl, directory = "dev/场景测试") {
     ],
     defaultEnvKey: "local",
     requestTimeoutMs: 30000,
+    vars: {},
     variables: [],
     scenarios: [
         { id: "health", name: "健康检查", url: "scenarios/health.js" }

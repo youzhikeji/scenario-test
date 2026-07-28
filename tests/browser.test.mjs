@@ -54,6 +54,7 @@ try {
         await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "networkidle" });
         await page.waitForFunction(() => document.querySelectorAll("[data-scenario-file]").length === 2);
         assert.equal(await page.locator("#stepsList li").count(), 1);
+        assert.equal(await page.locator("#scenarioVar_exampleToken").getAttribute("type"), "password");
 
         await page.locator("#runBtn").click();
         await page.waitForFunction(() => !document.querySelector("#runBtn").disabled && document.querySelector('#stepsList li[data-passed="true"]'));
