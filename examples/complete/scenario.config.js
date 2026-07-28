@@ -5,8 +5,8 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
     defaultEnvKey: "mock",
     requestTimeoutMs: 5000,
     variables: [
-        { name: "demoAccount", label: "示例账号", env: "DEMO_ACCOUNT", sensitive: true, defaultValue: "demo" },
-        { name: "demoPassword", label: "示例密码", env: "DEMO_PASSWORD", sensitive: true, defaultValue: "demo-password" }
+        { name: "demoAccount", label: "示例账号", env: "DEMO_ACCOUNT", defaultValue: "demo" },
+        { name: "demoPassword", label: "示例密码", env: "DEMO_PASSWORD", defaultValue: "demo-password" }
     ],
     scenarios: [
         { id: "manual-login", name: "手动登录与受保护请求", url: "scenarios/manual-login.js" },

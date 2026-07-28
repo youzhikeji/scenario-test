@@ -18,8 +18,8 @@
 4. 创建并推送同名 Tag：
 
    ```powershell
-   git tag -a v0.2.4 -m "v0.2.4"
-   git push origin v0.2.4
+   git tag -a v0.2.5 -m "v0.2.5"
+   git push origin v0.2.5
    ```
 
 5. 等待 GitLab `release` Job 成功。Job 会创建指向当前 Tag 中 `dist/` 文件的 Release 资产。
@@ -29,7 +29,7 @@
 浏览器项目固定引用 Release 版本，而不是 `master`：
 
 ```html
-<script src="http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.2.4/dist/scenario-test.umd.js"></script>
+<script src="http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.2.5/dist/scenario-test.umd.js"></script>
 ```
 
 已发布 Tag 不覆盖重推。修复通过新的 patch Tag 发布。

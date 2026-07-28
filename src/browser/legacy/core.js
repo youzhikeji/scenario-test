@@ -86,26 +86,7 @@ const legacyCore = (function (globalRoot) {
         }
     }
 
-    function maskAuthorization(token) {
-        if (!token) return '';
-        token = String(token);
-        return token.length > 16 ? token.substring(0, 8) + '...' + token.substring(token.length - 4) : '***';
-    }
-
     function sanitizeSensitive(value, key) {
-        if (value === undefined || value === null) return value;
-        if (key && /authorization|token|secret|password|api[-_]?key/i.test(key)) {
-            return maskAuthorization(value);
-        }
-        if (Array.isArray(value)) {
-            return value.map(function (item) { return sanitizeSensitive(item, ''); });
-        }
-        if (isPlainObject(value)) {
-            return Object.keys(value).reduce(function (result, childKey) {
-                result[childKey] = sanitizeSensitive(value[childKey], childKey);
-                return result;
-            }, {});
-        }
         return value;
     }
 

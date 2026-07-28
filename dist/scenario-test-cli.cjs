@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/*! scenario-test v0.2.4 */
+/*! scenario-test v0.2.5 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -64991,13 +64991,6 @@ function maskSecret(value) {
   return text.length > 12 ? `${text.slice(0, 4)}...${text.slice(-4)}` : "***";
 }
 function sanitizeSensitive(value, key = "", sensitiveNames = []) {
-  if (value === void 0 || value === null) return value;
-  const sensitive = /authorization|token|secret|password|api[-_]?key/i.test(key) || sensitiveNames.includes(key);
-  if (sensitive) return maskSecret(value);
-  if (Array.isArray(value)) return value.map((item) => sanitizeSensitive(item, "", sensitiveNames));
-  if (isPlainObject(value)) {
-    return Object.fromEntries(Object.entries(value).map(([childKey, item]) => [childKey, sanitizeSensitive(item, childKey, sensitiveNames)]));
-  }
   return value;
 }
 function formatDuration(milliseconds) {
@@ -65135,9 +65128,6 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables) {
   }
   return vars;
 }
-function resolveSensitiveNames(config) {
-  return (config.variables || []).filter((item) => item.sensitive).map((item) => item.name);
-}
 function createRuntime(scenario, options = {}) {
   const config = options.config || {};
   return {
@@ -65234,7 +65224,6 @@ function createEngine(engineOptions = {}) {
       adapters,
       requestTimeoutMs: runOptions.requestTimeoutMs || engineOptions.requestTimeoutMs || 3e4
     };
-    const sensitiveNames = resolveSensitiveNames(options.config || {});
     if (step.when !== void 0) {
       const shouldRun = typeof step.when === "object" ? evaluateAssertion(step.when, { status: 0, headers: {}, body: null, bodyText: "" }, runtime).passed : Boolean(resolve(step.when, runtime));
       if (!shouldRun) {
@@ -65278,9 +65267,9 @@ function createEngine(engineOptions = {}) {
         duration: now() - startedAt,
         passed: !failed,
         error: failed?.name || "",
-        assertions: sanitizeSensitive(assertions, "", sensitiveNames),
-        request: sanitizeSensitive(lastExecution.request, "", sensitiveNames),
-        response: sanitizeSensitive(lastExecution.response, "", sensitiveNames)
+        assertions,
+        request: lastExecution.request,
+        response: lastExecution.response
       };
     } catch (error) {
       return {
@@ -65322,7 +65311,7 @@ function createEngine(engineOptions = {}) {
       executed: results.length,
       failed,
       results,
-      vars: sanitizeSensitive(runtime.vars, "", resolveSensitiveNames(config))
+      vars: runtime.vars
     };
   }
   return { runStep, runScenario: runScenario2, createRuntime };
@@ -65384,27 +65373,7 @@ var legacyCore = function(globalRoot) {
       return String(value);
     }
   }
-  function maskAuthorization(token) {
-    if (!token) return "";
-    token = String(token);
-    return token.length > 16 ? token.substring(0, 8) + "..." + token.substring(token.length - 4) : "***";
-  }
   function sanitizeSensitive2(value, key) {
-    if (value === void 0 || value === null) return value;
-    if (key && /authorization|token|secret|password|api[-_]?key/i.test(key)) {
-      return maskAuthorization(value);
-    }
-    if (Array.isArray(value)) {
-      return value.map(function(item) {
-        return sanitizeSensitive2(item, "");
-      });
-    }
-    if (isPlainObject2(value)) {
-      return Object.keys(value).reduce(function(result, childKey) {
-        result[childKey] = sanitizeSensitive2(value[childKey], childKey);
-        return result;
-      }, {});
-    }
     return value;
   }
   function tokenize(valuePath) {
@@ -66882,7 +66851,6 @@ function createLegacyRuntime(options) {
       definitions[definition.name] = {
         name: definition.name,
         label: definition.label || definition.name,
-        sensitive: Boolean(definition.sensitive),
         required: Boolean(definition.required)
       };
     });
@@ -67891,7 +67859,7 @@ function createApp(options = {}) {
     rewindToStep: runtime.rewindToStep,
     rerunStep: runtime.rerunStep,
     destroy,
-    getState: () => sanitizeSensitive(runtime.getState())
+    getState: runtime.getState
   };
 }
 
@@ -68016,7 +67984,7 @@ async function readWorkbookRows(filePath, options = {}) {
 }
 
 // src/init-templates.js
-var DEFAULT_LIBRARY_URL = "http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.2.4/dist/scenario-test.umd.js";
+var DEFAULT_LIBRARY_URL = "http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.2.5/dist/scenario-test.umd.js";
 function createProjectFiles(libraryUrl, directory = "scenario-test") {
   return {
     [`${directory}/index.html`]: `<!doctype html>
@@ -68103,7 +68071,7 @@ function parseArgs(argv) {
   return args;
 }
 function printHelp() {
-  console.log(`scenario-test 0.2.4
+  console.log(`scenario-test 0.2.5
 
 Usage:
   node scenario-test-cli.cjs --config ./scenario.config.js --env local --all

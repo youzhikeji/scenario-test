@@ -8,7 +8,7 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
         expectedStatus: "UP"
     },
     variables: [
-        { name: "exampleToken", label: "示例 Token", sensitive: true, defaultValue: "" },
+        { name: "exampleToken", label: "示例 Token", defaultValue: "" },
         { name: "expectedStatus", label: "期望状态", defaultValue: "" }
     ],
     scenarios: [

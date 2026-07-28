@@ -159,7 +159,6 @@ export function createLegacyRuntime(options) {
             definitions[definition.name] = {
                 name: definition.name,
                 label: definition.label || definition.name,
-                sensitive: Boolean(definition.sensitive),
                 required: Boolean(definition.required)
             };
         });

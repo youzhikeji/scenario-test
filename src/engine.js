@@ -11,8 +11,7 @@ import {
     parseBody,
     evaluateAssertion,
     resolve,
-    resolveString,
-    sanitizeSensitive
+    resolveString
 } from "./core.js";
 import { defineScenario, listAdapters } from "./registry.js";
 
@@ -78,10 +77,6 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables) {
         }
     }
     return vars;
-}
-
-function resolveSensitiveNames(config) {
-    return (config.variables || []).filter((item) => item.sensitive).map((item) => item.name);
 }
 
 export function createRuntime(scenario, options = {}) {
@@ -189,7 +184,6 @@ export function createEngine(engineOptions = {}) {
             adapters,
             requestTimeoutMs: runOptions.requestTimeoutMs || engineOptions.requestTimeoutMs || 30000
         };
-        const sensitiveNames = resolveSensitiveNames(options.config || {});
         if (step.when !== undefined) {
             const shouldRun = typeof step.when === "object"
                 ? evaluateAssertion(step.when, { status: 0, headers: {}, body: null, bodyText: "" }, runtime).passed
@@ -237,9 +231,9 @@ export function createEngine(engineOptions = {}) {
                 duration: now() - startedAt,
                 passed: !failed,
                 error: failed?.name || "",
-                assertions: sanitizeSensitive(assertions, "", sensitiveNames),
-                request: sanitizeSensitive(lastExecution.request, "", sensitiveNames),
-                response: sanitizeSensitive(lastExecution.response, "", sensitiveNames)
+                assertions,
+                request: lastExecution.request,
+                response: lastExecution.response
             };
         } catch (error) {
             return {
@@ -282,7 +276,7 @@ export function createEngine(engineOptions = {}) {
             executed: results.length,
             failed,
             results,
-            vars: sanitizeSensitive(runtime.vars, "", resolveSensitiveNames(config))
+            vars: runtime.vars
         };
     }
 

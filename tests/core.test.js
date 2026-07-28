@@ -31,14 +31,14 @@ test("断言、响应提取和 URL 拼接", () => {
     assert.equal(joinUrl("http://localhost:8080/", "/health"), "http://localhost:8080/health");
 });
 
-test("签名稳定且敏感字段脱敏", () => {
+test("签名稳定且调试数据保留原始值", () => {
     const first = generateSignature({ timestamp: 1, apiKey: "demo", nonce: "n" }, "secret");
     const second = generateSignature({ nonce: "n", apiKey: "demo", timestamp: 1 }, "secret");
     assert.equal(first, second);
     assert.match(first, /^[A-F0-9]{32}$/);
     assert.deepEqual(sanitizeSensitive({ apiKey: "abcdefghijklm", nested: { accessToken: "123456789012345" } }), {
-        apiKey: "abcd...jklm",
-        nested: { accessToken: "1234...2345" }
+        apiKey: "abcdefghijklm",
+        nested: { accessToken: "123456789012345" }
     });
 });
 

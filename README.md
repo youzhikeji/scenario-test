@@ -7,12 +7,12 @@
 将下列 Prompt 粘贴给当前项目的 AI 助手，即可安装到默认的 `scenario-test` 目录。将 `scenario-test` 替换为团队约定的项目内相对目录，例如 `dev/场景测试`；不要使用绝对路径。
 
 ```text
-请在当前项目根目录安装 scenario-test v0.2.4，目标目录为 scenario-test。
+请在当前项目根目录安装 scenario-test v0.2.5，目标目录为 scenario-test。
 
 1. 确认 Node.js 版本不低于 18；不满足时停止并说明原因。
 2. 不克隆公共库源码，不执行 npm install，不修改业务代码、构建配置或已有场景文件。
 3. 仅从以下固定版本地址下载 CLI 到系统临时目录：
-   http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.2.4/dist/scenario-test-cli.cjs
+   http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.2.5/dist/scenario-test-cli.cjs
 4. 使用 node <临时 CLI 路径> init --project . --dir "scenario-test" 执行初始化；不要传 --force。
 5. 检查并报告 scenario-test/index.html、scenario-test/scenario.config.js、scenario-test/scenarios/health.js 和 scenario-test/scenario-test-cli.cjs 是已创建还是已保留。
 6. 不启动服务、不调用任何业务接口、不写入 Token、Secret 或真实测试数据。
@@ -75,7 +75,7 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
         apiKey: ""
     },
     variables: [
-        { name: "apiKey", label: "API Key", env: "SCENARIO_API_KEY", sensitive: true, required: true }
+        { name: "apiKey", label: "API Key", env: "SCENARIO_API_KEY", required: true }
     ],
     scenarios: [
         { id: "health", name: "健康检查", url: "scenarios/health.js" }
@@ -100,14 +100,14 @@ ScenarioTest.registerScenario("health", ScenarioTest.defineScenario({
 }));
 ```
 
-工作台只操作传入的挂载容器。配置、环境、Token 和敏感变量按环境保存在浏览器本地；报告会自动脱敏。
+工作台只操作传入的挂载容器。配置、环境、Token 和场景变量按环境保存在浏览器本地；页面、调试请求和报告均显示原始值，适合项目内快速联调。
 
 `vars` 是启动初始值。私有项目可在此保存团队测试凭据，浏览器页面中的变量可按环境覆盖它，覆盖值保存在浏览器 LocalStorage。CLI/CI 中同名 `variables[].env` 环境变量优先于 `vars`；其后依次是 `vars`、场景 `vars` 和 `variables[].defaultValue`。公共库、示例和构建产物不得写入真实业务凭据。
 
 业务项目可固定引用 GitLab Release 的单文件产物，无需拉取源码：
 
 ```html
-<script src="http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.2.4/dist/scenario-test.umd.js"></script>
+<script src="http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.2.5/dist/scenario-test.umd.js"></script>
 ```
 
 不要引用 `master`，应固定使用已发布的 Tag。
@@ -138,14 +138,14 @@ node D:\path\to\scenario-test\dist\scenario-test-cli.cjs serve `
   --port 4300
 ```
 
-CLI 从变量定义的 `env` 字段读取环境变量，敏感值不应写入配置文件。`failurePolicy` 默认为 `stop`；需要收集全部失败时在场景上设置 `failurePolicy: "continue"`。
+CLI 从变量定义的 `env` 字段读取环境变量。私有项目可将联调凭据直接写入 `vars`。`failurePolicy` 默认为 `stop`；需要收集全部失败时在场景上设置 `failurePolicy: "continue"`。
 
 ## 完整示例
 
 [`examples/complete`](examples/complete) 提供可独立运行的 Mock API、浏览器入口、CLI 命令和两组场景，覆盖：
 
 - 用户自定义登录步骤、Token 提取和后续 `Authorization` Header 引用。
-- 环境变量覆盖、敏感变量、请求体与路径模板。
+- 环境变量覆盖、场景变量、请求体与路径模板。
 - `retryUntil`、`when` 跳过、`failurePolicy: "continue"`。
 
 先运行 `node .\\examples\\complete\\mock-server.cjs`，再按 [完整示例说明](examples/complete/README.md) 启动工作台或 CLI。

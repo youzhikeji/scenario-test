@@ -1,4 +1,3 @@
-import { sanitizeSensitive } from "../core.js";
 import { defineConfig, getConfig, getScenario } from "../registry.js";
 import { createLegacyRuntime } from "./legacy/runtime.js";
 import { TAILWIND_CSS } from "./tailwind.generated.js";
@@ -84,6 +83,6 @@ export function createApp(options = {}) {
         rewindToStep: runtime.rewindToStep,
         rerunStep: runtime.rerunStep,
         destroy,
-        getState: () => sanitizeSensitive(runtime.getState())
+        getState: runtime.getState
     };
 }

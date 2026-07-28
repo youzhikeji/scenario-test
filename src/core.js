@@ -186,15 +186,8 @@ export function maskSecret(value) {
 }
 
 export function sanitizeSensitive(value, key = "", sensitiveNames = []) {
-    if (value === undefined || value === null) return value;
-    const sensitive = /authorization|token|secret|password|api[-_]?key/i.test(key)
-        || sensitiveNames.includes(key);
-    if (sensitive) return maskSecret(value);
-    if (Array.isArray(value)) return value.map((item) => sanitizeSensitive(item, "", sensitiveNames));
-    if (isPlainObject(value)) {
-        return Object.fromEntries(Object.entries(value)
-            .map(([childKey, item]) => [childKey, sanitizeSensitive(item, childKey, sensitiveNames)]));
-    }
+    // 场景测试用于项目内联调，执行上下文和调试数据应保留原始值。
+    // 保留该导出仅为兼容旧项目调用。
     return value;
 }
 
