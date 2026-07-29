@@ -18,8 +18,8 @@
 4. 创建并推送同名 Tag：
 
    ```powershell
-   git tag -a v0.2.11 -m "v0.2.11"
-   git push github v0.2.11
+   git tag -a v0.2.12 -m "v0.2.12"
+   git push github v0.2.12
    ```
 
 5. 创建 GitHub Release，并上传 `scenario-test-cli.cjs`、`scenario-test.umd.js`、其他 Node/ESM 产物、完整压缩包和 SHA256 清单。

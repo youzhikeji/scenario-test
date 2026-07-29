@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/*! scenario-test v0.2.11 */
+/*! scenario-test v0.2.12 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -64854,16 +64854,28 @@ function evalExpression(expression, runtime) {
 }
 function resolveString(value, runtime) {
   if (typeof value !== "string") return value;
-  const whole = value.match(/^\s*\{\{\s*(.+?)\s*\}\}\s*$/);
-  if (whole) {
-    const direct = evalExpression(whole[1], runtime);
-    return direct === void 0 ? "" : direct;
+  let current = value;
+  const seen = /* @__PURE__ */ new Set();
+  for (let depth = 0; depth < 10; depth += 1) {
+    if (seen.has(current)) return current;
+    seen.add(current);
+    const whole = current.match(/^\s*\{\{\s*(.+?)\s*\}\}\s*$/);
+    if (whole) {
+      const direct = evalExpression(whole[1], runtime);
+      if (direct === void 0) return "";
+      if (typeof direct !== "string") return direct;
+      current = direct;
+      continue;
+    }
+    const replaced = current.replace(/\{\{\s*(.+?)\s*\}\}/g, (_2, expression) => {
+      const resolved = evalExpression(expression, runtime);
+      if (resolved === void 0 || resolved === null) return "";
+      return typeof resolved === "object" ? JSON.stringify(resolved) : String(resolved);
+    });
+    if (replaced === current || !/\{\{\s*.+?\s*\}\}/.test(replaced)) return replaced;
+    current = replaced;
   }
-  return value.replace(/\{\{\s*(.+?)\s*\}\}/g, (_2, expression) => {
-    const resolved = evalExpression(expression, runtime);
-    if (resolved === void 0 || resolved === null) return "";
-    return typeof resolved === "object" ? JSON.stringify(resolved) : String(resolved);
-  });
+  return current;
 }
 function resolve(value, runtime) {
   if (Array.isArray(value)) return value.map((item) => resolve(item, runtime));
@@ -65411,16 +65423,28 @@ var legacyCore = function(globalRoot) {
   }
   function resolveString2(value, runtime) {
     if (typeof value !== "string") return value;
-    var whole = value.match(/^\s*\{\{\s*(.+?)\s*\}\}\s*$/);
-    if (whole) {
-      var direct = evalExpr(whole[1], runtime);
-      return direct === void 0 ? "" : direct;
+    var current = value;
+    var seen = /* @__PURE__ */ new Set();
+    for (var depth = 0; depth < 10; depth += 1) {
+      if (seen.has(current)) return current;
+      seen.add(current);
+      var whole = current.match(/^\s*\{\{\s*(.+?)\s*\}\}\s*$/);
+      if (whole) {
+        var direct = evalExpr(whole[1], runtime);
+        if (direct === void 0) return "";
+        if (typeof direct !== "string") return direct;
+        current = direct;
+        continue;
+      }
+      var replaced = current.replace(/\{\{\s*(.+?)\s*\}\}/g, function(_2, innerExpr) {
+        var resolved = evalExpr(innerExpr, runtime);
+        if (resolved === void 0 || resolved === null) return "";
+        return typeof resolved === "object" ? JSON.stringify(resolved) : String(resolved);
+      });
+      if (replaced === current || !/\{\{\s*.+?\s*\}\}/.test(replaced)) return replaced;
+      current = replaced;
     }
-    return value.replace(/\{\{\s*(.+?)\s*\}\}/g, function(_2, innerExpr) {
-      var resolved = evalExpr(innerExpr, runtime);
-      if (resolved === void 0 || resolved === null) return "";
-      return typeof resolved === "object" ? JSON.stringify(resolved) : String(resolved);
-    });
+    return current;
   }
   function resolve2(value, runtime) {
     if (Array.isArray(value)) {
@@ -68019,7 +68043,7 @@ async function readWorkbookRows(filePath, options = {}) {
 }
 
 // src/init-templates.js
-var DEFAULT_LIBRARY_URL = "https://github.com/youzhikeji/scenario-test/releases/download/v0.2.11/scenario-test.umd.js";
+var DEFAULT_LIBRARY_URL = "https://github.com/youzhikeji/scenario-test/releases/download/v0.2.12/scenario-test.umd.js";
 var AUTHORING_PROMPT = `# AI \u573A\u666F\u751F\u6210 Prompt
 
 \u8BF7\u4E3A\u5F53\u524D\u9879\u76EE\u751F\u6210 scenario-test \u573A\u666F\u7528\u4F8B\u3002\u5148\u9605\u8BFB\u672C\u76EE\u5F55\u7684 \`README.md\`\u3001\`SCENARIO_PATTERNS.md\`\u3001\`scenario.config.js\` \u548C\u5DF2\u6709 \`scenarios/\`\uFF0C\u518D\u5206\u6790\u9879\u76EE Controller\u3001OpenAPI/Swagger\u3001\u524D\u7AEF API \u8C03\u7528\u3001\u63A5\u53E3\u6587\u6863\u548C\u5DF2\u6709\u81EA\u52A8\u5316\u6D4B\u8BD5\u3002
@@ -68357,7 +68381,7 @@ function parseArgs(argv) {
   return args;
 }
 function printHelp() {
-  console.log(`scenario-test 0.2.11
+  console.log(`scenario-test 0.2.12
 
 Usage:
   node scenario-test-cli.cjs --config ./scenario.config.js --env local --all
@@ -68416,7 +68440,7 @@ async function copyRuntimeBrowser(projectRoot, directory, libraryUrl, force) {
     import_node_fs4.default.copyFileSync(source, target);
     return true;
   }
-  if (`/*! scenario-test v0.2.11 */
+  if (`/*! scenario-test v0.2.12 */
 var ScenarioTest = (() => {
   var __create = Object.create;
   var __defProp = Object.defineProperty;
@@ -68730,16 +68754,28 @@ var ScenarioTest = (() => {
   }
   function resolveString(value, runtime) {
     if (typeof value !== "string") return value;
-    const whole = value.match(/^\\s*\\{\\{\\s*(.+?)\\s*\\}\\}\\s*$/);
-    if (whole) {
-      const direct = evalExpression(whole[1], runtime);
-      return direct === void 0 ? "" : direct;
+    let current = value;
+    const seen = /* @__PURE__ */ new Set();
+    for (let depth = 0; depth < 10; depth += 1) {
+      if (seen.has(current)) return current;
+      seen.add(current);
+      const whole = current.match(/^\\s*\\{\\{\\s*(.+?)\\s*\\}\\}\\s*$/);
+      if (whole) {
+        const direct = evalExpression(whole[1], runtime);
+        if (direct === void 0) return "";
+        if (typeof direct !== "string") return direct;
+        current = direct;
+        continue;
+      }
+      const replaced = current.replace(/\\{\\{\\s*(.+?)\\s*\\}\\}/g, (_, expression) => {
+        const resolved = evalExpression(expression, runtime);
+        if (resolved === void 0 || resolved === null) return "";
+        return typeof resolved === "object" ? JSON.stringify(resolved) : String(resolved);
+      });
+      if (replaced === current || !/\\{\\{\\s*.+?\\s*\\}\\}/.test(replaced)) return replaced;
+      current = replaced;
     }
-    return value.replace(/\\{\\{\\s*(.+?)\\s*\\}\\}/g, (_, expression) => {
-      const resolved = evalExpression(expression, runtime);
-      if (resolved === void 0 || resolved === null) return "";
-      return typeof resolved === "object" ? JSON.stringify(resolved) : String(resolved);
-    });
+    return current;
   }
   function resolve(value, runtime) {
     if (Array.isArray(value)) return value.map((item) => resolve(item, runtime));
@@ -69287,16 +69323,28 @@ var ScenarioTest = (() => {
     }
     function resolveString2(value, runtime) {
       if (typeof value !== "string") return value;
-      var whole = value.match(/^\\s*\\{\\{\\s*(.+?)\\s*\\}\\}\\s*$/);
-      if (whole) {
-        var direct = evalExpr(whole[1], runtime);
-        return direct === void 0 ? "" : direct;
+      var current = value;
+      var seen = /* @__PURE__ */ new Set();
+      for (var depth = 0; depth < 10; depth += 1) {
+        if (seen.has(current)) return current;
+        seen.add(current);
+        var whole = current.match(/^\\s*\\{\\{\\s*(.+?)\\s*\\}\\}\\s*$/);
+        if (whole) {
+          var direct = evalExpr(whole[1], runtime);
+          if (direct === void 0) return "";
+          if (typeof direct !== "string") return direct;
+          current = direct;
+          continue;
+        }
+        var replaced = current.replace(/\\{\\{\\s*(.+?)\\s*\\}\\}/g, function(_, innerExpr) {
+          var resolved = evalExpr(innerExpr, runtime);
+          if (resolved === void 0 || resolved === null) return "";
+          return typeof resolved === "object" ? JSON.stringify(resolved) : String(resolved);
+        });
+        if (replaced === current || !/\\{\\{\\s*.+?\\s*\\}\\}/.test(replaced)) return replaced;
+        current = replaced;
       }
-      return value.replace(/\\{\\{\\s*(.+?)\\s*\\}\\}/g, function(_, innerExpr) {
-        var resolved = evalExpr(innerExpr, runtime);
-        if (resolved === void 0 || resolved === null) return "";
-        return typeof resolved === "object" ? JSON.stringify(resolved) : String(resolved);
-      });
+      return current;
     }
     function resolve2(value, runtime) {
       if (Array.isArray(value)) {
@@ -71777,7 +71825,7 @@ var ScenarioTest = (() => {
 })();
 //# sourceMappingURL=scenario-test.umd.js.map
 `) {
-    import_node_fs4.default.writeFileSync(target, `/*! scenario-test v0.2.11 */
+    import_node_fs4.default.writeFileSync(target, `/*! scenario-test v0.2.12 */
 var ScenarioTest = (() => {
   var __create = Object.create;
   var __defProp = Object.defineProperty;
@@ -72091,16 +72139,28 @@ var ScenarioTest = (() => {
   }
   function resolveString(value, runtime) {
     if (typeof value !== "string") return value;
-    const whole = value.match(/^\\s*\\{\\{\\s*(.+?)\\s*\\}\\}\\s*$/);
-    if (whole) {
-      const direct = evalExpression(whole[1], runtime);
-      return direct === void 0 ? "" : direct;
+    let current = value;
+    const seen = /* @__PURE__ */ new Set();
+    for (let depth = 0; depth < 10; depth += 1) {
+      if (seen.has(current)) return current;
+      seen.add(current);
+      const whole = current.match(/^\\s*\\{\\{\\s*(.+?)\\s*\\}\\}\\s*$/);
+      if (whole) {
+        const direct = evalExpression(whole[1], runtime);
+        if (direct === void 0) return "";
+        if (typeof direct !== "string") return direct;
+        current = direct;
+        continue;
+      }
+      const replaced = current.replace(/\\{\\{\\s*(.+?)\\s*\\}\\}/g, (_, expression) => {
+        const resolved = evalExpression(expression, runtime);
+        if (resolved === void 0 || resolved === null) return "";
+        return typeof resolved === "object" ? JSON.stringify(resolved) : String(resolved);
+      });
+      if (replaced === current || !/\\{\\{\\s*.+?\\s*\\}\\}/.test(replaced)) return replaced;
+      current = replaced;
     }
-    return value.replace(/\\{\\{\\s*(.+?)\\s*\\}\\}/g, (_, expression) => {
-      const resolved = evalExpression(expression, runtime);
-      if (resolved === void 0 || resolved === null) return "";
-      return typeof resolved === "object" ? JSON.stringify(resolved) : String(resolved);
-    });
+    return current;
   }
   function resolve(value, runtime) {
     if (Array.isArray(value)) return value.map((item) => resolve(item, runtime));
@@ -72648,16 +72708,28 @@ var ScenarioTest = (() => {
     }
     function resolveString2(value, runtime) {
       if (typeof value !== "string") return value;
-      var whole = value.match(/^\\s*\\{\\{\\s*(.+?)\\s*\\}\\}\\s*$/);
-      if (whole) {
-        var direct = evalExpr(whole[1], runtime);
-        return direct === void 0 ? "" : direct;
+      var current = value;
+      var seen = /* @__PURE__ */ new Set();
+      for (var depth = 0; depth < 10; depth += 1) {
+        if (seen.has(current)) return current;
+        seen.add(current);
+        var whole = current.match(/^\\s*\\{\\{\\s*(.+?)\\s*\\}\\}\\s*$/);
+        if (whole) {
+          var direct = evalExpr(whole[1], runtime);
+          if (direct === void 0) return "";
+          if (typeof direct !== "string") return direct;
+          current = direct;
+          continue;
+        }
+        var replaced = current.replace(/\\{\\{\\s*(.+?)\\s*\\}\\}/g, function(_, innerExpr) {
+          var resolved = evalExpr(innerExpr, runtime);
+          if (resolved === void 0 || resolved === null) return "";
+          return typeof resolved === "object" ? JSON.stringify(resolved) : String(resolved);
+        });
+        if (replaced === current || !/\\{\\{\\s*.+?\\s*\\}\\}/.test(replaced)) return replaced;
+        current = replaced;
       }
-      return value.replace(/\\{\\{\\s*(.+?)\\s*\\}\\}/g, function(_, innerExpr) {
-        var resolved = evalExpr(innerExpr, runtime);
-        if (resolved === void 0 || resolved === null) return "";
-        return typeof resolved === "object" ? JSON.stringify(resolved) : String(resolved);
-      });
+      return current;
     }
     function resolve2(value, runtime) {
       if (Array.isArray(value)) {

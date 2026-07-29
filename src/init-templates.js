@@ -1,4 +1,4 @@
-export const DEFAULT_LIBRARY_URL = "https://github.com/youzhikeji/scenario-test/releases/download/v0.2.11/scenario-test.umd.js";
+export const DEFAULT_LIBRARY_URL = "https://github.com/youzhikeji/scenario-test/releases/download/v0.2.12/scenario-test.umd.js";
 
 const AUTHORING_PROMPT = `# AI 场景生成 Prompt
 

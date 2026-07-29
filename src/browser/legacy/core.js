@@ -136,16 +136,28 @@ const legacyCore = (function (globalRoot) {
 
     function resolveString(value, runtime) {
         if (typeof value !== 'string') return value;
-        var whole = value.match(/^\s*\{\{\s*(.+?)\s*\}\}\s*$/);
-        if (whole) {
-            var direct = evalExpr(whole[1], runtime);
-            return direct === undefined ? '' : direct;
+        var current = value;
+        var seen = new Set();
+        for (var depth = 0; depth < 10; depth += 1) {
+            if (seen.has(current)) return current;
+            seen.add(current);
+            var whole = current.match(/^\s*\{\{\s*(.+?)\s*\}\}\s*$/);
+            if (whole) {
+                var direct = evalExpr(whole[1], runtime);
+                if (direct === undefined) return '';
+                if (typeof direct !== 'string') return direct;
+                current = direct;
+                continue;
+            }
+            var replaced = current.replace(/\{\{\s*(.+?)\s*\}\}/g, function (_, innerExpr) {
+                var resolved = evalExpr(innerExpr, runtime);
+                if (resolved === undefined || resolved === null) return '';
+                return typeof resolved === 'object' ? JSON.stringify(resolved) : String(resolved);
+            });
+            if (replaced === current || !/\{\{\s*.+?\s*\}\}/.test(replaced)) return replaced;
+            current = replaced;
         }
-        return value.replace(/\{\{\s*(.+?)\s*\}\}/g, function (_, innerExpr) {
-            var resolved = evalExpr(innerExpr, runtime);
-            if (resolved === undefined || resolved === null) return '';
-            return typeof resolved === 'object' ? JSON.stringify(resolved) : String(resolved);
-        });
+        return current;
     }
 
     function resolve(value, runtime) {

@@ -11,10 +11,22 @@ import {
 } from "../src/index.js";
 
 test("模板插值保留完整表达式的原始类型和长整型字符串", () => {
-    const runtime = { vars: { id: "2070168391735058434", count: 3, payload: { ok: true } } };
+    const runtime = {
+        vars: {
+            id: "2070168391735058434",
+            count: 3,
+            payload: { ok: true },
+            runNo: "123456",
+            recordName: "scenario-{{vars.runNo}}",
+            self: "{{vars.self}}"
+        }
+    };
     assert.equal(resolve("id={{vars.id}}", runtime), "id=2070168391735058434");
     assert.equal(resolve("{{vars.count}}", runtime), 3);
     assert.deepEqual(resolve("{{vars.payload}}", runtime), { ok: true });
+    assert.equal(resolve("{{vars.recordName}}", runtime), "scenario-123456");
+    assert.equal(resolve("name={{vars.recordName}}", runtime), "name=scenario-123456");
+    assert.equal(resolve("{{vars.self}}", runtime), "{{vars.self}}");
 });
 
 test("断言、响应提取和 URL 拼接", () => {

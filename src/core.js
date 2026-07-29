@@ -37,16 +37,28 @@ export function evalExpression(expression, runtime) {
 
 export function resolveString(value, runtime) {
     if (typeof value !== "string") return value;
-    const whole = value.match(/^\s*\{\{\s*(.+?)\s*\}\}\s*$/);
-    if (whole) {
-        const direct = evalExpression(whole[1], runtime);
-        return direct === undefined ? "" : direct;
+    let current = value;
+    const seen = new Set();
+    for (let depth = 0; depth < 10; depth += 1) {
+        if (seen.has(current)) return current;
+        seen.add(current);
+        const whole = current.match(/^\s*\{\{\s*(.+?)\s*\}\}\s*$/);
+        if (whole) {
+            const direct = evalExpression(whole[1], runtime);
+            if (direct === undefined) return "";
+            if (typeof direct !== "string") return direct;
+            current = direct;
+            continue;
+        }
+        const replaced = current.replace(/\{\{\s*(.+?)\s*\}\}/g, (_, expression) => {
+            const resolved = evalExpression(expression, runtime);
+            if (resolved === undefined || resolved === null) return "";
+            return typeof resolved === "object" ? JSON.stringify(resolved) : String(resolved);
+        });
+        if (replaced === current || !/\{\{\s*.+?\s*\}\}/.test(replaced)) return replaced;
+        current = replaced;
     }
-    return value.replace(/\{\{\s*(.+?)\s*\}\}/g, (_, expression) => {
-        const resolved = evalExpression(expression, runtime);
-        if (resolved === undefined || resolved === null) return "";
-        return typeof resolved === "object" ? JSON.stringify(resolved) : String(resolved);
-    });
+    return current;
 }
 
 export function resolve(value, runtime) {
