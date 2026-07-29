@@ -70,7 +70,10 @@ await build({
     outfile: path.join(dist, "scenario-test-cli.cjs"),
     platform: "node",
     format: "cjs",
-    target: ["node18"]
+    target: ["node18"],
+    define: {
+        __SCENARIO_TEST_UMD__: JSON.stringify(fs.readFileSync(path.join(dist, "scenario-test.umd.js"), "utf8"))
+    }
 });
 
 await build({

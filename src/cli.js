@@ -31,7 +31,7 @@ function parseArgs(argv) {
 }
 
 function printHelp() {
-    console.log(`scenario-test 0.2.10
+    console.log(`scenario-test 0.2.11
 
 Usage:
   node scenario-test-cli.cjs --config ./scenario.config.js --env local --all
@@ -92,6 +92,10 @@ async function copyRuntimeBrowser(projectRoot, directory, libraryUrl, force) {
     fs.mkdirSync(path.dirname(target), { recursive: true });
     if (source) {
         fs.copyFileSync(source, target);
+        return true;
+    }
+    if (typeof __SCENARIO_TEST_UMD__ === "string" && __SCENARIO_TEST_UMD__) {
+        fs.writeFileSync(target, __SCENARIO_TEST_UMD__, "utf8");
         return true;
     }
     const response = await fetch(libraryUrl);
