@@ -18,6 +18,14 @@ test("init 创建项目入口，且默认不覆盖现有文件", () => {
         assert.match(fs.readFileSync(configPath, "utf8"), /ScenarioTest\.registerConfig/);
         assert.match(fs.readFileSync(path.join(project, "scenario-test", "scenario-test.umd.js"), "utf8"), /ScenarioTest/);
         assert.match(fs.readFileSync(path.join(project, "scenario-test", "AI_SCENARIO_PROMPT.md"), "utf8"), /AI 场景生成 Prompt/);
+        assert.match(fs.readFileSync(path.join(project, "scenario-test", "SCENARIO_PATTERNS.md"), "utf8"), /创建、查询、精确清理/);
+        const readme = fs.readFileSync(path.join(project, "scenario-test", "README.md"), "utf8");
+        assert.match(readme, /目录说明/);
+        assert.match(readme, /配置环境和变量/);
+        assert.match(readme, /浏览器工作台/);
+        assert.match(readme, /常见问题/);
+        assert.match(readme, /升级运行时/);
+        assert.match(readme, /extract: \[\{ name: "orderId", path: "data\.id" \}\]/);
         assert.equal(fs.existsSync(path.join(project, ".codex", "skills", "scenario-test", "SKILL.md")), false);
 
         fs.writeFileSync(configPath, "// 用户配置\n", "utf8");

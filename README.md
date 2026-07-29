@@ -14,7 +14,7 @@
 3. 仅从以下固定版本地址下载 CLI 到系统临时目录：
    http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.2.9/dist/scenario-test-cli.cjs
 4. 使用 node <临时 CLI 路径> init --project . --dir "scenario-test" 执行初始化；不要传 --force。
-5. 检查并报告 scenario-test/index.html、scenario-test/scenario.config.js、scenario-test/scenarios/health.js、scenario-test/AI_SCENARIO_PROMPT.md、scenario-test/scenario-test.umd.js 和 scenario-test/scenario-test-cli.cjs 是已创建还是已保留。
+5. 检查并报告 scenario-test/index.html、scenario-test/scenario.config.js、scenario-test/scenarios/health.js、scenario-test/AI_SCENARIO_PROMPT.md、scenario-test/SCENARIO_PATTERNS.md、scenario-test/scenario-test.umd.js 和 scenario-test/scenario-test-cli.cjs 是已创建还是已保留。
 6. 不启动服务、不调用任何业务接口、不写入 Token、Secret 或真实测试数据。
 7. 最后只给出安装结果，以及后续运行命令：
    node scenario-test/scenario-test-cli.cjs --config scenario-test/scenario.config.js --env local --all
@@ -24,7 +24,7 @@
 
 完整独立版本见 [AI 安装 Prompt](docs/AI_INSTALL_PROMPT.md)。
 
-安装完成后，使用 [AI 场景生成 Prompt](docs/AI_SCENARIO_PROMPT.md) 让 AI 从项目接口与既有代码生成场景；安装 Prompt 只负责初始化，不会自动猜测业务用例。
+安装完成后，使用 [AI 场景生成 Prompt](docs/AI_SCENARIO_PROMPT.md) 让 AI 从项目接口与既有代码生成场景；初始化目录会同时提供登录认证、查询详情、创建清理、异步轮询和错误分支的可套改模式库。安装 Prompt 只负责初始化，不会自动猜测业务用例。
 
 ## 运行要求
 

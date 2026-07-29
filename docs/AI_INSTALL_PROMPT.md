@@ -16,6 +16,7 @@
    - scenario-test/scenario.config.js
    - scenario-test/scenarios/health.js
    - scenario-test/AI_SCENARIO_PROMPT.md
+   - scenario-test/SCENARIO_PATTERNS.md
    - scenario-test/scenario-test.umd.js
    - scenario-test/scenario-test-cli.cjs
 6. 不启动服务、不调用任何业务接口、不写入 Token、Secret 或真实测试数据。

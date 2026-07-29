@@ -5,7 +5,7 @@
 ```text
 请为当前项目生成 scenario-test 场景用例，场景目录为 scenario-test。
 
-先阅读 scenario-test/README.md、scenario-test/scenario.config.js、已有 scenarios/，再分析当前项目的 Controller、OpenAPI/Swagger、前端 API 调用、接口文档和已有自动化测试。不要猜测接口路径、字段、认证方式或响应结构；找不到依据时列出待确认项，不生成该步骤。
+先阅读 scenario-test/README.md、scenario-test/SCENARIO_PATTERNS.md、scenario-test/scenario.config.js、已有 scenarios/，再分析当前项目的 Controller、OpenAPI/Swagger、前端 API 调用、接口文档和已有自动化测试。不要猜测接口路径、字段、认证方式或响应结构；找不到依据时列出待确认项，不生成该步骤。场景模式库给出登录、查询、写入清理、异步和错误分支的完整骨架，但其中占位内容必须由当前项目证据替换。
 
 按以下要求实施：
 
