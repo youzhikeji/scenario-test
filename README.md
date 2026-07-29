@@ -7,12 +7,12 @@
 将下列 Prompt 粘贴给当前项目的 AI 助手，即可安装到默认的 `scenario-test` 目录。将 `scenario-test` 替换为团队约定的项目内相对目录，例如 `dev/场景测试`；不要使用绝对路径。
 
 ```text
-请在当前项目根目录安装 scenario-test v0.2.9，目标目录为 scenario-test。
+请在当前项目根目录安装 scenario-test v0.2.10，目标目录为 scenario-test。
 
 1. 确认 Node.js 版本不低于 18；不满足时停止并说明原因。
 2. 不克隆公共库源码，不执行 npm install，不修改业务代码、构建配置或已有场景文件。
 3. 仅从以下固定版本地址下载 CLI 到系统临时目录：
-   http://192.168.1.239/zhangqianfeng/scenario-test/-/raw/v0.2.9/dist/scenario-test-cli.cjs
+   https://github.com/youzhikeji/scenario-test/releases/download/v0.2.10/scenario-test-cli.cjs
 4. 使用 node <临时 CLI 路径> init --project . --dir "scenario-test" 执行初始化；不要传 --force。
 5. 检查并报告 scenario-test/index.html、scenario-test/scenario.config.js、scenario-test/scenarios/health.js、scenario-test/AI_SCENARIO_PROMPT.md、scenario-test/SCENARIO_PATTERNS.md、scenario-test/scenario-test.umd.js 和 scenario-test/scenario-test-cli.cjs 是已创建还是已保留。
 6. 不启动服务、不调用任何业务接口、不写入 Token、Secret 或真实测试数据。

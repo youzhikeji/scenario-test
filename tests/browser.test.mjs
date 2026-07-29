@@ -61,6 +61,9 @@ try {
         assert.equal(await page.locator("#scenario-test-root").evaluate((node) => getComputedStyle(node).getPropertyValue("--workspace-bg").trim()), "#f1ebe3");
         assert.match(await page.locator(".scenario-header-actions").textContent(), /风格/);
 
+        if (!await page.locator("#scenarioVar_expectedStatus").isVisible()) {
+            await page.locator("#configToggleBtn").click();
+        }
         await page.locator("#scenarioVar_expectedStatus").fill("DOWN");
         await page.locator("#saveSettingsBtn").click();
         assert.match(await page.locator("#settingsNotice").textContent(), /已保存并生效/);
