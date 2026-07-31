@@ -1,7 +1,7 @@
 ScenarioTest.registerScenario("health", ScenarioTest.defineScenario({
     name: "健康检查示例",
     vars: {
-        expectedStatus: "UP"
+        expectedStatus: "DOWN"
     },
     steps: [
         {

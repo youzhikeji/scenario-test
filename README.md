@@ -104,7 +104,7 @@ ScenarioTest.registerScenario("health", ScenarioTest.defineScenario({
 
 工作台只操作传入的挂载容器。配置、环境、Token 和场景变量按环境保存在浏览器本地；页面、调试请求和报告均显示原始值，适合项目内快速联调。
 
-`vars` 是启动初始值。私有项目可在此保存团队测试凭据，浏览器页面中的变量可按环境覆盖它，覆盖值保存在浏览器 LocalStorage。CLI/CI 中同名 `variables[].env` 环境变量优先于 `vars`；其后依次是 `vars`、场景 `vars` 和 `variables[].defaultValue`。公共库、示例和构建产物不得写入真实业务凭据。
+`vars` 是启动初始值。私有项目可在此保存团队测试凭据，浏览器页面中的变量可按项目 `storagePrefix` 和环境覆盖它，覆盖值保存在浏览器 LocalStorage。不同项目必须使用不同的 `storagePrefix`，`init` 会自动生成。CLI/CI 中同名 `variables[].env` 环境变量优先于 `vars`；其后依次是 `vars`、场景 `vars` 和 `variables[].defaultValue`。公共库、示例和构建产物不得写入真实业务凭据。
 
 业务项目应将 Release 的 UMD 下载并固定在项目目录中，再由页面引用本地文件：
 
@@ -157,6 +157,8 @@ CLI 从变量定义的 `env` 字段读取环境变量。私有项目可将联调
 公共步骤支持：
 
 - `method`、`path`、`params`、`request.headers`、`request.body`。
+- 未配置 `status` 和 `assertions` 时默认要求 HTTP 2xx，避免异常响应被误判为成功。
+- 浏览器 Cookie 会话可设置 `request.credentials: "include"`；Node CLI 当前不提供自动 Cookie Jar。
 - `status` 和 `assertions`：`exists`、`equals`、`includes`、`matches`、`oneOf`。
 - `extract` 与 `{{vars.name}}`、`{{lastResponseBody.data}}` 模板插值。
 - `timeoutMs`、`retryUntil`、执行取消。

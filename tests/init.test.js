@@ -16,6 +16,7 @@ test("init 创建项目入口，且默认不覆盖现有文件", () => {
         const configPath = path.join(project, "scenario-test", "scenario.config.js");
         assert.match(fs.readFileSync(indexPath, "utf8"), /\.\/scenario-test\.umd\.js/);
         assert.match(fs.readFileSync(configPath, "utf8"), /ScenarioTest\.registerConfig/);
+        assert.match(fs.readFileSync(configPath, "utf8"), /storagePrefix: "scenario-test\.scenario-test-init-/);
         assert.match(fs.readFileSync(configPath, "utf8"), /scenarios: \[]/);
         assert.equal(fs.existsSync(path.join(project, "scenario-test", "scenarios", "health.js")), false);
         assert.match(fs.readFileSync(path.join(project, "scenario-test", "scenario-test.umd.js"), "utf8"), /ScenarioTest/);
@@ -42,6 +43,27 @@ test("init 创建项目入口，且默认不覆盖现有文件", () => {
         assert.equal(fs.readFileSync(configPath, "utf8"), "// 用户配置\n");
     } finally {
         fs.rmSync(project, { recursive: true, force: true });
+    }
+});
+
+test("init 为不同项目生成独立浏览器存储前缀", () => {
+    const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-prefix-"));
+    try {
+        const firstProject = path.join(rootDir, "project-a");
+        const secondProject = path.join(rootDir, "project-b");
+        fs.mkdirSync(firstProject);
+        fs.mkdirSync(secondProject);
+        for (const project of [firstProject, secondProject]) {
+            const result = spawnSync(process.execPath, [path.join(root, "src/cli.js"), "init", "--project", project], { encoding: "utf8" });
+            assert.equal(result.status, 0, result.stderr);
+        }
+        const firstConfig = fs.readFileSync(path.join(firstProject, "scenario-test", "scenario.config.js"), "utf8");
+        const secondConfig = fs.readFileSync(path.join(secondProject, "scenario-test", "scenario.config.js"), "utf8");
+        assert.match(firstConfig, /storagePrefix: "scenario-test\.project-a"/);
+        assert.match(secondConfig, /storagePrefix: "scenario-test\.project-b"/);
+        assert.notEqual(firstConfig, secondConfig);
+    } finally {
+        fs.rmSync(rootDir, { recursive: true, force: true });
     }
 });
 

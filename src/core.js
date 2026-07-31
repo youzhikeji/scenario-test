@@ -165,6 +165,8 @@ export function buildAssertions(step, response, runtime) {
     const definitions = Array.isArray(step.assertions) ? [...step.assertions] : [];
     if (step.status !== undefined && !definitions.some((item) => item.target === "status")) {
         definitions.unshift({ name: `返回 HTTP ${step.status}`, target: "status", equals: step.status });
+    } else if (step.status === undefined && definitions.length === 0) {
+        definitions.push({ name: "返回 HTTP 2xx", target: "status", matches: "^2\\d\\d$" });
     }
     return definitions.map((definition) => evaluateAssertion(definition, response, runtime));
 }

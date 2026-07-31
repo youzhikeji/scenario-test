@@ -3,6 +3,7 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
         { key: "mock", name: "本地 Mock", baseUrl: "http://127.0.0.1:4310" }
     ],
     defaultEnvKey: "mock",
+    storagePrefix: "scenario-test.example-complete",
     requestTimeoutMs: 5000,
     variables: [
         { name: "demoAccount", label: "示例账号", env: "DEMO_ACCOUNT", defaultValue: "demo" },

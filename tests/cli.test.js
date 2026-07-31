@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
@@ -53,5 +53,18 @@ test("CLI 拒绝旧 window 全局配置与场景格式", async () => {
         assert.match(result.stderr, /配置文件未注册配置/);
     } finally {
         fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
+test("CLI 拒绝未知参数、缺失参数值和冲突选择", () => {
+    const cli = path.resolve(import.meta.dirname, "../src/cli.js");
+    for (const args of [
+        ["--unknown"],
+        ["--config", "--all"],
+        ["--all", "--scenario", "health"],
+        ["serve", "--port", "70000"]
+    ]) {
+        const result = spawnSync(process.execPath, [cli, ...args], { encoding: "utf8" });
+        assert.notEqual(result.status, 0, `参数应失败: ${args.join(" ")}`);
     }
 });

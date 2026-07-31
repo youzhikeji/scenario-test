@@ -270,6 +270,17 @@ export function createLegacyRuntime(options) {
         return String(Date.now()) + String(Math.random()).slice(2);
     }
 
+    function createRunIdentifiers() {
+        var timestamp = String(Date.now());
+        var random = window.crypto && window.crypto.randomUUID
+            ? window.crypto.randomUUID().replace(/-/g, '').slice(0, 8)
+            : Math.random().toString(16).slice(2, 10).padEnd(8, '0');
+        return {
+            runId: timestamp + '-' + random,
+            runNo: timestamp.slice(-6) + '-' + random.slice(0, 4)
+        };
+    }
+
     function buildScenarioRuntimeVars() {
         var cfg = appConfig;
         var scenario = state.scenario || {};
@@ -280,11 +291,8 @@ export function createLegacyRuntime(options) {
         if (missing.length) {
             throw new Error('缺少场景凭据：' + missing.map(function (def) { return def.label; }).join('、') + '。请在“配置参数 → 当前场景凭据”中填写并保存。');
         }
-        var runSeed = String(Date.now());
-        var vars = Object.assign({}, cfg.vars || {}, scenario.vars || {}, scenarioVars, {
-            runId: runSeed,
-            runNo: runSeed.slice(-6)
-        });
+        var identifiers = createRunIdentifiers();
+        var vars = Object.assign({}, scenario.vars || {}, cfg.vars || {}, scenarioVars, identifiers);
         (scenario.generatedVars || []).forEach(function (def) {
             if (!def || !def.name) return;
             if (def.type === 'timestamp') {
@@ -417,6 +425,8 @@ export function createLegacyRuntime(options) {
         }
         var bodyData = request.body;
         var fetchOptions = { method: method, headers: headers, signal: runtime.abortController.signal };
+        if (request.credentials !== undefined) fetchOptions.credentials = request.credentials;
+        if (request.redirect !== undefined) fetchOptions.redirect = request.redirect;
         if (bodyData !== undefined && bodyData !== null && method !== 'GET' && method !== 'HEAD') {
             if (typeof bodyData === 'string') {
                 fetchOptions.body = bodyData;

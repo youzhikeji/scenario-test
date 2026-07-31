@@ -289,6 +289,8 @@ const legacyCore = (function (globalRoot) {
             return item && item.target === 'status';
         })) {
             defs.unshift({ name: '返回 HTTP ' + step.status, target: 'status', equals: step.status });
+        } else if (step.status === undefined && defs.length === 0) {
+            defs.push({ name: '返回 HTTP 2xx', target: 'status', matches: '^2\\d\\d$' });
         }
         return defs.map(function (def) { return evaluateAssertion(def, response, runtime); });
     }

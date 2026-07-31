@@ -1,4 +1,6 @@
-export const DEFAULT_LIBRARY_URL = "https://github.com/youzhikeji/scenario-test/releases/download/v0.2.12/scenario-test.umd.js";
+import { VERSION } from "./version.generated.js";
+
+export const DEFAULT_LIBRARY_URL = `https://github.com/youzhikeji/scenario-test/releases/download/v${VERSION}/scenario-test.umd.js`;
 
 const AUTHORING_PROMPT = `# AI 场景生成 Prompt
 
@@ -13,7 +15,7 @@ const AUTHORING_PROMPT = `# AI 场景生成 Prompt
 3. 在 \`scenario.config.js\` 维护 \`envs\`、\`vars\`、\`variables\` 和 \`scenarios\`。私有项目可在 \`vars\` 保存联调凭据；\`variables\` 只声明标签、\`required\` 与可选 \`env\` 映射。源码能确认请求字段但不能确认必填取值时，在配置 \`vars\` 中留空，并在 \`variables\` 中声明为 \`required: true\`；场景只引用该变量，禁止填入猜测值或测试标记。
 4. 先参照 \`SCENARIO_PATTERNS.md\` 的完整模式，再按本项目证据替换路径、字段和响应断言；模式中的尖括号占位内容不得直接写入场景。场景必须使用 \`ScenarioTest.registerScenario(id, ScenarioTest.defineScenario({...}))\`，配置中的场景 id、文件注册 id 必须一致。
 5. 每一步写 \`name\`、\`method\`、\`path\`、\`status\`，并为关键业务结果写 \`assertions\`。Query 参数只能写在步骤顶层 \`params\`，不能写成 \`request.params\`。用 \`extract\` 保存响应 ID、Token 或状态，再用 \`{{vars.name}}\` 串联后续步骤。
-6. 认证是普通项目步骤：确认登录接口时先登录并提取 Token；无法确认时仅声明变量并在具体 Header、Query 或 Body 中引用，不虚构框架级认证。
+6. 认证是普通项目步骤：确认登录接口时先登录并提取 Token；无法确认时仅声明变量并在具体 Header、Query 或 Body 中引用，不虚构框架级认证。浏览器 Cookie 会话必须有项目证据并显式设置 request.credentials 为 include；Node CLI 当前不提供自动 Cookie Jar。
 7. \`runId\` 和 \`runNo\` 是每次执行自动生成的内置变量，不要在配置或场景中重新定义。写入场景使用 \`scenario-{{vars.runNo}}\` 等测试标记。清理只能按刚提取的 ID 或测试标记精确定位，并用 \`when\` 防止空值删除；无法确认安全清理条件时不生成删除步骤。
 8. 默认保持 \`failurePolicy: "stop"\`。只有在完成状态字段和终态值都有证据时才使用 \`retryUntil\`，且 assertions 必须断言该终态值；只断言字段存在会立即通过，禁止配合 \`retryUntil\`。完成状态未知时最多生成一次状态查询。不要写固定 sleep。
 9. 错误响应体没有代码、文档或既有测试依据时，只断言已确认的 HTTP status，不能猜测或断言 code、message、error 等字段存在。
@@ -52,7 +54,7 @@ const SCENARIO_PATTERNS = [
     "        ]",
     "    }));",
     "",
-    "认证位于 Query、Cookie 或 Body 时，直接在 params、request.headers 或 request.body 引用变量。没有可确认登录接口时，只在 vars 和 variables 中声明已有凭据，不能虚构登录流程。",
+    "认证位于 Query、Header 或 Body 时，直接在 params、request.headers 或 request.body 引用变量。浏览器 Cookie 会话必须有代码依据并显式设置 request.credentials: \"include\"；Node CLI 当前不提供自动 Cookie Jar。没有可确认登录接口时，只在 vars 和 variables 中声明已有凭据，不能虚构登录流程。",
     "",
     "## 模式二：只读列表、提取 ID、详情校验",
     "",
@@ -110,7 +112,8 @@ const SCENARIO_PATTERNS = [
     "AI 无法定位接口时，提供 Controller 文件路径、OpenAPI 导出、前端 API 模块路径、已有请求响应样例、认证接口样例或测试变量名中的任一项。不要提供生产凭据或个人数据。"
 ].join("\n");
 
-export function createProjectFiles(directory = "scenario-test") {
+export function createProjectFiles(directory = "scenario-test", options = {}) {
+    const storagePrefix = options.storagePrefix || "scenario-test.project";
     return {
         [`${directory}/index.html`]: `<!doctype html>
 <html lang="zh-CN">
@@ -134,6 +137,7 @@ export function createProjectFiles(directory = "scenario-test") {
         { key: "local", name: "本地开发", baseUrl: "http://localhost:8080" }
     ],
     defaultEnvKey: "local",
+    storagePrefix: ${JSON.stringify(storagePrefix)},
     requestTimeoutMs: 30000,
     vars: {},
     variables: [],
@@ -205,7 +209,7 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
 
 \`CLI 环境变量 / 浏览器页面覆盖 > scenario.config.js 的 vars > 场景 vars > variables[].defaultValue\`
 
-浏览器中保存的变量会按环境保存到 LocalStorage；点击清除当前环境覆盖后，立即回退到 \`vars\`。CLI 只读取系统环境变量和配置文件，不读取浏览器 LocalStorage。
+浏览器中保存的变量会按项目 \`storagePrefix\` 和环境保存到 LocalStorage；点击清除当前环境覆盖后，立即回退到 \`vars\`。CLI 只读取系统环境变量和配置文件，不读取浏览器 LocalStorage。 \`init\` 会根据项目目录名生成隔离前缀。
 
 ## 编写场景
 
@@ -244,8 +248,9 @@ ScenarioTest.registerScenario("create-order", ScenarioTest.defineScenario({
 
 - 用 \`{{vars.name}}\` 在 path、Query、Header、Body 中引用变量。
 - 用 \`extract\` 从响应提取 ID、Token 或状态，再供后续步骤使用。
-- 登录、换 Token、Cookie、签名都按普通步骤和变量实现；认证方式由项目场景决定，公共框架不会猜测或强制统一。
+- 登录、换 Token、签名都按普通步骤和变量实现；浏览器 Cookie 会话显式使用 \`request.credentials: "include"\`，Node CLI 当前不提供自动 Cookie Jar。
 - 每一步至少写 \`name\`、\`method\`、\`path\`、\`status\`；关键结果补充 \`assertions\`。
+- 未写 \`status\` 和 \`assertions\` 时运行时默认要求 HTTP 2xx，不能把异常响应当成功。
 - 最终一致性使用 \`retryUntil\`，避免固定等待；前置变量可能为空的删除操作使用 \`when\` 保护。
 - 默认失败即停止；只有需要收集多个失败时才在场景上设 \`failurePolicy: "continue"\`。
 

@@ -6,6 +6,13 @@ import { pathToFileURL } from "node:url";
 import * as ScenarioTest from "./node.js";
 import { createXlsxAdapter, readWorkbookRows } from "./adapters/xlsx.js";
 import { DEFAULT_LIBRARY_URL, createProjectFiles } from "./init-templates.js";
+import { VERSION } from "./version.generated.js";
+
+function argumentValue(argv, index, option) {
+    const value = argv[index + 1];
+    if (!value || value.startsWith("--")) throw new Error(`${option} 缺少参数值`);
+    return value;
+}
 
 function parseArgs(argv) {
     const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", port: 4300, project: "", dir: "", libraryUrl: "", force: false };
@@ -13,25 +20,29 @@ function parseArgs(argv) {
     if (["run", "serve", "init"].includes(argv[0])) { args.command = argv[0]; start = 1; }
     for (let index = start; index < argv.length; index += 1) {
         const item = argv[index];
-        if (item === "--config") args.config = argv[++index] || "";
-        else if (item === "--scenario") args.scenario = argv[++index] || "";
-        else if (item === "--env") args.env = argv[++index] || "";
-        else if (item === "--base-url") args.baseUrl = argv[++index] || "";
-        else if (["--token", "--authorization"].includes(item)) args.authorization = argv[++index] || "";
-        else if (item === "--port") args.port = Number(argv[++index] || 4300);
-        else if (item === "--project") args.project = argv[++index] || "";
-        else if (item === "--dir") args.dir = argv[++index] || "";
-        else if (item === "--library-url") args.libraryUrl = argv[++index] || "";
+        if (item === "--config") args.config = argumentValue(argv, index++, item);
+        else if (item === "--scenario") args.scenario = argumentValue(argv, index++, item);
+        else if (item === "--env") args.env = argumentValue(argv, index++, item);
+        else if (item === "--base-url") args.baseUrl = argumentValue(argv, index++, item);
+        else if (["--token", "--authorization"].includes(item)) args.authorization = argumentValue(argv, index++, item);
+        else if (item === "--port") args.port = Number(argumentValue(argv, index++, item));
+        else if (item === "--project") args.project = argumentValue(argv, index++, item);
+        else if (item === "--dir") args.dir = argumentValue(argv, index++, item);
+        else if (item === "--library-url") args.libraryUrl = argumentValue(argv, index++, item);
         else if (item === "--force") args.force = true;
         else if (item === "--all") args.all = true;
         else if (["--help", "-h"].includes(item)) args.help = true;
+        else if (item.startsWith("-")) throw new Error(`未知参数: ${item}`);
         else if (!args.scenario && args.command === "run") args.scenario = item;
+        else throw new Error(`无法识别的参数: ${item}`);
     }
+    if (args.all && args.scenario) throw new Error("--all 与 --scenario 不能同时使用");
+    if (!Number.isInteger(args.port) || args.port < 1 || args.port > 65535) throw new Error("--port 必须是 1-65535 的整数");
     return args;
 }
 
 function printHelp() {
-    console.log(`scenario-test 0.2.12
+    console.log(`scenario-test ${VERSION}
 
 Usage:
   node scenario-test-cli.cjs --config ./scenario.config.js --env local --all
@@ -108,9 +119,11 @@ async function initCommand(args) {
     const projectRoot = path.resolve(args.project || process.cwd());
     const directory = resolveInitDirectory(projectRoot, args.dir);
     const libraryUrl = args.libraryUrl || DEFAULT_LIBRARY_URL;
+    const projectName = path.basename(projectRoot).trim() || "project";
+    const storagePrefix = `scenario-test.${projectName.replace(/[^\p{L}\p{N}._-]+/gu, "-")}`;
     const created = [];
     const skipped = [];
-    for (const [relativePath, content] of Object.entries(createProjectFiles(directory))) {
+    for (const [relativePath, content] of Object.entries(createProjectFiles(directory, { storagePrefix }))) {
         (writeProjectFile(projectRoot, relativePath, content, args.force) ? created : skipped).push(relativePath);
     }
     const cliPath = `${directory}/scenario-test-cli.cjs`;

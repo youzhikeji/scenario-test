@@ -3,6 +3,7 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
         { key: "mock", name: "Mock 环境", baseUrl: "https://mock.local" }
     ],
     defaultEnvKey: "mock",
+    storagePrefix: "scenario-test.example-basic",
     requestTimeoutMs: 5000,
     vars: {
         expectedStatus: "UP"

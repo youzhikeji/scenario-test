@@ -49,9 +49,20 @@ function createRequestSignal(parentSignal, timeoutMs) {
     };
 }
 
+function createRunIdentifiers() {
+    const timestamp = String(Date.now());
+    const random = globalThis.crypto?.randomUUID
+        ? globalThis.crypto.randomUUID().replace(/-/g, "").slice(0, 8)
+        : Math.random().toString(16).slice(2, 10).padEnd(8, "0");
+    return {
+        runId: `${timestamp}-${random}`,
+        runNo: `${timestamp.slice(-6)}-${random.slice(0, 4)}`
+    };
+}
+
 function buildGeneratedVars(scenario, baseVars, environmentVariables) {
-    const runId = String(Date.now());
-    const vars = { ...(scenario.vars || {}), ...(baseVars || {}), runId, runNo: runId.slice(-6) };
+    const identifiers = createRunIdentifiers();
+    const vars = { ...(scenario.vars || {}), ...(baseVars || {}), ...identifiers };
     for (const [name, environmentName] of Object.entries(scenario.envVars || {})) {
         const value = environmentVariables?.[environmentName] ?? vars[name];
         if (value === undefined || value === null || value === "") {
@@ -123,6 +134,8 @@ async function executeHttp(step, runtime, options) {
         headers.Authorization = options.authorization;
     }
     const fetchOptions = { method, headers };
+    if (request.credentials !== undefined) fetchOptions.credentials = request.credentials;
+    if (request.redirect !== undefined) fetchOptions.redirect = request.redirect;
     if (request.fileUpload) {
         if (!options.io?.createUploadBody) throw new Error("当前运行环境不支持 fileUpload");
         const upload = await options.io.createUploadBody(resolve(request.fileUpload, runtime), runtime);
@@ -256,7 +269,7 @@ export function createEngine(engineOptions = {}) {
         const config = runOptions.config || engineOptions.config || {};
         const runtime = createRuntime(scenario, {
             config,
-            vars: runOptions.vars,
+            vars: { ...(engineOptions.vars || {}), ...(runOptions.vars || {}) },
             environmentVariables: runOptions.environmentVariables || engineOptions.environmentVariables
         });
         const results = [];

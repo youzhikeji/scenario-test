@@ -28,6 +28,7 @@
 6. 认证是项目自己的普通步骤：
    - 已能从代码或文档确定登录接口时，先请求登录、extract Token，再在后续步骤的 request.headers 或 request.body 中显式引用。
    - 无法确定认证方式时，只在 variables 中声明所需变量，并在场景步骤中引用；不要虚构登录流程或框架级认证配置。
+   - 浏览器 Cookie 会话必须有项目证据并显式使用 `request.credentials: "include"`；Node CLI 当前不提供自动 Cookie Jar。
 7. 写入类场景必须使用可识别测试标记，例如 scenario-{{vars.runNo}}。如果能从代码确认安全的清理条件，则在最后添加清理步骤；清理必须按测试标记或刚 extract 的 ID 精确定位，并使用 when 防止空值删除。无法确认安全清理方式时，不生成删除步骤，明确标记待人工确认。
 8. 默认 failurePolicy 保持 stop。只有需要收集多个独立校验失败时才显式设置 continue。只有完成状态字段和终态值都有证据时才使用 retryUntil，且 assertions 必须比较该终态；禁止 retryUntil 只配 exists。完成状态未知时最多生成一次状态查询。不要用固定 sleep。
 9. 错误响应体没有代码、文档或既有测试依据时，只断言已确认的 HTTP status，不猜测或断言 code、message、error 等字段存在。
