@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import ExcelJS from "exceljs";
+import { validatePath } from "../utils/path-validator.js";
 
 export function createXlsxAdapter(options = {}) {
     const workspace = path.resolve(options.workspace || process.cwd());
@@ -10,12 +11,31 @@ export function createXlsxAdapter(options = {}) {
         },
         async execute({ step }) {
             const definition = step.prepareXlsx;
-            const templatePath = path.isAbsolute(definition.template)
-                ? definition.template
-                : path.resolve(workspace, definition.template);
-            const outputPath = path.isAbsolute(definition.output)
-                ? definition.output
-                : path.resolve(workspace, definition.output);
+
+            // ✅ 验证模板路径在工作区内
+            let templatePath;
+            try {
+                templatePath = validatePath(workspace, definition.template);
+            } catch (error) {
+                throw new Error(
+                    `Excel 模板路径不安全: ${definition.template}\n` +
+                    `原因: ${error.message}\n` +
+                    `提示: 模板必须在工作区内 (${workspace})`
+                );
+            }
+
+            // ✅ 验证输出路径在工作区内
+            let outputPath;
+            try {
+                outputPath = validatePath(workspace, definition.output);
+            } catch (error) {
+                throw new Error(
+                    `Excel 输出路径不安全: ${definition.output}\n` +
+                    `原因: ${error.message}\n` +
+                    `提示: 输出路径必须在工作区内 (${workspace})`
+                );
+            }
+
             if (!fs.existsSync(templatePath)) throw new Error(`Excel 模板不存在: ${templatePath}`);
             const workbook = new ExcelJS.Workbook();
             await workbook.xlsx.readFile(templatePath);

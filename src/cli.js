@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -7,6 +6,7 @@ import * as ScenarioTest from "./node.js";
 import { createXlsxAdapter, readWorkbookRows } from "./adapters/xlsx.js";
 import { DEFAULT_LIBRARY_URL, createProjectFiles } from "./init-templates.js";
 import { VERSION } from "./version.generated.js";
+import { validatePath } from "./utils/path-validator.js";
 
 function argumentValue(argv, index, option) {
     const value = argv[index + 1];
@@ -15,22 +15,27 @@ function argumentValue(argv, index, option) {
 }
 
 function parseArgs(argv) {
-    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", port: 4300, project: "", dir: "", libraryUrl: "", force: false };
+    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", port: 4300, project: "", dir: "", libraryUrl: "", force: false, allowExternalPlugins: false };
     let start = 0;
     if (["run", "serve", "init"].includes(argv[0])) { args.command = argv[0]; start = 1; }
+    let deprecatedAuthUsed = false;
     for (let index = start; index < argv.length; index += 1) {
         const item = argv[index];
         if (item === "--config") args.config = argumentValue(argv, index++, item);
         else if (item === "--scenario") args.scenario = argumentValue(argv, index++, item);
         else if (item === "--env") args.env = argumentValue(argv, index++, item);
         else if (item === "--base-url") args.baseUrl = argumentValue(argv, index++, item);
-        else if (["--token", "--authorization"].includes(item)) args.authorization = argumentValue(argv, index++, item);
+        else if (["--token", "--authorization"].includes(item)) {
+            args.authorization = argumentValue(argv, index++, item);
+            deprecatedAuthUsed = true;
+        }
         else if (item === "--port") args.port = Number(argumentValue(argv, index++, item));
         else if (item === "--project") args.project = argumentValue(argv, index++, item);
         else if (item === "--dir") args.dir = argumentValue(argv, index++, item);
         else if (item === "--library-url") args.libraryUrl = argumentValue(argv, index++, item);
         else if (item === "--force") args.force = true;
         else if (item === "--all") args.all = true;
+        else if (item === "--allow-external-plugins") args.allowExternalPlugins = true;
         else if (["--help", "-h"].includes(item)) args.help = true;
         else if (item.startsWith("-")) throw new Error(`未知参数: ${item}`);
         else if (!args.scenario && args.command === "run") args.scenario = item;
@@ -38,6 +43,24 @@ function parseArgs(argv) {
     }
     if (args.all && args.scenario) throw new Error("--all 与 --scenario 不能同时使用");
     if (!Number.isInteger(args.port) || args.port < 1 || args.port > 65535) throw new Error("--port 必须是 1-65535 的整数");
+
+    // ✅ 环境变量优先于命令行参数
+    if (process.env.SCENARIO_AUTH) {
+        args.authorization = process.env.SCENARIO_AUTH;
+        if (deprecatedAuthUsed) {
+            console.warn(
+                "\n⚠️  警告: 同时检测到 SCENARIO_AUTH 环境变量和 --authorization 参数\n" +
+                "   环境变量优先级更高，--authorization 参数将被忽略\n"
+            );
+        }
+    } else if (deprecatedAuthUsed) {
+        console.warn(
+            "\n⚠️  弃用警告: --authorization 参数将在未来版本中移除\n" +
+            "   推荐使用环境变量: export SCENARIO_AUTH=\"Bearer your-token\"\n" +
+            "   原因: 命令行参数在进程列表中可见，存在安全风险\n"
+        );
+    }
+
     return args;
 }
 
@@ -56,8 +79,27 @@ Options:
   --base-url <url>      临时覆盖 Base URL
   --scenario <id>       执行指定场景
   --all                 执行配置中的全部场景
-  --authorization <v>   临时设置 Authorization
   --port <number>       浏览器服务端口，默认 4300
+  --allow-external-plugins  允许加载外部插件（有安全风险）
+
+认证选项:
+  环境变量 SCENARIO_AUTH    推荐方式，设置授权令牌
+  --authorization <v>       （已弃用）命令行传递令牌
+
+初始化选项:
+  --project <path>      项目根目录
+  --dir <name>          场景测试目录名
+  --library-url <url>   库文件下载地址
+  --force               强制覆盖已有文件
+
+示例:
+  # 推荐: 使用环境变量
+  export SCENARIO_AUTH="Bearer your-token"
+  node scenario-test-cli.cjs --config scenario.config.js --all
+
+  # 或从 .env 文件加载
+  export $(cat .env | xargs)
+  node scenario-test-cli.cjs --config scenario.config.js --all
   --project <dir>       初始化业务项目的目标目录
   --dir <path>          场景测试目录，默认 scenario-test
   --library-url <url>   初始化时下载 UMD 的 Release 地址
@@ -147,10 +189,27 @@ function resolveConfigPath(value) {
     return candidate;
 }
 
-async function loadPlugins(config, configDir) {
+async function loadPlugins(config, configDir, options = {}) {
     const plugins = [];
     for (const pluginPath of config.nodePlugins || []) {
-        const absolutePath = path.isAbsolute(pluginPath) ? pluginPath : path.resolve(configDir, pluginPath);
+        // ✅ 验证插件路径
+        let absolutePath;
+        try {
+            absolutePath = validatePath(configDir, pluginPath);
+        } catch (error) {
+            if (options.allowExternalPlugins) {
+                // 明确允许外部插件
+                console.warn(`⚠️  加载外部插件: ${pluginPath}`);
+                absolutePath = path.resolve(pluginPath);
+            } else {
+                throw new Error(
+                    `插件路径不安全: ${pluginPath}\n` +
+                    `原因: ${error.message}\n` +
+                    `提示: 插件必须在配置目录内 (${configDir})，或使用 --allow-external-plugins 标志`
+                );
+            }
+        }
+
         const imported = await import(pathToFileURL(absolutePath).href);
         const factory = imported.default || imported;
         const pluginApi = { ...ScenarioTest, readWorkbookRows };
@@ -199,7 +258,7 @@ async function runCommand(args) {
         ? config.scenarios
         : config.scenarios.filter((item) => [item.id, item.name, item.url].includes(args.scenario || config.scenarios[0]?.id));
     if (!entries.length) throw new Error(args.scenario ? `未找到场景: ${args.scenario}` : "配置中没有场景");
-    const plugins = await loadPlugins(config, configDir);
+    const plugins = await loadPlugins(config, configDir, { allowExternalPlugins: args.allowExternalPlugins });
     const adapters = { xlsx: createXlsxAdapter({ workspace: configDir }) };
     for (const plugin of plugins) Object.assign(adapters, plugin?.adapters || {});
     const baseOptions = {

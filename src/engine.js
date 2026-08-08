@@ -60,13 +60,30 @@ function createRunIdentifiers() {
     };
 }
 
-function buildGeneratedVars(scenario, baseVars, environmentVariables) {
+function buildGeneratedVars(scenario, baseVars, environmentVariables, options = {}) {
     const identifiers = createRunIdentifiers();
     const vars = { ...(scenario.vars || {}), ...(baseVars || {}), ...identifiers };
+
+    // ✅ 是否在错误消息中显示详细信息（仅开发模式）
+    const verboseErrors = options.verboseErrors || process.env.SCENARIO_VERBOSE_ERRORS === "true";
+
     for (const [name, environmentName] of Object.entries(scenario.envVars || {})) {
         const value = environmentVariables?.[environmentName] ?? vars[name];
         if (value === undefined || value === null || value === "") {
-            throw new Error(`缺少场景变量 ${environmentName}（映射到 vars.${name}）`);
+            // ✅ 生产模式不泄露环境变量名
+            if (verboseErrors) {
+                throw new Error(
+                    `缺少场景变量: vars.${name}\n` +
+                    `环境变量映射: ${environmentName}\n` +
+                    `提示: 在配置中设置 vars.${name} 或设置环境变量 ${environmentName}`
+                );
+            } else {
+                throw new Error(
+                    `缺少必需的场景变量: vars.${name}\n` +
+                    `提示: 请在配置文件的 vars 中设置该变量，或通过环境变量提供\n` +
+                    `详细信息可通过设置 SCENARIO_VERBOSE_ERRORS=true 查看`
+                );
+            }
         }
         vars[name] = value;
     }
@@ -82,11 +99,18 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables) {
         } else if (definition.type === "signature") {
             const params = Object.fromEntries(Object.entries(definition.params || {})
                 .map(([key, variableName]) => [key, vars[variableName]]));
-            vars[definition.name] = generateSignature(params, vars[definition.secretVar || "apiSecret"]);
+            // ✅ 从 vars 中获取密钥但不在错误消息中暴露
+            const secret = vars[definition.secretVar || "apiSecret"];
+            if (!secret) {
+                throw new Error(`签名生成失败: 缺少密钥变量 vars.${definition.secretVar || "apiSecret"}`);
+            }
+            vars[definition.name] = generateSignature(params, secret);
         } else {
             throw new Error(`不支持的 generatedVars 类型: ${definition.type}`);
         }
     }
+    // ✅ 不在这里冻结，因为 extract 需要修改 vars
+    // 冻结在外层处理
     return vars;
 }
 
@@ -221,9 +245,21 @@ export function createEngine(engineOptions = {}) {
         let assertions = [];
         const retry = step.retryUntil || null;
         const totalAttempts = retry ? Number(retry.maxAttempts || 10) + 1 : 1;
+        // ✅ 添加重试超时保护
+        const retryStartTime = now();
+        const maxElapsedMs = retry?.maxElapsedMs || 300000; // 默认 5 分钟
         try {
             for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
                 if (options.signal?.aborted) throw options.signal.reason || new Error("执行已取消");
+
+                // ✅ 检查总耗时
+                if (retry && (now() - retryStartTime) > maxElapsedMs) {
+                    throw new Error(
+                        `重试超时: 已尝试 ${attempt - 1} 次，耗时超过 ${maxElapsedMs}ms\n` +
+                        `提示: 考虑调整 retryUntil.maxElapsedMs 或检查接口响应`
+                    );
+                }
+
                 const adapter = chooseAdapter(step, adapters);
                 lastExecution = adapter
                     ? await executeAdapter(adapter, step, runtime, options)
@@ -233,7 +269,10 @@ export function createEngine(engineOptions = {}) {
                 applyExtract(step, lastExecution.response, runtime);
                 assertions = buildAssertions(step, lastExecution.response, runtime);
                 if (assertions.every((item) => item.passed) || attempt === totalAttempts) break;
-                await delay(Number(retry.intervalMs || 2000), options.signal);
+
+                // ✅ 确保最小重试间隔
+                const intervalMs = Math.max(100, Number(retry.intervalMs || 2000));
+                await delay(intervalMs, options.signal);
             }
             const failed = assertions.find((item) => !item.passed);
             return {
