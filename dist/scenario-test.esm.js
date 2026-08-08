@@ -367,10 +367,12 @@ function evaluateAssertion(definition, response, runtime) {
   }
   if (definition.matches !== void 0) {
     expected = resolve(definition.matches, runtime);
-    try {
-      passed = passed && new RegExp(String(expected)).test(String(actual == null ? "" : actual));
-    } catch {
-      passed = false;
+    if (!(definition.implicit === true && typeof actual !== "number")) {
+      try {
+        passed = passed && new RegExp(String(expected)).test(String(actual == null ? "" : actual));
+      } catch {
+        passed = false;
+      }
     }
   }
   if (definition.oneOf !== void 0) {
@@ -389,7 +391,7 @@ function buildAssertions(step, response, runtime) {
   if (step.status !== void 0 && !definitions.some((item) => item.target === "status")) {
     definitions.unshift({ name: `\u8FD4\u56DE HTTP ${step.status}`, target: "status", equals: step.status });
   } else if (step.status === void 0 && definitions.length === 0) {
-    definitions.push({ name: "\u8FD4\u56DE HTTP 2xx", target: "status", matches: "^2\\d\\d$" });
+    definitions.push({ name: "\u8FD4\u56DE HTTP 2xx", target: "status", matches: "^2\\d\\d$", implicit: true });
   }
   return definitions.map((definition) => evaluateAssertion(definition, response, runtime));
 }
@@ -1005,7 +1007,9 @@ var legacyCore = function(globalRoot) {
     }
     if (def.matches !== void 0) {
       expected = resolve2(def.matches, runtime);
-      passed = passed && new RegExp(expected).test(String(actual == null ? "" : actual));
+      if (!(def.implicit === true && typeof actual !== "number")) {
+        passed = passed && new RegExp(expected).test(String(actual == null ? "" : actual));
+      }
     }
     if (Array.isArray(def.oneOf)) {
       expected = resolve2(clone2(def.oneOf), runtime);
@@ -1027,7 +1031,7 @@ var legacyCore = function(globalRoot) {
     })) {
       defs.unshift({ name: "\u8FD4\u56DE HTTP " + step.status, target: "status", equals: step.status });
     } else if (step.status === void 0 && defs.length === 0) {
-      defs.push({ name: "\u8FD4\u56DE HTTP 2xx", target: "status", matches: "^2\\d\\d$" });
+      defs.push({ name: "\u8FD4\u56DE HTTP 2xx", target: "status", matches: "^2\\d\\d$", implicit: true });
     }
     return defs.map(function(def) {
       return evaluateAssertion2(def, response, runtime);

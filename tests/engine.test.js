@@ -57,6 +57,34 @@ test("无显式断言的 HTTP 500 不得通过", async () => {
     assert.equal(report.results[0].assertions[0].name, "返回 HTTP 2xx");
 });
 
+test("本地适配器返回 status=LOCAL 时默认 2xx 断言不误判失败", async () => {
+    const localAdapter = {
+        matches: (step) => Boolean(step.prepareLocal),
+        async execute() {
+            return {
+                method: "LOCAL",
+                path: "local-step",
+                response: { status: "LOCAL", headers: {}, body: { ok: true }, bodyText: null }
+            };
+        }
+    };
+    const scenario = defineScenario({
+        name: "本地适配器步骤",
+        steps: [{ name: "本地准备", prepareLocal: { marker: true } }]
+    });
+    const report = await createEngine({
+        baseUrl: "https://mock.local",
+        fetch: async () => { throw new Error("不应发起 HTTP 请求"); },
+        adapters: { local: localAdapter }
+    }).runScenario(scenario);
+    assert.equal(report.executed, 1);
+    assert.equal(report.failed, 0);
+    assert.equal(report.passed, true);
+    assert.equal(report.results[0].assertions[0].name, "返回 HTTP 2xx");
+    assert.equal(report.results[0].assertions[0].passed, true);
+    assert.equal(report.results[0].assertions[0].actual, "LOCAL");
+});
+
 test("配置变量覆盖场景变量且每次执行生成唯一标识", async () => {
     const seen = [];
     const engine = createEngine({

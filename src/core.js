@@ -145,8 +145,12 @@ export function evaluateAssertion(definition, response, runtime) {
     }
     if (definition.matches !== undefined) {
         expected = resolve(definition.matches, runtime);
-        try { passed = passed && new RegExp(String(expected)).test(String(actual == null ? "" : actual)); }
-        catch { passed = false; }
+        // 隐式默认断言（无显式 status/assertions 时追加的 HTTP 2xx 检查）仅对数字
+        // HTTP 状态码生效；本地适配器（如 prepareXlsx 返回 status: "LOCAL"）不参与匹配
+        if (!(definition.implicit === true && typeof actual !== "number")) {
+            try { passed = passed && new RegExp(String(expected)).test(String(actual == null ? "" : actual)); }
+            catch { passed = false; }
+        }
     }
     if (definition.oneOf !== undefined) {
         expected = resolve(definition.oneOf, runtime);
@@ -166,7 +170,7 @@ export function buildAssertions(step, response, runtime) {
     if (step.status !== undefined && !definitions.some((item) => item.target === "status")) {
         definitions.unshift({ name: `返回 HTTP ${step.status}`, target: "status", equals: step.status });
     } else if (step.status === undefined && definitions.length === 0) {
-        definitions.push({ name: "返回 HTTP 2xx", target: "status", matches: "^2\\d\\d$" });
+        definitions.push({ name: "返回 HTTP 2xx", target: "status", matches: "^2\\d\\d$", implicit: true });
     }
     return definitions.map((definition) => evaluateAssertion(definition, response, runtime));
 }

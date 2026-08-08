@@ -267,7 +267,11 @@ const legacyCore = (function (globalRoot) {
         }
         if (def.matches !== undefined) {
             expected = resolve(def.matches, runtime);
-            passed = passed && new RegExp(expected).test(String(actual == null ? '' : actual));
+            // 隐式默认断言（无显式 status/assertions 时追加的 HTTP 2xx 检查）仅对数字
+            // HTTP 状态码生效；本地适配器（如 prepareXlsx 返回 status: 'LOCAL'）不参与匹配
+            if (!(def.implicit === true && typeof actual !== 'number')) {
+                passed = passed && new RegExp(expected).test(String(actual == null ? '' : actual));
+            }
         }
         if (Array.isArray(def.oneOf)) {
             expected = resolve(clone(def.oneOf), runtime);
@@ -290,7 +294,7 @@ const legacyCore = (function (globalRoot) {
         })) {
             defs.unshift({ name: '返回 HTTP ' + step.status, target: 'status', equals: step.status });
         } else if (step.status === undefined && defs.length === 0) {
-            defs.push({ name: '返回 HTTP 2xx', target: 'status', matches: '^2\\d\\d$' });
+            defs.push({ name: '返回 HTTP 2xx', target: 'status', matches: '^2\\d\\d$', implicit: true });
         }
         return defs.map(function (def) { return evaluateAssertion(def, response, runtime); });
     }

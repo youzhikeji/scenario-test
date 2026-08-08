@@ -52,6 +52,15 @@ test("未声明断言时默认要求 HTTP 2xx", () => {
     assert.equal(failure[0].passed, false);
 });
 
+test("默认 2xx 断言不误伤本地适配器（status 为 LOCAL 字符串）", () => {
+    const runtime = { vars: {}, lastResponse: null, lastResponseBody: null };
+    const local = buildAssertions({}, { status: "LOCAL", headers: {}, body: { savedTo: "/tmp/a.xlsx" }, bodyText: null }, runtime);
+    assert.equal(local.length, 1);
+    assert.equal(local[0].name, "返回 HTTP 2xx");
+    assert.equal(local[0].passed, true);
+    assert.equal(local[0].actual, "LOCAL");
+});
+
 test("签名稳定且调试数据保留原始值", () => {
     const first = generateSignature({ timestamp: 1, apiKey: "demo", nonce: "n" }, "secret");
     const second = generateSignature({ nonce: "n", apiKey: "demo", timestamp: 1 }, "secret");
