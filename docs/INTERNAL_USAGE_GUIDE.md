@@ -1,0 +1,284 @@
+# scenario-test 使用指南（内部版）
+
+## 快速开始
+
+### 1. 初始化到项目
+
+在项目根目录运行：
+
+```bash
+node scenario-test-cli.cjs init --project . --dir "scenario-test"
+```
+
+### 2. 编写场景
+
+在 `scenario-test/scenarios/` 下创建场景文件：
+
+```javascript
+// scenario-test/scenarios/user-query.js
+ScenarioTest.registerScenario("user-query", ScenarioTest.defineScenario({
+    name: "查询用户信息",
+    steps: [
+        {
+            name: "获取用户详情",
+            method: "GET",
+            path: "/api/users/{{vars.userId}}",
+            status: 200,
+            assertions: [
+                { path: "data.name", exists: true }
+            ]
+        }
+    ]
+}));
+```
+
+### 3. 运行场景
+
+```bash
+# 命令行运行
+node scenario-test/scenario-test-cli.cjs --config scenario-test/scenario.config.js --env local --all
+
+# 浏览器运行
+# 打开 scenario-test/index.html
+```
+
+---
+
+## 内置适配器
+
+### XLSX 适配器
+
+用于生成测试数据的 Excel 文件：
+
+```javascript
+{
+    name: "准备 Excel",
+    prepareXlsx: {
+        template: "templates/users.xlsx",
+        output: "output/test-users.xlsx",
+        cells: [
+            { cell: "A2", value: "{{vars.userName}}" },
+            { cell: "B2", value: "{{vars.userAge}}" }
+        ]
+    }
+}
+```
+
+---
+
+## 核心特性
+
+### 变量与模板
+
+```javascript
+// 配置中定义
+vars: {
+    baseUrl: "http://localhost:8080",
+    token: "test-token"
+}
+
+// 步骤中使用
+{
+    path: "/api/users/{{vars.userId}}",
+    request: {
+        headers: {
+            "Authorization": "Bearer {{vars.token}}"
+        }
+    }
+}
+```
+
+### 变量提取
+
+```javascript
+{
+    name: "创建订单",
+    method: "POST",
+    path: "/api/orders",
+    extract: {
+        orderId: "data.orderId"  // 提取响应中的 orderId
+    }
+},
+{
+    name: "查询订单",
+    path: "/api/orders/{{vars.orderId}}"  // 使用提取的 orderId
+}
+```
+
+### 断言
+
+```javascript
+assertions: [
+    { path: "status", equals: "success" },
+    { path: "data.items", exists: true },
+    { path: "data.total", operator: "gt", value: 0 },
+    { path: "data.status", oneOf: ["pending", "completed"] }
+]
+```
+
+### 重试机制
+
+```javascript
+{
+    name: "等待任务完成",
+    path: "/api/tasks/{{vars.taskId}}",
+    retryUntil: {
+        maxAttempts: 10,
+        intervalMs: 2000
+    },
+    assertions: [
+        { path: "status", equals: "completed" }
+    ]
+}
+```
+
+### 条件跳过
+
+```javascript
+{
+    name: "清理数据（仅开发环境）",
+    method: "DELETE",
+    path: "/api/test-data",
+    when: { path: "vars.env", equals: "dev" }
+}
+```
+
+---
+
+## 高级用法
+
+### 多引擎实例隔离
+
+```javascript
+// 场景 A 使用独立引擎
+const engineA = ScenarioTest.createEngine({
+    vars: { env: "test" }
+});
+
+// 场景 B 使用独立引擎
+const engineB = ScenarioTest.createEngine({
+    vars: { env: "prod" }
+});
+```
+
+### 自定义适配器（内部扩展）
+
+如果需要添加新的步骤类型（如数据库查询、消息队列），可以注册适配器：
+
+```javascript
+const dbAdapter = {
+    matches(step) {
+        return Boolean(step.dbQuery);
+    },
+    async execute({ step, runtime }) {
+        // 执行数据库查询
+        const rows = await queryDatabase(step.dbQuery.sql);
+        
+        return {
+            method: "SQL",
+            response: {
+                status: 200,
+                body: { rows }
+            }
+        };
+    }
+};
+
+ScenarioTest.registerAdapter("database", dbAdapter);
+```
+
+详细适配器开发指南见 `docs/ADAPTER_GUIDE.md`。
+
+---
+
+## 环境变量
+
+优先级：环境变量 > 配置 vars > 场景 vars
+
+```javascript
+// 配置文件
+variables: [
+    { name: "apiKey", env: "SCENARIO_API_KEY", required: true }
+]
+
+// 运行时
+export SCENARIO_API_KEY=your-key
+node scenario-test-cli.cjs --all
+```
+
+---
+
+## 常见问题
+
+### 1. 如何调试失败的场景？
+
+浏览器工作台会显示：
+- 完整的请求/响应
+- 失败的断言及实际值
+- 变量的当前值
+
+### 2. 如何处理文件上传？
+
+```javascript
+{
+    name: "上传文件",
+    method: "POST",
+    path: "/api/upload",
+    request: {
+        fileUpload: {
+            file: "testdata/sample.pdf",
+            field: "attachment"
+        }
+    }
+}
+```
+
+### 3. 如何保存响应到文件？
+
+```javascript
+{
+    name: "下载报告",
+    path: "/api/reports/{{vars.reportId}}",
+    saveResponseAs: "output/report-{{vars.reportId}}.pdf"
+}
+```
+
+---
+
+## 团队协作
+
+### 配置管理
+
+```javascript
+// scenario.config.js
+envs: [
+    { key: "local", name: "本地", baseUrl: "http://localhost:8080" },
+    { key: "dev", name: "开发", baseUrl: "https://dev.example.com" },
+    { key: "test", name: "测试", baseUrl: "https://test.example.com" }
+]
+```
+
+### 凭据管理
+
+```javascript
+// 团队测试凭据可直接写入 vars（仅内部项目）
+vars: {
+    testToken: "team-test-token-here",
+    testUserId: "test-user-123"
+}
+```
+
+浏览器端可以覆盖这些值，覆盖后保存在本地 LocalStorage。
+
+---
+
+## 安全注意事项
+
+- ✅ 文件路径自动验证，拒绝 `../` 遍历
+- ✅ 错误消息不泄露敏感变量
+- ⚠️ 公共库不要提交真实业务凭据
+- ⚠️ 私有项目的 vars 可以包含团队测试账号
+
+---
+
+**完整功能见项目 `examples/` 和 `docs/` 目录。**

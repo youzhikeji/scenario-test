@@ -187,11 +187,53 @@ async function executeHttp(step, runtime, options) {
     }
 }
 
+class AdapterExecutionError extends Error {
+    constructor(adapterName, originalError, step) {
+        const message = `适配器 ${adapterName} 执行失败: ${originalError.message}`;
+        super(message);
+        this.name = "AdapterExecutionError";
+        this.adapterName = adapterName;
+        this.originalError = originalError;
+        this.stepName = step?.name || "未命名步骤";
+    }
+}
+
 async function executeAdapter(adapter, step, runtime, options) {
     if (!adapter) throw new Error(`未注册步骤适配器: ${step.adapter || "unknown"}`);
-    const output = await adapter.execute({ step: resolve(clone(step), runtime), runtime, options });
+    
+    const adapterName = step.adapter || adapter.constructor?.name || "unknown";
+    let output;
+    
+    try {
+        // 前置钩子
+        if (typeof adapter.beforeExecute === "function") {
+            await adapter.beforeExecute({ step, runtime, options });
+        }
+        
+        // 执行主逻辑
+        output = await adapter.execute({ step: resolve(clone(step), runtime), runtime, options });
+        
+        // 后置钩子
+        if (typeof adapter.afterExecute === "function") {
+            output = await adapter.afterExecute({ step, runtime, options, output }) || output;
+        }
+    } catch (error) {
+        // 错误钩子
+        if (typeof adapter.onError === "function") {
+            try {
+                await adapter.onError({ step, runtime, options, error });
+            } catch (hookError) {
+                console.warn(`适配器 ${adapterName} 错误钩子失败:`, hookError);
+            }
+        }
+        throw new AdapterExecutionError(adapterName, error, step);
+    }
+    
     const response = output?.response || output;
-    if (!response || response.status === undefined) throw new Error("适配器必须返回 response 或响应对象");
+    if (!response || response.status === undefined) {
+        throw new Error(`适配器 ${adapterName} 必须返回包含 status 的 response 对象`);
+    }
+    
     return {
         method: output.method || "ADAPTER",
         path: output.path || step.adapter || "adapter",
@@ -206,7 +248,21 @@ async function executeAdapter(adapter, step, runtime, options) {
 }
 
 export function createEngine(engineOptions = {}) {
-    const adapters = new Map([...listAdapters(), ...Object.entries(engineOptions.adapters || {})]);
+    // 作用域隔离：每个引擎实例有独立的适配器注册表
+    const scopedAdapters = engineOptions.isolateAdapters !== false
+        ? new Map([...listAdapters()])
+        : listAdapters();
+    
+    // 注册实例级适配器
+    if (engineOptions.adapters) {
+        for (const [name, adapter] of Object.entries(engineOptions.adapters)) {
+            if (adapter && typeof adapter.execute === "function") {
+                scopedAdapters.set(name, adapter);
+            }
+        }
+    }
+    
+    const adapters = scopedAdapters;
     const fetchImpl = engineOptions.fetch || (typeof globalThis.fetch === "function"
         ? (...args) => globalThis.fetch(...args)
         : null);

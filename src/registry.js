@@ -1,4 +1,5 @@
 import { isPlainObject } from "./core.js";
+import { validateAdapter } from "./adapter-types.js";
 
 const scenarioRegistry = new Map();
 const adapterRegistry = new Map();
@@ -111,7 +112,19 @@ export function clearScenarios() {
 
 export function registerAdapter(name, adapter) {
     invariant(typeof name === "string" && name.trim(), "适配器名称不能为空");
-    invariant(adapter && typeof adapter.execute === "function", `适配器 ${name} 缺少 execute`);
+    
+    // 运行时验证适配器协议
+    validateAdapter(adapter, name);
+    
+    // 支持可选的初始化钩子
+    if (typeof adapter.initialize === "function") {
+        try {
+            adapter.initialize();
+        } catch (error) {
+            throw new TypeError(`适配器 ${name} 初始化失败: ${error.message}`);
+        }
+    }
+    
     adapterRegistry.set(name, adapter);
     return adapter;
 }
@@ -122,4 +135,29 @@ export function getAdapter(name) {
 
 export function listAdapters() {
     return new Map(adapterRegistry);
+}
+
+export function unregisterAdapter(name) {
+    const adapter = adapterRegistry.get(name);
+    if (adapter && typeof adapter.dispose === "function") {
+        try {
+            adapter.dispose();
+        } catch (error) {
+            console.warn(`适配器 ${name} 清理失败:`, error);
+        }
+    }
+    return adapterRegistry.delete(name);
+}
+
+export function clearAdapters() {
+    for (const [name, adapter] of adapterRegistry.entries()) {
+        if (typeof adapter.dispose === "function") {
+            try {
+                adapter.dispose();
+            } catch (error) {
+                console.warn(`适配器 ${name} 清理失败:`, error);
+            }
+        }
+    }
+    adapterRegistry.clear();
 }
