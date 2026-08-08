@@ -111,7 +111,8 @@ test("公共库和产物不包含敏感信息", () => {
     const root = path.resolve(__dirname, "..");
     const files = [];
 
-    for (const folder of ["src", "dist", "examples", "docs"]) {
+    // 注意: examples 目录包含安全教学的反面教材（注释中的错误示范），因此排除
+    for (const folder of ["src", "dist", "docs"]) {
         const folderPath = path.join(root, folder);
         if (!fs.existsSync(folderPath)) continue;
 
