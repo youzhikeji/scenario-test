@@ -167,6 +167,26 @@ CLI 从变量定义的 `env` 字段读取环境变量。私有项目可将联调
 - `generatedVars`：`timestamp`、`uuidHex`、`md5`、`signature`。
 - `prepareXlsx` 由官方 Excel 适配器执行。
 
+## 安全
+
+请阅读 [SECURITY.md](SECURITY.md) 了解安全最佳实践和安全漏洞报告流程。
+
+**重要提示**:
+- 场景文件是可执行代码，只加载信任的来源
+- 不要在配置文件中硬编码凭据
+- 使用环境变量传递敏感信息
+
+## 升级指南
+
+### 升级到 v0.3.0
+
+v0.3.0 包含重要的安全修复和一些 breaking changes。请参考 [CHANGELOG.md](CHANGELOG.md) 中的详细迁移指南。
+
+**主要变更**:
+- 推荐使用 `SCENARIO_AUTH` 环境变量代替 `--authorization` 参数
+- 文件路径必须在工作区内，不允许绝对路径和路径遍历
+- 外部插件需要 `--allow-external-plugins` 标志
+
 ## 迁移说明
 
 `v0.2.0` 起不再支持 `window.GlobalConfig` 和 `window.ScenarioData`。配置必须使用 `ScenarioTest.registerConfig(ScenarioTest.defineConfig(...))`，场景必须使用 `ScenarioTest.registerScenario(id, ScenarioTest.defineScenario(...))`。

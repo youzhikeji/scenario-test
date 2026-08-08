@@ -7,3 +7,4 @@ playwright-report/
 examples/**/downloads/
 examples/**/temp/
 *.log
+tmp-*/
