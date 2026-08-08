@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/*! scenario-test v0.2.12 */
+/*! scenario-test v0.2.13 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -68097,7 +68097,7 @@ async function readWorkbookRows(filePath, options = {}) {
 }
 
 // src/version.generated.js
-var VERSION = "0.2.12";
+var VERSION = "0.2.13";
 
 // src/init-templates.js
 var DEFAULT_LIBRARY_URL = `https://github.com/youzhikeji/scenario-test/releases/download/v${VERSION}/scenario-test.umd.js`;
@@ -68509,7 +68509,7 @@ async function copyRuntimeBrowser(projectRoot, directory, libraryUrl, force) {
     import_node_fs4.default.copyFileSync(source, target);
     return true;
   }
-  if (`/*! scenario-test v0.2.12 */
+  if (`/*! scenario-test v0.2.13 */
 var ScenarioTest = (() => {
   var __create = Object.create;
   var __defProp = Object.defineProperty;
@@ -71948,7 +71948,7 @@ var ScenarioTest = (() => {
 })();
 //# sourceMappingURL=scenario-test.umd.js.map
 `) {
-    import_node_fs4.default.writeFileSync(target, `/*! scenario-test v0.2.12 */
+    import_node_fs4.default.writeFileSync(target, `/*! scenario-test v0.2.13 */
 var ScenarioTest = (() => {
   var __create = Object.create;
   var __defProp = Object.defineProperty;
