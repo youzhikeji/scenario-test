@@ -1,4 +1,4 @@
-/*! scenario-test v0.2.13 */
+/*! scenario-test v0.3.0 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -245,6 +245,7 @@ __export(node_exports, {
   applyExtract: () => applyExtract,
   buildAssertions: () => buildAssertions,
   buildUrl: () => buildUrl,
+  clearAdapters: () => clearAdapters,
   clearScenarios: () => clearScenarios,
   clone: () => clone,
   createApp: () => createApp,
@@ -279,7 +280,10 @@ __export(node_exports, {
   resolve: () => resolve,
   resolveString: () => resolveString,
   runScenario: () => runScenario,
-  sanitizeSensitive: () => sanitizeSensitive
+  sanitizeSensitive: () => sanitizeSensitive,
+  unregisterAdapter: () => unregisterAdapter,
+  validateAdapter: () => validateAdapter,
+  validateAdapterResponse: () => validateAdapterResponse
 });
 module.exports = __toCommonJS(node_exports);
 
@@ -476,6 +480,41 @@ function formatDuration(milliseconds) {
   return milliseconds >= 1e3 ? `${(milliseconds / 1e3).toFixed(2)} s` : `${milliseconds.toFixed(0)} ms`;
 }
 
+// src/adapter-types.js
+function validateAdapter(adapter, name = "unknown") {
+  const errors = [];
+  if (!adapter || typeof adapter !== "object") {
+    errors.push("\u9002\u914D\u5668\u5FC5\u987B\u662F\u5BF9\u8C61");
+  } else {
+    if (typeof adapter.execute !== "function") {
+      errors.push("\u7F3A\u5C11\u5FC5\u9700\u7684 execute \u65B9\u6CD5");
+    }
+    const optionalMethods = ["initialize", "matches", "beforeExecute", "afterExecute", "onError", "dispose"];
+    for (const method of optionalMethods) {
+      if (adapter[method] !== void 0 && typeof adapter[method] !== "function") {
+        errors.push(`${method} \u5FC5\u987B\u662F\u51FD\u6570`);
+      }
+    }
+  }
+  if (errors.length > 0) {
+    throw new TypeError(`\u9002\u914D\u5668 ${name} \u9A8C\u8BC1\u5931\u8D25:
+${errors.map((e) => `  - ${e}`).join("\n")}`);
+  }
+}
+function validateAdapterResponse(response, adapterName = "unknown") {
+  if (!response || typeof response !== "object") {
+    throw new TypeError(`\u9002\u914D\u5668 ${adapterName} \u8FD4\u56DE\u503C\u5FC5\u987B\u662F\u5BF9\u8C61`);
+  }
+  const actualResponse = response.response || response;
+  if (actualResponse.status === void 0 && actualResponse.status === null) {
+    throw new TypeError(`\u9002\u914D\u5668 ${adapterName} \u54CD\u5E94\u7F3A\u5C11 status \u5B57\u6BB5`);
+  }
+  if (actualResponse.headers !== void 0 && typeof actualResponse.headers !== "object") {
+    throw new TypeError(`\u9002\u914D\u5668 ${adapterName} \u54CD\u5E94\u7684 headers \u5FC5\u987B\u662F\u5BF9\u8C61`);
+  }
+  return true;
+}
+
 // src/registry.js
 var scenarioRegistry = /* @__PURE__ */ new Map();
 var adapterRegistry = /* @__PURE__ */ new Map();
@@ -577,7 +616,14 @@ function clearScenarios() {
 }
 function registerAdapter(name, adapter) {
   invariant(typeof name === "string" && name.trim(), "\u9002\u914D\u5668\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A");
-  invariant(adapter && typeof adapter.execute === "function", `\u9002\u914D\u5668 ${name} \u7F3A\u5C11 execute`);
+  validateAdapter(adapter, name);
+  if (typeof adapter.initialize === "function") {
+    try {
+      adapter.initialize();
+    } catch (error) {
+      throw new TypeError(`\u9002\u914D\u5668 ${name} \u521D\u59CB\u5316\u5931\u8D25: ${error.message}`);
+    }
+  }
   adapterRegistry.set(name, adapter);
   return adapter;
 }
@@ -586,6 +632,29 @@ function getAdapter(name) {
 }
 function listAdapters() {
   return new Map(adapterRegistry);
+}
+function unregisterAdapter(name) {
+  const adapter = adapterRegistry.get(name);
+  if (adapter && typeof adapter.dispose === "function") {
+    try {
+      adapter.dispose();
+    } catch (error) {
+      console.warn(`\u9002\u914D\u5668 ${name} \u6E05\u7406\u5931\u8D25:`, error);
+    }
+  }
+  return adapterRegistry.delete(name);
+}
+function clearAdapters() {
+  for (const [name, adapter] of adapterRegistry.entries()) {
+    if (typeof adapter.dispose === "function") {
+      try {
+        adapter.dispose();
+      } catch (error) {
+        console.warn(`\u9002\u914D\u5668 ${name} \u6E05\u7406\u5931\u8D25:`, error);
+      }
+    }
+  }
+  adapterRegistry.clear();
 }
 
 // src/engine.js
@@ -626,13 +695,26 @@ function createRunIdentifiers() {
     runNo: `${timestamp.slice(-6)}-${random.slice(0, 4)}`
   };
 }
-function buildGeneratedVars(scenario, baseVars, environmentVariables) {
+function buildGeneratedVars(scenario, baseVars, environmentVariables, options = {}) {
   const identifiers = createRunIdentifiers();
   const vars = { ...scenario.vars || {}, ...baseVars || {}, ...identifiers };
+  const verboseErrors = options.verboseErrors || process.env.SCENARIO_VERBOSE_ERRORS === "true";
   for (const [name, environmentName] of Object.entries(scenario.envVars || {})) {
     const value = environmentVariables?.[environmentName] ?? vars[name];
     if (value === void 0 || value === null || value === "") {
-      throw new Error(`\u7F3A\u5C11\u573A\u666F\u53D8\u91CF ${environmentName}\uFF08\u6620\u5C04\u5230 vars.${name}\uFF09`);
+      if (verboseErrors) {
+        throw new Error(
+          `\u7F3A\u5C11\u573A\u666F\u53D8\u91CF: vars.${name}
+\u73AF\u5883\u53D8\u91CF\u6620\u5C04: ${environmentName}
+\u63D0\u793A: \u5728\u914D\u7F6E\u4E2D\u8BBE\u7F6E vars.${name} \u6216\u8BBE\u7F6E\u73AF\u5883\u53D8\u91CF ${environmentName}`
+        );
+      } else {
+        throw new Error(
+          `\u7F3A\u5C11\u5FC5\u9700\u7684\u573A\u666F\u53D8\u91CF: vars.${name}
+\u63D0\u793A: \u8BF7\u5728\u914D\u7F6E\u6587\u4EF6\u7684 vars \u4E2D\u8BBE\u7F6E\u8BE5\u53D8\u91CF\uFF0C\u6216\u901A\u8FC7\u73AF\u5883\u53D8\u91CF\u63D0\u4F9B
+\u8BE6\u7EC6\u4FE1\u606F\u53EF\u901A\u8FC7\u8BBE\u7F6E SCENARIO_VERBOSE_ERRORS=true \u67E5\u770B`
+        );
+      }
     }
     vars[name] = value;
   }
@@ -647,7 +729,11 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables) {
       vars[definition.name] = md5(source);
     } else if (definition.type === "signature") {
       const params = Object.fromEntries(Object.entries(definition.params || {}).map(([key, variableName]) => [key, vars[variableName]]));
-      vars[definition.name] = generateSignature(params, vars[definition.secretVar || "apiSecret"]);
+      const secret = vars[definition.secretVar || "apiSecret"];
+      if (!secret) {
+        throw new Error(`\u7B7E\u540D\u751F\u6210\u5931\u8D25: \u7F3A\u5C11\u5BC6\u94A5\u53D8\u91CF vars.${definition.secretVar || "apiSecret"}`);
+      }
+      vars[definition.name] = generateSignature(params, secret);
     } else {
       throw new Error(`\u4E0D\u652F\u6301\u7684 generatedVars \u7C7B\u578B: ${definition.type}`);
     }
@@ -722,11 +808,42 @@ async function executeHttp(step, runtime, options) {
     requestSignal.dispose();
   }
 }
+var AdapterExecutionError = class extends Error {
+  constructor(adapterName, originalError, step) {
+    const message = `\u9002\u914D\u5668 ${adapterName} \u6267\u884C\u5931\u8D25: ${originalError.message}`;
+    super(message);
+    this.name = "AdapterExecutionError";
+    this.adapterName = adapterName;
+    this.originalError = originalError;
+    this.stepName = step?.name || "\u672A\u547D\u540D\u6B65\u9AA4";
+  }
+};
 async function executeAdapter(adapter, step, runtime, options) {
   if (!adapter) throw new Error(`\u672A\u6CE8\u518C\u6B65\u9AA4\u9002\u914D\u5668: ${step.adapter || "unknown"}`);
-  const output = await adapter.execute({ step: resolve(clone(step), runtime), runtime, options });
+  const adapterName = step.adapter || adapter.constructor?.name || "unknown";
+  let output;
+  try {
+    if (typeof adapter.beforeExecute === "function") {
+      await adapter.beforeExecute({ step, runtime, options });
+    }
+    output = await adapter.execute({ step: resolve(clone(step), runtime), runtime, options });
+    if (typeof adapter.afterExecute === "function") {
+      output = await adapter.afterExecute({ step, runtime, options, output }) || output;
+    }
+  } catch (error) {
+    if (typeof adapter.onError === "function") {
+      try {
+        await adapter.onError({ step, runtime, options, error });
+      } catch (hookError) {
+        console.warn(`\u9002\u914D\u5668 ${adapterName} \u9519\u8BEF\u94A9\u5B50\u5931\u8D25:`, hookError);
+      }
+    }
+    throw new AdapterExecutionError(adapterName, error, step);
+  }
   const response = output?.response || output;
-  if (!response || response.status === void 0) throw new Error("\u9002\u914D\u5668\u5FC5\u987B\u8FD4\u56DE response \u6216\u54CD\u5E94\u5BF9\u8C61");
+  if (!response || response.status === void 0) {
+    throw new Error(`\u9002\u914D\u5668 ${adapterName} \u5FC5\u987B\u8FD4\u56DE\u5305\u542B status \u7684 response \u5BF9\u8C61`);
+  }
   return {
     method: output.method || "ADAPTER",
     path: output.path || step.adapter || "adapter",
@@ -740,7 +857,15 @@ async function executeAdapter(adapter, step, runtime, options) {
   };
 }
 function createEngine(engineOptions = {}) {
-  const adapters = new Map([...listAdapters(), ...Object.entries(engineOptions.adapters || {})]);
+  const scopedAdapters = engineOptions.isolateAdapters !== false ? new Map([...listAdapters()]) : listAdapters();
+  if (engineOptions.adapters) {
+    for (const [name, adapter] of Object.entries(engineOptions.adapters)) {
+      if (adapter && typeof adapter.execute === "function") {
+        scopedAdapters.set(name, adapter);
+      }
+    }
+  }
+  const adapters = scopedAdapters;
   const fetchImpl = engineOptions.fetch || (typeof globalThis.fetch === "function" ? (...args) => globalThis.fetch(...args) : null);
   if (typeof fetchImpl !== "function") throw new Error("\u7F3A\u5C11 fetch \u5B9E\u73B0");
   async function runStep(step, runtime, runOptions = {}) {
@@ -774,9 +899,17 @@ function createEngine(engineOptions = {}) {
     let assertions = [];
     const retry = step.retryUntil || null;
     const totalAttempts = retry ? Number(retry.maxAttempts || 10) + 1 : 1;
+    const retryStartTime = now();
+    const maxElapsedMs = retry?.maxElapsedMs || 3e5;
     try {
       for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
         if (options.signal?.aborted) throw options.signal.reason || new Error("\u6267\u884C\u5DF2\u53D6\u6D88");
+        if (retry && now() - retryStartTime > maxElapsedMs) {
+          throw new Error(
+            `\u91CD\u8BD5\u8D85\u65F6: \u5DF2\u5C1D\u8BD5 ${attempt - 1} \u6B21\uFF0C\u8017\u65F6\u8D85\u8FC7 ${maxElapsedMs}ms
+\u63D0\u793A: \u8003\u8651\u8C03\u6574 retryUntil.maxElapsedMs \u6216\u68C0\u67E5\u63A5\u53E3\u54CD\u5E94`
+          );
+        }
         const adapter = chooseAdapter(step, adapters);
         lastExecution = adapter ? await executeAdapter(adapter, step, runtime, options) : await executeHttp(step, runtime, options);
         runtime.lastResponse = lastExecution.response;
@@ -784,7 +917,8 @@ function createEngine(engineOptions = {}) {
         applyExtract(step, lastExecution.response, runtime);
         assertions = buildAssertions(step, lastExecution.response, runtime);
         if (assertions.every((item) => item.passed) || attempt === totalAttempts) break;
-        await delay(Number(retry.intervalMs || 2e3), options.signal);
+        const intervalMs = Math.max(100, Number(retry.intervalMs || 2e3));
+        await delay(intervalMs, options.signal);
       }
       const failed = assertions.find((item) => !item.passed);
       return {
@@ -1002,8 +1136,8 @@ var legacyCore = function(globalRoot) {
     if (!base) return tail;
     return base + "/" + tail.replace(/^\/+/, "");
   }
-  function buildUrl2(path3, params, runtime) {
-    var rawPath = resolveString2(path3 || "", runtime);
+  function buildUrl2(path4, params, runtime) {
+    var rawPath = resolveString2(path4 || "", runtime);
     if (!params || !isPlainObject2(params)) return rawPath;
     var resolvedParams = resolve2(params, runtime);
     var queryPairs = [];
@@ -2085,21 +2219,21 @@ var legacyAdhoc = function() {
     };
   }
   function buildAdhocStep(values) {
-    var path3 = String(values.path || "").trim();
-    if (!path3) throw new Error("\u8BF7\u6C42\u8DEF\u5F84\u4E0D\u80FD\u4E3A\u7A7A");
+    var path4 = String(values.path || "").trim();
+    if (!path4) throw new Error("\u8BF7\u6C42\u8DEF\u5F84\u4E0D\u80FD\u4E3A\u7A7A");
     var params = values.params;
     var headers = parseJsonEditor(values.headers, "\u8BF7\u6C42\u5934");
     var bodyText = String(values.body || "").trim();
     var body = bodyText ? parseJsonEditor(bodyText, "\u8BF7\u6C42\u4F53") : void 0;
     if (params && !isPlainObject2(params)) throw new Error("Query \u53C2\u6570\u5FC5\u987B\u662F Key-Value \u5BF9\u8C61");
     if (!isPlainObject2(headers)) throw new Error("\u8BF7\u6C42\u5934\u5FC5\u987B\u662F JSON \u5BF9\u8C61");
-    if (hasAdhocTemplate(path3) || hasAdhocTemplate(params) || hasAdhocTemplate(headers) || hasAdhocTemplate(body)) {
+    if (hasAdhocTemplate(path4) || hasAdhocTemplate(params) || hasAdhocTemplate(headers) || hasAdhocTemplate(body)) {
       throw new Error("\u4ECD\u6709\u672A\u89E3\u6790\u7684 {{vars.xxx}} \u53C2\u6570\uFF0C\u8BF7\u586B\u5199\u5B9E\u9645\u503C\u540E\u518D\u6267\u884C");
     }
     return {
       name: values.name || "\u4E34\u65F6\u8BF7\u6C42",
       method: String(values.method || "GET").toUpperCase(),
-      path: path3,
+      path: path4,
       params,
       request: { headers, body },
       timeoutMs: Number(appConfig.requestTimeoutMs || 3e4)
@@ -2661,9 +2795,9 @@ function createLegacyRuntime(options) {
     var method = String(step.method || request.method || "GET").toUpperCase();
     var rawPath = step.path || request.path || "";
     var rawParams = step.params || request.params;
-    var path3 = buildUrl2(rawPath, rawParams, runtime);
+    var path4 = buildUrl2(rawPath, rawParams, runtime);
     var headers = request.headers && isPlainObject2(request.headers) ? request.headers : {};
-    var absoluteUrl = /^https?:\/\//i.test(path3);
+    var absoluteUrl = /^https?:\/\//i.test(path4);
     var authorization = runtime.authorization;
     var allowEnvironmentAuthorization = !absoluteUrl || request.useEnvironmentAuthorization === true;
     if (authorization && allowEnvironmentAuthorization && !hasHeader2(headers, "Authorization")) {
@@ -2688,7 +2822,7 @@ function createLegacyRuntime(options) {
     if (!isFinite(timeoutMs) || timeoutMs <= 0) timeoutMs = 3e4;
     async function sendRequest() {
       var fetchResult = await withRuntimeTimeout(async function() {
-        var response2 = await fetch(joinUrl2(runtime.baseUrl, path3), fetchOptions);
+        var response2 = await fetch(joinUrl2(runtime.baseUrl, path4), fetchOptions);
         return { response: response2, text: await response2.text() };
       }, runtime, timeoutMs);
       var response = fetchResult.response;
@@ -2734,7 +2868,7 @@ function createLegacyRuntime(options) {
             return {
               name: step.name,
               method,
-              path: path3,
+              path: path4,
               status: responseData.status,
               duration: performance.now() - startedAt,
               attempts: requestAttempts,
@@ -2750,7 +2884,7 @@ function createLegacyRuntime(options) {
       return {
         name: step.name,
         method,
-        path: path3,
+        path: path4,
         status: responseData.status,
         duration: performance.now() - startedAt,
         attempts: requestAttempts,
@@ -2767,7 +2901,7 @@ function createLegacyRuntime(options) {
       return {
         name: step.name,
         method,
-        path: path3,
+        path: path4,
         status: cancelled ? "CANCELLED" : timedOut ? "TIMEOUT" : "ERROR",
         duration: performance.now() - startedAt,
         attempts: requestAttempts || 1,
@@ -3180,12 +3314,12 @@ function createLegacyRuntime(options) {
     if (window.location.protocol === "file:") return;
     var results = await Promise.all(
       list.map(async function(item, i) {
-        var path3 = String(item.file || "").replace(/^\.\//, "");
-        if (!path3) return { i, displayName: null };
-        var url = "./" + path3 + (path3.indexOf("?") >= 0 ? "&" : "?") + "ts=" + Date.now();
+        var path4 = String(item.file || "").replace(/^\.\//, "");
+        if (!path4) return { i, displayName: null };
+        var url = "./" + path4 + (path4.indexOf("?") >= 0 ? "&" : "?") + "ts=" + Date.now();
         try {
           var response = await fetch(url);
-          if (!response.ok) throw new Error("fetch " + path3);
+          if (!response.ok) throw new Error("fetch " + path4);
           var text = await response.text();
           return { i, displayName: extractScenarioDisplayName(text) };
         } catch (error) {
@@ -3440,24 +3574,71 @@ function createApp(options = {}) {
 
 // src/node/io.js
 var import_node_fs = __toESM(require("node:fs"), 1);
+var import_node_path2 = __toESM(require("node:path"), 1);
+
+// src/utils/path-validator.js
 var import_node_path = __toESM(require("node:path"), 1);
+function validatePath(root, userPath, options = {}) {
+  if (typeof userPath !== "string" || !userPath.trim()) {
+    throw new Error("\u8DEF\u5F84\u4E0D\u80FD\u4E3A\u7A7A");
+  }
+  if (userPath.includes("\0")) {
+    throw new Error(`\u8DEF\u5F84\u5305\u542B\u975E\u6CD5\u5B57\u7B26: ${userPath}`);
+  }
+  if (import_node_path.default.isAbsolute(userPath)) {
+    if (!options.allowAbsolute) {
+      throw new Error(`\u4E0D\u5141\u8BB8\u4F7F\u7528\u7EDD\u5BF9\u8DEF\u5F84: ${userPath}`);
+    }
+    const relative2 = import_node_path.default.relative(root, userPath);
+    if (relative2.startsWith("..") || import_node_path.default.isAbsolute(relative2)) {
+      throw new Error(`\u7EDD\u5BF9\u8DEF\u5F84\u8D8A\u754C: ${userPath}`);
+    }
+    return userPath;
+  }
+  const resolved = import_node_path.default.resolve(root, userPath);
+  const relative = import_node_path.default.relative(root, resolved);
+  if (!relative || relative.startsWith("..") || import_node_path.default.isAbsolute(relative)) {
+    throw new Error(`\u8DEF\u5F84\u8D8A\u754C: ${userPath}`);
+  }
+  return resolved;
+}
+
+// src/node/io.js
 function createNodeIo(workspace = process.cwd()) {
-  const root = import_node_path.default.resolve(workspace);
+  const root = import_node_path2.default.resolve(workspace);
   return {
     async createUploadBody(definition) {
       const filePath = typeof definition === "string" ? definition : definition.filePath;
-      const absolutePath = import_node_path.default.isAbsolute(filePath) ? filePath : import_node_path.default.resolve(root, filePath);
+      let absolutePath;
+      try {
+        absolutePath = validatePath(root, filePath);
+      } catch (error) {
+        throw new Error(
+          `\u6587\u4EF6\u4E0A\u4F20\u8DEF\u5F84\u4E0D\u5B89\u5168: ${filePath}
+\u539F\u56E0: ${error.message}
+\u63D0\u793A: \u4E0A\u4F20\u6587\u4EF6\u5FC5\u987B\u5728\u5DE5\u4F5C\u533A\u5185 (${root})`
+        );
+      }
       if (!import_node_fs.default.existsSync(absolutePath)) throw new Error(`\u4E0A\u4F20\u6587\u4EF6\u4E0D\u5B58\u5728: ${absolutePath}`);
       const fieldName = definition.fieldName || "file";
-      const filename = definition.filename || import_node_path.default.basename(absolutePath);
+      const filename = definition.filename || import_node_path2.default.basename(absolutePath);
       const form = new FormData();
       form.append(fieldName, new Blob([import_node_fs.default.readFileSync(absolutePath)]), filename);
       for (const [name, value] of Object.entries(definition.fields || {})) form.append(name, String(value));
       return { body: form, omitContentType: true };
     },
     async saveResponse(relativePath, data, metadata = {}) {
-      const absolutePath = import_node_path.default.isAbsolute(relativePath) ? relativePath : import_node_path.default.resolve(root, relativePath);
-      import_node_fs.default.mkdirSync(import_node_path.default.dirname(absolutePath), { recursive: true });
+      let absolutePath;
+      try {
+        absolutePath = validatePath(root, relativePath);
+      } catch (error) {
+        throw new Error(
+          `\u54CD\u5E94\u4FDD\u5B58\u8DEF\u5F84\u4E0D\u5B89\u5168: ${relativePath}
+\u539F\u56E0: ${error.message}
+\u63D0\u793A: \u4FDD\u5B58\u8DEF\u5F84\u5FC5\u987B\u5728\u5DE5\u4F5C\u533A\u5185 (${root})`
+        );
+      }
+      import_node_fs.default.mkdirSync(import_node_path2.default.dirname(absolutePath), { recursive: true });
       import_node_fs.default.writeFileSync(absolutePath, data);
       return { savedTo: absolutePath, size: data.byteLength, contentType: metadata.contentType || "" };
     }
@@ -3466,10 +3647,10 @@ function createNodeIo(workspace = process.cwd()) {
 
 // src/node/loader.js
 var import_node_fs2 = __toESM(require("node:fs"), 1);
-var import_node_path2 = __toESM(require("node:path"), 1);
+var import_node_path3 = __toESM(require("node:path"), 1);
 var import_node_vm = __toESM(require("node:vm"), 1);
 function executeDefinitionFile(filePath, api) {
-  const absolutePath = import_node_path2.default.resolve(filePath);
+  const absolutePath = import_node_path3.default.resolve(filePath);
   const moduleObject = { exports: {} };
   const windowObject = { ScenarioTest: api };
   const context = {
@@ -3513,6 +3694,7 @@ function loadScenarioFile(filePath, id, api) {
   applyExtract,
   buildAssertions,
   buildUrl,
+  clearAdapters,
   clearScenarios,
   clone,
   createApp,
@@ -3547,6 +3729,9 @@ function loadScenarioFile(filePath, id, api) {
   resolve,
   resolveString,
   runScenario,
-  sanitizeSensitive
+  sanitizeSensitive,
+  unregisterAdapter,
+  validateAdapter,
+  validateAdapterResponse
 });
 //# sourceMappingURL=scenario-test.cjs.map

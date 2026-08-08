@@ -1,4 +1,4 @@
-/*! scenario-test v0.2.13 */
+/*! scenario-test v0.3.0 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -427,6 +427,41 @@ function formatDuration(milliseconds) {
   return milliseconds >= 1e3 ? `${(milliseconds / 1e3).toFixed(2)} s` : `${milliseconds.toFixed(0)} ms`;
 }
 
+// src/adapter-types.js
+function validateAdapter(adapter, name = "unknown") {
+  const errors = [];
+  if (!adapter || typeof adapter !== "object") {
+    errors.push("\u9002\u914D\u5668\u5FC5\u987B\u662F\u5BF9\u8C61");
+  } else {
+    if (typeof adapter.execute !== "function") {
+      errors.push("\u7F3A\u5C11\u5FC5\u9700\u7684 execute \u65B9\u6CD5");
+    }
+    const optionalMethods = ["initialize", "matches", "beforeExecute", "afterExecute", "onError", "dispose"];
+    for (const method of optionalMethods) {
+      if (adapter[method] !== void 0 && typeof adapter[method] !== "function") {
+        errors.push(`${method} \u5FC5\u987B\u662F\u51FD\u6570`);
+      }
+    }
+  }
+  if (errors.length > 0) {
+    throw new TypeError(`\u9002\u914D\u5668 ${name} \u9A8C\u8BC1\u5931\u8D25:
+${errors.map((e) => `  - ${e}`).join("\n")}`);
+  }
+}
+function validateAdapterResponse(response, adapterName = "unknown") {
+  if (!response || typeof response !== "object") {
+    throw new TypeError(`\u9002\u914D\u5668 ${adapterName} \u8FD4\u56DE\u503C\u5FC5\u987B\u662F\u5BF9\u8C61`);
+  }
+  const actualResponse = response.response || response;
+  if (actualResponse.status === void 0 && actualResponse.status === null) {
+    throw new TypeError(`\u9002\u914D\u5668 ${adapterName} \u54CD\u5E94\u7F3A\u5C11 status \u5B57\u6BB5`);
+  }
+  if (actualResponse.headers !== void 0 && typeof actualResponse.headers !== "object") {
+    throw new TypeError(`\u9002\u914D\u5668 ${adapterName} \u54CD\u5E94\u7684 headers \u5FC5\u987B\u662F\u5BF9\u8C61`);
+  }
+  return true;
+}
+
 // src/registry.js
 var scenarioRegistry = /* @__PURE__ */ new Map();
 var adapterRegistry = /* @__PURE__ */ new Map();
@@ -528,7 +563,14 @@ function clearScenarios() {
 }
 function registerAdapter(name, adapter) {
   invariant(typeof name === "string" && name.trim(), "\u9002\u914D\u5668\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A");
-  invariant(adapter && typeof adapter.execute === "function", `\u9002\u914D\u5668 ${name} \u7F3A\u5C11 execute`);
+  validateAdapter(adapter, name);
+  if (typeof adapter.initialize === "function") {
+    try {
+      adapter.initialize();
+    } catch (error) {
+      throw new TypeError(`\u9002\u914D\u5668 ${name} \u521D\u59CB\u5316\u5931\u8D25: ${error.message}`);
+    }
+  }
   adapterRegistry.set(name, adapter);
   return adapter;
 }
@@ -537,6 +579,29 @@ function getAdapter(name) {
 }
 function listAdapters() {
   return new Map(adapterRegistry);
+}
+function unregisterAdapter(name) {
+  const adapter = adapterRegistry.get(name);
+  if (adapter && typeof adapter.dispose === "function") {
+    try {
+      adapter.dispose();
+    } catch (error) {
+      console.warn(`\u9002\u914D\u5668 ${name} \u6E05\u7406\u5931\u8D25:`, error);
+    }
+  }
+  return adapterRegistry.delete(name);
+}
+function clearAdapters() {
+  for (const [name, adapter] of adapterRegistry.entries()) {
+    if (typeof adapter.dispose === "function") {
+      try {
+        adapter.dispose();
+      } catch (error) {
+        console.warn(`\u9002\u914D\u5668 ${name} \u6E05\u7406\u5931\u8D25:`, error);
+      }
+    }
+  }
+  adapterRegistry.clear();
 }
 
 // src/engine.js
@@ -577,13 +642,26 @@ function createRunIdentifiers() {
     runNo: `${timestamp.slice(-6)}-${random.slice(0, 4)}`
   };
 }
-function buildGeneratedVars(scenario, baseVars, environmentVariables) {
+function buildGeneratedVars(scenario, baseVars, environmentVariables, options = {}) {
   const identifiers = createRunIdentifiers();
   const vars = { ...scenario.vars || {}, ...baseVars || {}, ...identifiers };
+  const verboseErrors = options.verboseErrors || process.env.SCENARIO_VERBOSE_ERRORS === "true";
   for (const [name, environmentName] of Object.entries(scenario.envVars || {})) {
     const value = environmentVariables?.[environmentName] ?? vars[name];
     if (value === void 0 || value === null || value === "") {
-      throw new Error(`\u7F3A\u5C11\u573A\u666F\u53D8\u91CF ${environmentName}\uFF08\u6620\u5C04\u5230 vars.${name}\uFF09`);
+      if (verboseErrors) {
+        throw new Error(
+          `\u7F3A\u5C11\u573A\u666F\u53D8\u91CF: vars.${name}
+\u73AF\u5883\u53D8\u91CF\u6620\u5C04: ${environmentName}
+\u63D0\u793A: \u5728\u914D\u7F6E\u4E2D\u8BBE\u7F6E vars.${name} \u6216\u8BBE\u7F6E\u73AF\u5883\u53D8\u91CF ${environmentName}`
+        );
+      } else {
+        throw new Error(
+          `\u7F3A\u5C11\u5FC5\u9700\u7684\u573A\u666F\u53D8\u91CF: vars.${name}
+\u63D0\u793A: \u8BF7\u5728\u914D\u7F6E\u6587\u4EF6\u7684 vars \u4E2D\u8BBE\u7F6E\u8BE5\u53D8\u91CF\uFF0C\u6216\u901A\u8FC7\u73AF\u5883\u53D8\u91CF\u63D0\u4F9B
+\u8BE6\u7EC6\u4FE1\u606F\u53EF\u901A\u8FC7\u8BBE\u7F6E SCENARIO_VERBOSE_ERRORS=true \u67E5\u770B`
+        );
+      }
     }
     vars[name] = value;
   }
@@ -598,7 +676,11 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables) {
       vars[definition.name] = md5(source);
     } else if (definition.type === "signature") {
       const params = Object.fromEntries(Object.entries(definition.params || {}).map(([key, variableName]) => [key, vars[variableName]]));
-      vars[definition.name] = generateSignature(params, vars[definition.secretVar || "apiSecret"]);
+      const secret = vars[definition.secretVar || "apiSecret"];
+      if (!secret) {
+        throw new Error(`\u7B7E\u540D\u751F\u6210\u5931\u8D25: \u7F3A\u5C11\u5BC6\u94A5\u53D8\u91CF vars.${definition.secretVar || "apiSecret"}`);
+      }
+      vars[definition.name] = generateSignature(params, secret);
     } else {
       throw new Error(`\u4E0D\u652F\u6301\u7684 generatedVars \u7C7B\u578B: ${definition.type}`);
     }
@@ -673,11 +755,42 @@ async function executeHttp(step, runtime, options) {
     requestSignal.dispose();
   }
 }
+var AdapterExecutionError = class extends Error {
+  constructor(adapterName, originalError, step) {
+    const message = `\u9002\u914D\u5668 ${adapterName} \u6267\u884C\u5931\u8D25: ${originalError.message}`;
+    super(message);
+    this.name = "AdapterExecutionError";
+    this.adapterName = adapterName;
+    this.originalError = originalError;
+    this.stepName = step?.name || "\u672A\u547D\u540D\u6B65\u9AA4";
+  }
+};
 async function executeAdapter(adapter, step, runtime, options) {
   if (!adapter) throw new Error(`\u672A\u6CE8\u518C\u6B65\u9AA4\u9002\u914D\u5668: ${step.adapter || "unknown"}`);
-  const output = await adapter.execute({ step: resolve(clone(step), runtime), runtime, options });
+  const adapterName = step.adapter || adapter.constructor?.name || "unknown";
+  let output;
+  try {
+    if (typeof adapter.beforeExecute === "function") {
+      await adapter.beforeExecute({ step, runtime, options });
+    }
+    output = await adapter.execute({ step: resolve(clone(step), runtime), runtime, options });
+    if (typeof adapter.afterExecute === "function") {
+      output = await adapter.afterExecute({ step, runtime, options, output }) || output;
+    }
+  } catch (error) {
+    if (typeof adapter.onError === "function") {
+      try {
+        await adapter.onError({ step, runtime, options, error });
+      } catch (hookError) {
+        console.warn(`\u9002\u914D\u5668 ${adapterName} \u9519\u8BEF\u94A9\u5B50\u5931\u8D25:`, hookError);
+      }
+    }
+    throw new AdapterExecutionError(adapterName, error, step);
+  }
   const response = output?.response || output;
-  if (!response || response.status === void 0) throw new Error("\u9002\u914D\u5668\u5FC5\u987B\u8FD4\u56DE response \u6216\u54CD\u5E94\u5BF9\u8C61");
+  if (!response || response.status === void 0) {
+    throw new Error(`\u9002\u914D\u5668 ${adapterName} \u5FC5\u987B\u8FD4\u56DE\u5305\u542B status \u7684 response \u5BF9\u8C61`);
+  }
   return {
     method: output.method || "ADAPTER",
     path: output.path || step.adapter || "adapter",
@@ -691,7 +804,15 @@ async function executeAdapter(adapter, step, runtime, options) {
   };
 }
 function createEngine(engineOptions = {}) {
-  const adapters = new Map([...listAdapters(), ...Object.entries(engineOptions.adapters || {})]);
+  const scopedAdapters = engineOptions.isolateAdapters !== false ? new Map([...listAdapters()]) : listAdapters();
+  if (engineOptions.adapters) {
+    for (const [name, adapter] of Object.entries(engineOptions.adapters)) {
+      if (adapter && typeof adapter.execute === "function") {
+        scopedAdapters.set(name, adapter);
+      }
+    }
+  }
+  const adapters = scopedAdapters;
   const fetchImpl = engineOptions.fetch || (typeof globalThis.fetch === "function" ? (...args) => globalThis.fetch(...args) : null);
   if (typeof fetchImpl !== "function") throw new Error("\u7F3A\u5C11 fetch \u5B9E\u73B0");
   async function runStep(step, runtime, runOptions = {}) {
@@ -725,9 +846,17 @@ function createEngine(engineOptions = {}) {
     let assertions = [];
     const retry = step.retryUntil || null;
     const totalAttempts = retry ? Number(retry.maxAttempts || 10) + 1 : 1;
+    const retryStartTime = now();
+    const maxElapsedMs = retry?.maxElapsedMs || 3e5;
     try {
       for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
         if (options.signal?.aborted) throw options.signal.reason || new Error("\u6267\u884C\u5DF2\u53D6\u6D88");
+        if (retry && now() - retryStartTime > maxElapsedMs) {
+          throw new Error(
+            `\u91CD\u8BD5\u8D85\u65F6: \u5DF2\u5C1D\u8BD5 ${attempt - 1} \u6B21\uFF0C\u8017\u65F6\u8D85\u8FC7 ${maxElapsedMs}ms
+\u63D0\u793A: \u8003\u8651\u8C03\u6574 retryUntil.maxElapsedMs \u6216\u68C0\u67E5\u63A5\u53E3\u54CD\u5E94`
+          );
+        }
         const adapter = chooseAdapter(step, adapters);
         lastExecution = adapter ? await executeAdapter(adapter, step, runtime, options) : await executeHttp(step, runtime, options);
         runtime.lastResponse = lastExecution.response;
@@ -735,7 +864,8 @@ function createEngine(engineOptions = {}) {
         applyExtract(step, lastExecution.response, runtime);
         assertions = buildAssertions(step, lastExecution.response, runtime);
         if (assertions.every((item) => item.passed) || attempt === totalAttempts) break;
-        await delay(Number(retry.intervalMs || 2e3), options.signal);
+        const intervalMs = Math.max(100, Number(retry.intervalMs || 2e3));
+        await delay(intervalMs, options.signal);
       }
       const failed = assertions.find((item) => !item.passed);
       return {
@@ -3392,6 +3522,7 @@ export {
   applyExtract,
   buildAssertions,
   buildUrl,
+  clearAdapters,
   clearScenarios,
   clone,
   createApp,
@@ -3422,6 +3553,9 @@ export {
   resolve,
   resolveString,
   runScenario,
-  sanitizeSensitive
+  sanitizeSensitive,
+  unregisterAdapter,
+  validateAdapter,
+  validateAdapterResponse
 };
 //# sourceMappingURL=scenario-test.esm.js.map
