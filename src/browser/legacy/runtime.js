@@ -358,22 +358,6 @@ export function createLegacyRuntime(options) {
     }
 
     // ===== 执行调度引擎 =====
-    async function clearSmsRateLimit(runtime, phone, hospitalCode) {
-        var baseUrl = runtime.baseUrl;
-        var query = 'phone=' + encodeURIComponent(phone);
-        if (hospitalCode) {
-            query += '&hospitalCode=' + encodeURIComponent(hospitalCode);
-        }
-        var url = joinUrl(baseUrl, 'mobile/auth/clearSmsRateLimit?' + query);
-        try {
-            await withRuntimeTimeout(function () {
-                return fetch(url, { method: 'POST', signal: runtime.abortController.signal });
-            }, runtime, 5000);
-        } catch (e) {
-            if (runtime.abortController.signal.aborted) throw e;
-        }
-    }
-
     async function withRuntimeTimeout(operation, runtime, timeoutMs) {
         var timedOut = false;
         var timer = setTimeout(function () {
@@ -411,6 +395,26 @@ export function createLegacyRuntime(options) {
     }
 
     async function executeStep(step, runtime, cfg) {
+        if (step.when !== undefined) {
+            var shouldRun = typeof step.when === 'object'
+                ? evaluateAssertion(step.when, { status: 0, headers: {}, body: null, bodyText: '' }, runtime).passed
+                : Boolean(resolve(step.when, runtime));
+            if (!shouldRun) {
+                return {
+                    name: step.name || '未命名步骤',
+                    method: 'SKIP',
+                    path: resolveString(step.path || '', runtime) || '',
+                    status: 'SKIPPED',
+                    duration: 0,
+                    passed: true,
+                    skipped: true,
+                    error: '',
+                    assertions: [],
+                    request: null,
+                    response: null
+                };
+            }
+        }
         var request = resolve(clone(step.request || {}), runtime) || {};
         var method = String(step.method || request.method || 'GET').toUpperCase();
         var rawPath = step.path || request.path || '';
@@ -456,96 +460,83 @@ export function createLegacyRuntime(options) {
             };
         }
 
-        var MAX_RETRIES = 2;
-        for (var attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-            try {
-                var responseData = await sendRequest();
-                var headerObj = responseData.headers;
-                var body = responseData.body;
-                if (step.autoClearSmsRateLimit !== false && body && body.code === 40004 && path.indexOf('sendSmsCode') >= 0 && attempt < MAX_RETRIES) {
-                    var phone = bodyData && bodyData.phone;
-                    var hospitalCode = bodyData && bodyData.hospitalCode;
-                    if (phone) {
-                        console.log('[自动清除限流] phone=' + phone + (hospitalCode ? ', hospitalCode=' + hospitalCode : '') + ' (attempt ' + (attempt + 1) + ')');
-                        await clearSmsRateLimit(runtime, phone, hospitalCode);
-                        await new Promise(function (r) { setTimeout(r, 500); });
-                        continue;
+        try {
+            var responseData = await sendRequest();
+            var headerObj = responseData.headers;
+            var body = responseData.body;
+            runtime.lastResponse = responseData;
+            runtime.lastResponseBody = body;
+            applyExtract(step, responseData, runtime);
+            var assertions = buildAssertions(step, responseData, runtime);
+            var failedAssertion = assertions.find(function (item) { return !item.passed; });
+            var requestAttempts = 1;
+
+            if (failedAssertion && step.retryUntil) {
+                var maxAttempts = Number(step.retryUntil.maxAttempts || 10);
+                var intervalMs = Number(step.retryUntil.intervalMs || 2000);
+                if (!isFinite(maxAttempts) || maxAttempts < 1) maxAttempts = 10;
+                if (!isFinite(intervalMs) || intervalMs < 0) intervalMs = 2000;
+                for (var retryIndex = 1; retryIndex <= maxAttempts; retryIndex += 1) {
+                    await waitForRetry(intervalMs, runtime);
+                    responseData = await sendRequest();
+                    requestAttempts = retryIndex + 1;
+                    headerObj = responseData.headers;
+                    body = responseData.body;
+                    runtime.lastResponse = responseData;
+                    runtime.lastResponseBody = body;
+                    applyExtract(step, responseData, runtime);
+                    assertions = buildAssertions(step, responseData, runtime);
+                    failedAssertion = assertions.find(function (item) { return !item.passed; });
+                    if (!failedAssertion) {
+                        return {
+                            name: step.name,
+                            method: method,
+                            path: path,
+                            status: responseData.status,
+                            duration: performance.now() - startedAt,
+                            attempts: requestAttempts,
+                            passed: true,
+                            error: '',
+                            request: { headers: headers, body: bodyData },
+                            response: { headers: headerObj, body: body, bodyText: responseData.bodyText },
+                            assertions: assertions
+                        };
                     }
                 }
-                runtime.lastResponse = responseData;
-                runtime.lastResponseBody = body;
-                applyExtract(step, responseData, runtime);
-                var assertions = buildAssertions(step, responseData, runtime);
-                var failedAssertion = assertions.find(function (item) { return !item.passed; });
-                var requestAttempts = 1;
-
-                if (failedAssertion && step.retryUntil) {
-                    var maxAttempts = Number(step.retryUntil.maxAttempts || 10);
-                    var intervalMs = Number(step.retryUntil.intervalMs || 2000);
-                    if (!isFinite(maxAttempts) || maxAttempts < 1) maxAttempts = 10;
-                    if (!isFinite(intervalMs) || intervalMs < 0) intervalMs = 2000;
-                    for (var retryIndex = 1; retryIndex <= maxAttempts; retryIndex += 1) {
-                        await waitForRetry(intervalMs, runtime);
-                        responseData = await sendRequest();
-                        requestAttempts = retryIndex + 1;
-                        headerObj = responseData.headers;
-                        body = responseData.body;
-                        runtime.lastResponse = responseData;
-                        runtime.lastResponseBody = body;
-                        applyExtract(step, responseData, runtime);
-                        assertions = buildAssertions(step, responseData, runtime);
-                        failedAssertion = assertions.find(function (item) { return !item.passed; });
-                        if (!failedAssertion) {
-                            return {
-                                name: step.name,
-                                method: method,
-                                path: path,
-                                status: responseData.status,
-                                duration: performance.now() - startedAt,
-                                attempts: requestAttempts,
-                                passed: true,
-                                error: '',
-                                request: { headers: headers, body: bodyData },
-                                response: { headers: headerObj, body: body, bodyText: responseData.bodyText },
-                                assertions: assertions
-                            };
-                        }
-                    }
-                }
-
-                return {
-                    name: step.name,
-                    method: method,
-                    path: path,
-                    status: responseData.status,
-                    duration: performance.now() - startedAt,
-                    attempts: requestAttempts,
-                    passed: !failedAssertion,
-                    error: failedAssertion ? failedAssertion.name : '',
-                    request: { headers: headers, body: bodyData },
-                    response: { headers: headerObj, body: body, bodyText: responseData.bodyText },
-                    assertions: assertions
-                };
-            } catch (error) {
-                var cancelled = runtime.cancelled;
-                var timedOut = error && error.scenarioTimedOut;
-                var errorMessage = cancelled ? '用户已取消执行' : (timedOut ? '请求超时（' + timeoutMs + 'ms）' : (error && error.message ? error.message : '请求执行失败'));
-                return {
-                    name: step.name,
-                    method: method,
-                    path: path,
-                    status: cancelled ? 'CANCELLED' : (timedOut ? 'TIMEOUT' : 'ERROR'),
-                    duration: performance.now() - startedAt,
-                    attempts: requestAttempts || attempt + 1,
-                    passed: false,
-                    cancelled: cancelled,
-                    timedOut: timedOut,
-                    error: errorMessage,
-                    request: { headers: headers, body: bodyData },
-                    response: { headers: {}, body: null },
-                    assertions: [{ name: cancelled ? '执行未取消' : (timedOut ? '请求未超时' : '请求执行成功'), passed: false, actual: errorMessage, expected: '无异常' }]
-                };
             }
+
+            return {
+                name: step.name,
+                method: method,
+                path: path,
+                status: responseData.status,
+                duration: performance.now() - startedAt,
+                attempts: requestAttempts,
+                passed: !failedAssertion,
+                error: failedAssertion ? failedAssertion.name : '',
+                request: { headers: headers, body: bodyData },
+                response: { headers: headerObj, body: body, bodyText: responseData.bodyText },
+                assertions: assertions
+            };
+        } catch (error) {
+            var cancelled = runtime.cancelled;
+            var timedOut = error && error.scenarioTimedOut;
+            var errorMessage = cancelled ? '用户已取消执行' : (timedOut ? '请求超时（' + timeoutMs + 'ms）' : (error && error.message ? error.message : '请求执行失败'));
+            return {
+                name: step.name,
+                method: method,
+                path: path,
+                status: cancelled ? 'CANCELLED' : (timedOut ? 'TIMEOUT' : 'ERROR'),
+                duration: performance.now() - startedAt,
+                attempts: requestAttempts || 1,
+                passed: false,
+                cancelled: cancelled,
+                timedOut: timedOut,
+                error: errorMessage,
+                request: { headers: headers, body: bodyData },
+                response: { headers: {}, body: null },
+                assertions: [{ name: cancelled ? '执行未取消' : (timedOut ? '请求未超时' : '请求执行成功'), passed: false, actual: errorMessage, expected: '无异常' }]
+            };
         }
     }
 

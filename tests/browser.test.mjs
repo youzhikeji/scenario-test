@@ -46,13 +46,18 @@ try {
             await new Promise((resolve) => setTimeout(resolve, 5000));
             await route.fulfill({ status: 200, contentType: "application/json", body: "{}" }).catch(() => {});
         });
+        const recordsRequests = [];
+        await page.route("https://mock.local/records/**", (route) => {
+            recordsRequests.push(route.request().url());
+            route.fulfill({ status: 204, body: "" });
+        });
         const externalRequests = [];
         page.on("request", (request) => {
             const url = request.url();
             if (!url.startsWith(`http://127.0.0.1:${port}`) && !url.startsWith("https://mock.local")) externalRequests.push(url);
         });
         await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "networkidle" });
-        await page.waitForFunction(() => document.querySelectorAll("[data-scenario-file]").length === 2);
+        await page.waitForFunction(() => document.querySelectorAll("[data-scenario-file]").length === 3);
         assert.equal(await page.locator("#stepsList li").count(), 1);
         assert.equal(await page.locator("#scenarioVar_exampleToken").getAttribute("type"), "text");
         assert.equal(await page.locator("#scenarioVar_expectedStatus").inputValue(), "UP");
@@ -99,6 +104,14 @@ try {
         await page.locator("#cancelBtn").click();
         await page.waitForFunction(() => !document.querySelector("#runBtn").disabled);
         assert.equal(await page.locator('#stepsList li[data-passed="false"]').count(), 1);
+
+        await page.locator('[data-scenario-file="scenarios/cleanup.js"]').click();
+        await page.waitForFunction(() => document.querySelector("#scenarioTitle").textContent.includes("条件清理"));
+        await page.locator("#runBtn").click();
+        await page.waitForFunction(() => !document.querySelector("#runBtn").disabled);
+        assert.equal(await page.locator('#stepsList li[data-passed="true"]').count(), 1);
+        assert.match(await page.locator("#stepsList").textContent(), /SKIPPED/);
+        assert.equal(recordsRequests.length, 0, `when 不满足时不应发出请求: ${recordsRequests.join(", ")}`);
 
         await page.locator('[data-scenario-file="scenarios/health.js"]').click();
         await page.locator("#runBtn").click();

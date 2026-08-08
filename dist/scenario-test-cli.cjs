@@ -64975,6 +64975,8 @@ function buildAssertions(step, response, runtime) {
   const definitions = Array.isArray(step.assertions) ? [...step.assertions] : [];
   if (step.status !== void 0 && !definitions.some((item) => item.target === "status")) {
     definitions.unshift({ name: `\u8FD4\u56DE HTTP ${step.status}`, target: "status", equals: step.status });
+  } else if (step.status === void 0 && definitions.length === 0) {
+    definitions.push({ name: "\u8FD4\u56DE HTTP 2xx", target: "status", matches: "^2\\d\\d$" });
   }
   return definitions.map((definition) => evaluateAssertion(definition, response, runtime));
 }
@@ -65017,10 +65019,33 @@ var currentConfig = null;
 function invariant(condition, message) {
   if (!condition) throw new TypeError(message);
 }
+function nonEmptyString(value) {
+  return typeof value === "string" && Boolean(value.trim());
+}
+function assertUnique(items, field, label) {
+  const seen = /* @__PURE__ */ new Set();
+  for (const item of items) {
+    const value = item[field];
+    invariant(!seen.has(value), `${label}\u91CD\u590D: ${value}`);
+    seen.add(value);
+  }
+}
 function defineScenario(input) {
   invariant(isPlainObject(input), "\u573A\u666F\u5FC5\u987B\u662F\u5BF9\u8C61");
   invariant(typeof input.name === "string" && input.name.trim(), "\u573A\u666F\u7F3A\u5C11 name");
   invariant(Array.isArray(input.steps), `\u573A\u666F ${input.name} \u7F3A\u5C11 steps \u6570\u7EC4`);
+  input.steps.forEach((step, index) => {
+    invariant(isPlainObject(step), `\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\u5FC5\u987B\u662F\u5BF9\u8C61`);
+    invariant(nonEmptyString(step.name), `\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\u7F3A\u5C11 name`);
+    if (step.method !== void 0) invariant(nonEmptyString(step.method), `\u6B65\u9AA4 ${step.name} \u7684 method \u65E0\u6548`);
+    if (step.retryUntil !== void 0) {
+      invariant(isPlainObject(step.retryUntil), `\u6B65\u9AA4 ${step.name} \u7684 retryUntil \u5FC5\u987B\u662F\u5BF9\u8C61`);
+      const maxAttempts = Number(step.retryUntil.maxAttempts ?? 10);
+      const intervalMs = Number(step.retryUntil.intervalMs ?? 2e3);
+      invariant(Number.isInteger(maxAttempts) && maxAttempts >= 1, `\u6B65\u9AA4 ${step.name} \u7684 maxAttempts \u5FC5\u987B\u662F\u6B63\u6574\u6570`);
+      invariant(Number.isFinite(intervalMs) && intervalMs >= 0, `\u6B65\u9AA4 ${step.name} \u7684 intervalMs \u4E0D\u80FD\u4E3A\u8D1F\u6570`);
+    }
+  });
   const failurePolicy = input.failurePolicy || "stop";
   invariant(["stop", "continue"].includes(failurePolicy), "failurePolicy \u53EA\u80FD\u662F stop \u6216 continue");
   return { ...input, failurePolicy, steps: [...input.steps] };
@@ -65029,23 +65054,40 @@ function defineConfig(input) {
   invariant(isPlainObject(input), "\u914D\u7F6E\u5FC5\u987B\u662F\u5BF9\u8C61");
   const envs = Array.isArray(input.envs) ? input.envs.map((env2) => ({ ...env2 })) : [];
   for (const env2 of envs) {
-    invariant(env2.key && env2.name, "\u6BCF\u4E2A\u73AF\u5883\u5FC5\u987B\u5305\u542B key \u548C name");
+    invariant(nonEmptyString(env2.key) && nonEmptyString(env2.name), "\u6BCF\u4E2A\u73AF\u5883\u5FC5\u987B\u5305\u542B\u975E\u7A7A key \u548C name");
   }
+  assertUnique(envs, "key", "\u73AF\u5883 key");
   const scenarios = (Array.isArray(input.scenarios) ? input.scenarios : []).map((entry, index) => {
-    if (typeof entry === "string") return { id: entry, name: entry, url: entry };
+    if (typeof entry === "string") {
+      invariant(nonEmptyString(entry), `\u7B2C ${index + 1} \u4E2A\u573A\u666F\u5730\u5740\u4E0D\u80FD\u4E3A\u7A7A`);
+      return { id: entry, name: entry, url: entry };
+    }
     invariant(isPlainObject(entry), `\u7B2C ${index + 1} \u4E2A\u573A\u666F\u6E05\u5355\u9879\u65E0\u6548`);
     const url = entry.url || entry.file || entry.path || "";
     const id = entry.id || url || `scenario-${index + 1}`;
+    invariant(nonEmptyString(id), `\u7B2C ${index + 1} \u4E2A\u573A\u666F\u7F3A\u5C11 id`);
+    invariant(nonEmptyString(url), `\u573A\u666F ${id} \u7F3A\u5C11 url`);
     return { ...entry, id, name: entry.name || id, url };
   });
-  const variables = Array.isArray(input.variables) ? input.variables.map((item) => ({ ...item })) : [];
+  assertUnique(scenarios, "id", "\u573A\u666F id");
+  const variables = Array.isArray(input.variables) ? input.variables.map((item, index) => {
+    invariant(isPlainObject(item), `\u7B2C ${index + 1} \u4E2A\u53D8\u91CF\u5B9A\u4E49\u65E0\u6548`);
+    invariant(nonEmptyString(item.name), `\u7B2C ${index + 1} \u4E2A\u53D8\u91CF\u7F3A\u5C11 name`);
+    if (item.env !== void 0) invariant(nonEmptyString(item.env), `\u53D8\u91CF ${item.name} \u7684 env \u65E0\u6548`);
+    return { ...item };
+  }) : [];
+  assertUnique(variables, "name", "\u53D8\u91CF name");
+  const defaultEnvKey = input.defaultEnvKey || envs[0]?.key || "";
+  invariant(!defaultEnvKey || envs.some((env2) => env2.key === defaultEnvKey), `defaultEnvKey \u4E0D\u5B58\u5728: ${defaultEnvKey}`);
+  const requestTimeoutMs = Number(input.requestTimeoutMs ?? 3e4);
+  invariant(Number.isFinite(requestTimeoutMs) && requestTimeoutMs > 0, "requestTimeoutMs \u5FC5\u987B\u662F\u6B63\u6570");
   return {
     ...input,
     envs,
     scenarios,
     variables,
-    defaultEnvKey: input.defaultEnvKey || envs[0]?.key || "",
-    requestTimeoutMs: Number(input.requestTimeoutMs || 3e4),
+    defaultEnvKey,
+    requestTimeoutMs,
     vars: { ...input.scenarioVars || {}, ...input.vars || {} },
     storagePrefix: input.storagePrefix || "scenario-test"
   };
@@ -65112,9 +65154,17 @@ function createRequestSignal(parentSignal, timeoutMs) {
     }
   };
 }
+function createRunIdentifiers() {
+  const timestamp = String(Date.now());
+  const random = globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID().replace(/-/g, "").slice(0, 8) : Math.random().toString(16).slice(2, 10).padEnd(8, "0");
+  return {
+    runId: `${timestamp}-${random}`,
+    runNo: `${timestamp.slice(-6)}-${random.slice(0, 4)}`
+  };
+}
 function buildGeneratedVars(scenario, baseVars, environmentVariables) {
-  const runId = String(Date.now());
-  const vars = { ...scenario.vars || {}, ...baseVars || {}, runId, runNo: runId.slice(-6) };
+  const identifiers = createRunIdentifiers();
+  const vars = { ...scenario.vars || {}, ...baseVars || {}, ...identifiers };
   for (const [name, environmentName] of Object.entries(scenario.envVars || {})) {
     const value = environmentVariables?.[environmentName] ?? vars[name];
     if (value === void 0 || value === null || value === "") {
@@ -65180,6 +65230,8 @@ async function executeHttp(step, runtime, options) {
     headers.Authorization = options.authorization;
   }
   const fetchOptions = { method, headers };
+  if (request.credentials !== void 0) fetchOptions.credentials = request.credentials;
+  if (request.redirect !== void 0) fetchOptions.redirect = request.redirect;
   if (request.fileUpload) {
     if (!options.io?.createUploadBody) throw new Error("\u5F53\u524D\u8FD0\u884C\u73AF\u5883\u4E0D\u652F\u6301 fileUpload");
     const upload = await options.io.createUploadBody(resolve(request.fileUpload, runtime), runtime);
@@ -65303,7 +65355,7 @@ function createEngine(engineOptions = {}) {
     const config = runOptions.config || engineOptions.config || {};
     const runtime = createRuntime(scenario, {
       config,
-      vars: runOptions.vars,
+      vars: { ...engineOptions.vars || {}, ...runOptions.vars || {} },
       environmentVariables: runOptions.environmentVariables || engineOptions.environmentVariables
     });
     const results = [];
@@ -65561,6 +65613,8 @@ var legacyCore = function(globalRoot) {
       return item && item.target === "status";
     })) {
       defs.unshift({ name: "\u8FD4\u56DE HTTP " + step.status, target: "status", equals: step.status });
+    } else if (step.status === void 0 && defs.length === 0) {
+      defs.push({ name: "\u8FD4\u56DE HTTP 2xx", target: "status", matches: "^2\\d\\d$" });
     }
     return defs.map(function(def) {
       return evaluateAssertion2(def, response, runtime);
@@ -66298,10 +66352,11 @@ var legacyView = function() {
     }
     ul.innerHTML = steps.map(function(s, i) {
       var ok = s.passed;
+      var skipped = s.skipped;
       var seqNum = i + 1;
-      var seqCls = ok ? "bg-emerald-500 text-white" : "bg-rose-500 text-white";
+      var seqCls = skipped ? "bg-slate-400 text-white" : ok ? "bg-emerald-500 text-white" : "bg-rose-500 text-white";
       var nameCls = ok ? "text-slate-700 group-hover:text-emerald-700" : "text-rose-800";
-      var statusCls = ok ? "text-emerald-600 bg-emerald-50 border-emerald-100" : "text-rose-600 bg-rose-100 border-rose-200 shadow-sm";
+      var statusCls = skipped ? "text-slate-600 bg-slate-100 border-slate-200" : ok ? "text-emerald-600 bg-emerald-50 border-emerald-100" : "text-rose-600 bg-rose-100 border-rose-200 shadow-sm";
       var timeCls = ok ? "text-slate-400" : "text-rose-400";
       var bgCls = ok ? "hover:bg-slate-50/50" : "bg-rose-50/20";
       var methodColor = { GET: "text-emerald-600", POST: "text-orange-500", PUT: "text-amber-600", DELETE: "text-rose-600", PATCH: "text-purple-600" }[s.method] || "text-slate-600";
@@ -67005,6 +67060,14 @@ function createLegacyRuntime(options) {
     }
     return String(Date.now()) + String(Math.random()).slice(2);
   }
+  function createRunIdentifiers2() {
+    var timestamp = String(Date.now());
+    var random = window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID().replace(/-/g, "").slice(0, 8) : Math.random().toString(16).slice(2, 10).padEnd(8, "0");
+    return {
+      runId: timestamp + "-" + random,
+      runNo: timestamp.slice(-6) + "-" + random.slice(0, 4)
+    };
+  }
   function buildScenarioRuntimeVars() {
     var cfg = appConfig;
     var scenario = state.scenario || {};
@@ -67017,11 +67080,8 @@ function createLegacyRuntime(options) {
         return def.label;
       }).join("\u3001") + "\u3002\u8BF7\u5728\u201C\u914D\u7F6E\u53C2\u6570 \u2192 \u5F53\u524D\u573A\u666F\u51ED\u636E\u201D\u4E2D\u586B\u5199\u5E76\u4FDD\u5B58\u3002");
     }
-    var runSeed = String(Date.now());
-    var vars = Object.assign({}, cfg.vars || {}, scenario.vars || {}, scenarioVars, {
-      runId: runSeed,
-      runNo: runSeed.slice(-6)
-    });
+    var identifiers = createRunIdentifiers2();
+    var vars = Object.assign({}, scenario.vars || {}, cfg.vars || {}, scenarioVars, identifiers);
     (scenario.generatedVars || []).forEach(function(def) {
       if (!def || !def.name) return;
       if (def.type === "timestamp") {
@@ -67078,21 +67138,6 @@ function createLegacyRuntime(options) {
     if (panel) panel.classList.add("open");
     if (chevron) chevron.classList.add("rotate-180");
   }
-  async function clearSmsRateLimit(runtime, phone, hospitalCode) {
-    var baseUrl = runtime.baseUrl;
-    var query = "phone=" + encodeURIComponent(phone);
-    if (hospitalCode) {
-      query += "&hospitalCode=" + encodeURIComponent(hospitalCode);
-    }
-    var url = joinUrl2(baseUrl, "mobile/auth/clearSmsRateLimit?" + query);
-    try {
-      await withRuntimeTimeout(function() {
-        return fetch(url, { method: "POST", signal: runtime.abortController.signal });
-      }, runtime, 5e3);
-    } catch (e) {
-      if (runtime.abortController.signal.aborted) throw e;
-    }
-  }
   async function withRuntimeTimeout(operation, runtime, timeoutMs) {
     var timedOut = false;
     var timer = setTimeout(function() {
@@ -67128,6 +67173,24 @@ function createLegacyRuntime(options) {
     });
   }
   async function executeStep(step, runtime, cfg) {
+    if (step.when !== void 0) {
+      var shouldRun = typeof step.when === "object" ? evaluateAssertion2(step.when, { status: 0, headers: {}, body: null, bodyText: "" }, runtime).passed : Boolean(resolve2(step.when, runtime));
+      if (!shouldRun) {
+        return {
+          name: step.name || "\u672A\u547D\u540D\u6B65\u9AA4",
+          method: "SKIP",
+          path: resolveString2(step.path || "", runtime) || "",
+          status: "SKIPPED",
+          duration: 0,
+          passed: true,
+          skipped: true,
+          error: "",
+          assertions: [],
+          request: null,
+          response: null
+        };
+      }
+    }
     var request = resolve2(clone2(step.request || {}), runtime) || {};
     var method = String(step.method || request.method || "GET").toUpperCase();
     var rawPath = step.path || request.path || "";
@@ -67142,6 +67205,8 @@ function createLegacyRuntime(options) {
     }
     var bodyData = request.body;
     var fetchOptions = { method, headers, signal: runtime.abortController.signal };
+    if (request.credentials !== void 0) fetchOptions.credentials = request.credentials;
+    if (request.redirect !== void 0) fetchOptions.redirect = request.redirect;
     if (bodyData !== void 0 && bodyData !== null && method !== "GET" && method !== "HEAD") {
       if (typeof bodyData === "string") {
         fetchOptions.body = bodyData;
@@ -67169,100 +67234,85 @@ function createLegacyRuntime(options) {
         bodyText: fetchResult.text
       };
     }
-    var MAX_RETRIES = 2;
-    for (var attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      try {
-        var responseData = await sendRequest();
-        var headerObj = responseData.headers;
-        var body = responseData.body;
-        if (step.autoClearSmsRateLimit !== false && body && body.code === 40004 && path5.indexOf("sendSmsCode") >= 0 && attempt < MAX_RETRIES) {
-          var phone = bodyData && bodyData.phone;
-          var hospitalCode = bodyData && bodyData.hospitalCode;
-          if (phone) {
-            console.log("[\u81EA\u52A8\u6E05\u9664\u9650\u6D41] phone=" + phone + (hospitalCode ? ", hospitalCode=" + hospitalCode : "") + " (attempt " + (attempt + 1) + ")");
-            await clearSmsRateLimit(runtime, phone, hospitalCode);
-            await new Promise(function(r) {
-              setTimeout(r, 500);
-            });
-            continue;
+    try {
+      var responseData = await sendRequest();
+      var headerObj = responseData.headers;
+      var body = responseData.body;
+      runtime.lastResponse = responseData;
+      runtime.lastResponseBody = body;
+      applyExtract2(step, responseData, runtime);
+      var assertions = buildAssertions2(step, responseData, runtime);
+      var failedAssertion = assertions.find(function(item) {
+        return !item.passed;
+      });
+      var requestAttempts = 1;
+      if (failedAssertion && step.retryUntil) {
+        var maxAttempts = Number(step.retryUntil.maxAttempts || 10);
+        var intervalMs = Number(step.retryUntil.intervalMs || 2e3);
+        if (!isFinite(maxAttempts) || maxAttempts < 1) maxAttempts = 10;
+        if (!isFinite(intervalMs) || intervalMs < 0) intervalMs = 2e3;
+        for (var retryIndex = 1; retryIndex <= maxAttempts; retryIndex += 1) {
+          await waitForRetry(intervalMs, runtime);
+          responseData = await sendRequest();
+          requestAttempts = retryIndex + 1;
+          headerObj = responseData.headers;
+          body = responseData.body;
+          runtime.lastResponse = responseData;
+          runtime.lastResponseBody = body;
+          applyExtract2(step, responseData, runtime);
+          assertions = buildAssertions2(step, responseData, runtime);
+          failedAssertion = assertions.find(function(item) {
+            return !item.passed;
+          });
+          if (!failedAssertion) {
+            return {
+              name: step.name,
+              method,
+              path: path5,
+              status: responseData.status,
+              duration: performance.now() - startedAt,
+              attempts: requestAttempts,
+              passed: true,
+              error: "",
+              request: { headers, body: bodyData },
+              response: { headers: headerObj, body, bodyText: responseData.bodyText },
+              assertions
+            };
           }
         }
-        runtime.lastResponse = responseData;
-        runtime.lastResponseBody = body;
-        applyExtract2(step, responseData, runtime);
-        var assertions = buildAssertions2(step, responseData, runtime);
-        var failedAssertion = assertions.find(function(item) {
-          return !item.passed;
-        });
-        var requestAttempts = 1;
-        if (failedAssertion && step.retryUntil) {
-          var maxAttempts = Number(step.retryUntil.maxAttempts || 10);
-          var intervalMs = Number(step.retryUntil.intervalMs || 2e3);
-          if (!isFinite(maxAttempts) || maxAttempts < 1) maxAttempts = 10;
-          if (!isFinite(intervalMs) || intervalMs < 0) intervalMs = 2e3;
-          for (var retryIndex = 1; retryIndex <= maxAttempts; retryIndex += 1) {
-            await waitForRetry(intervalMs, runtime);
-            responseData = await sendRequest();
-            requestAttempts = retryIndex + 1;
-            headerObj = responseData.headers;
-            body = responseData.body;
-            runtime.lastResponse = responseData;
-            runtime.lastResponseBody = body;
-            applyExtract2(step, responseData, runtime);
-            assertions = buildAssertions2(step, responseData, runtime);
-            failedAssertion = assertions.find(function(item) {
-              return !item.passed;
-            });
-            if (!failedAssertion) {
-              return {
-                name: step.name,
-                method,
-                path: path5,
-                status: responseData.status,
-                duration: performance.now() - startedAt,
-                attempts: requestAttempts,
-                passed: true,
-                error: "",
-                request: { headers, body: bodyData },
-                response: { headers: headerObj, body, bodyText: responseData.bodyText },
-                assertions
-              };
-            }
-          }
-        }
-        return {
-          name: step.name,
-          method,
-          path: path5,
-          status: responseData.status,
-          duration: performance.now() - startedAt,
-          attempts: requestAttempts,
-          passed: !failedAssertion,
-          error: failedAssertion ? failedAssertion.name : "",
-          request: { headers, body: bodyData },
-          response: { headers: headerObj, body, bodyText: responseData.bodyText },
-          assertions
-        };
-      } catch (error) {
-        var cancelled = runtime.cancelled;
-        var timedOut = error && error.scenarioTimedOut;
-        var errorMessage = cancelled ? "\u7528\u6237\u5DF2\u53D6\u6D88\u6267\u884C" : timedOut ? "\u8BF7\u6C42\u8D85\u65F6\uFF08" + timeoutMs + "ms\uFF09" : error && error.message ? error.message : "\u8BF7\u6C42\u6267\u884C\u5931\u8D25";
-        return {
-          name: step.name,
-          method,
-          path: path5,
-          status: cancelled ? "CANCELLED" : timedOut ? "TIMEOUT" : "ERROR",
-          duration: performance.now() - startedAt,
-          attempts: requestAttempts || attempt + 1,
-          passed: false,
-          cancelled,
-          timedOut,
-          error: errorMessage,
-          request: { headers, body: bodyData },
-          response: { headers: {}, body: null },
-          assertions: [{ name: cancelled ? "\u6267\u884C\u672A\u53D6\u6D88" : timedOut ? "\u8BF7\u6C42\u672A\u8D85\u65F6" : "\u8BF7\u6C42\u6267\u884C\u6210\u529F", passed: false, actual: errorMessage, expected: "\u65E0\u5F02\u5E38" }]
-        };
       }
+      return {
+        name: step.name,
+        method,
+        path: path5,
+        status: responseData.status,
+        duration: performance.now() - startedAt,
+        attempts: requestAttempts,
+        passed: !failedAssertion,
+        error: failedAssertion ? failedAssertion.name : "",
+        request: { headers, body: bodyData },
+        response: { headers: headerObj, body, bodyText: responseData.bodyText },
+        assertions
+      };
+    } catch (error) {
+      var cancelled = runtime.cancelled;
+      var timedOut = error && error.scenarioTimedOut;
+      var errorMessage = cancelled ? "\u7528\u6237\u5DF2\u53D6\u6D88\u6267\u884C" : timedOut ? "\u8BF7\u6C42\u8D85\u65F6\uFF08" + timeoutMs + "ms\uFF09" : error && error.message ? error.message : "\u8BF7\u6C42\u6267\u884C\u5931\u8D25";
+      return {
+        name: step.name,
+        method,
+        path: path5,
+        status: cancelled ? "CANCELLED" : timedOut ? "TIMEOUT" : "ERROR",
+        duration: performance.now() - startedAt,
+        attempts: requestAttempts || 1,
+        passed: false,
+        cancelled,
+        timedOut,
+        error: errorMessage,
+        request: { headers, body: bodyData },
+        response: { headers: {}, body: null },
+        assertions: [{ name: cancelled ? "\u6267\u884C\u672A\u53D6\u6D88" : timedOut ? "\u8BF7\u6C42\u672A\u8D85\u65F6" : "\u8BF7\u6C42\u6267\u884C\u6210\u529F", passed: false, actual: errorMessage, expected: "\u65E0\u5F02\u5E38" }]
+      };
     }
   }
   function createExecutionRuntime() {
@@ -68042,8 +68092,11 @@ async function readWorkbookRows(filePath, options = {}) {
   return rows;
 }
 
+// src/version.generated.js
+var VERSION = "0.2.12";
+
 // src/init-templates.js
-var DEFAULT_LIBRARY_URL = "https://github.com/youzhikeji/scenario-test/releases/download/v0.2.12/scenario-test.umd.js";
+var DEFAULT_LIBRARY_URL = `https://github.com/youzhikeji/scenario-test/releases/download/v${VERSION}/scenario-test.umd.js`;
 var AUTHORING_PROMPT = `# AI \u573A\u666F\u751F\u6210 Prompt
 
 \u8BF7\u4E3A\u5F53\u524D\u9879\u76EE\u751F\u6210 scenario-test \u573A\u666F\u7528\u4F8B\u3002\u5148\u9605\u8BFB\u672C\u76EE\u5F55\u7684 \`README.md\`\u3001\`SCENARIO_PATTERNS.md\`\u3001\`scenario.config.js\` \u548C\u5DF2\u6709 \`scenarios/\`\uFF0C\u518D\u5206\u6790\u9879\u76EE Controller\u3001OpenAPI/Swagger\u3001\u524D\u7AEF API \u8C03\u7528\u3001\u63A5\u53E3\u6587\u6863\u548C\u5DF2\u6709\u81EA\u52A8\u5316\u6D4B\u8BD5\u3002
@@ -68057,7 +68110,7 @@ var AUTHORING_PROMPT = `# AI \u573A\u666F\u751F\u6210 Prompt
 3. \u5728 \`scenario.config.js\` \u7EF4\u62A4 \`envs\`\u3001\`vars\`\u3001\`variables\` \u548C \`scenarios\`\u3002\u79C1\u6709\u9879\u76EE\u53EF\u5728 \`vars\` \u4FDD\u5B58\u8054\u8C03\u51ED\u636E\uFF1B\`variables\` \u53EA\u58F0\u660E\u6807\u7B7E\u3001\`required\` \u4E0E\u53EF\u9009 \`env\` \u6620\u5C04\u3002\u6E90\u7801\u80FD\u786E\u8BA4\u8BF7\u6C42\u5B57\u6BB5\u4F46\u4E0D\u80FD\u786E\u8BA4\u5FC5\u586B\u53D6\u503C\u65F6\uFF0C\u5728\u914D\u7F6E \`vars\` \u4E2D\u7559\u7A7A\uFF0C\u5E76\u5728 \`variables\` \u4E2D\u58F0\u660E\u4E3A \`required: true\`\uFF1B\u573A\u666F\u53EA\u5F15\u7528\u8BE5\u53D8\u91CF\uFF0C\u7981\u6B62\u586B\u5165\u731C\u6D4B\u503C\u6216\u6D4B\u8BD5\u6807\u8BB0\u3002
 4. \u5148\u53C2\u7167 \`SCENARIO_PATTERNS.md\` \u7684\u5B8C\u6574\u6A21\u5F0F\uFF0C\u518D\u6309\u672C\u9879\u76EE\u8BC1\u636E\u66FF\u6362\u8DEF\u5F84\u3001\u5B57\u6BB5\u548C\u54CD\u5E94\u65AD\u8A00\uFF1B\u6A21\u5F0F\u4E2D\u7684\u5C16\u62EC\u53F7\u5360\u4F4D\u5185\u5BB9\u4E0D\u5F97\u76F4\u63A5\u5199\u5165\u573A\u666F\u3002\u573A\u666F\u5FC5\u987B\u4F7F\u7528 \`ScenarioTest.registerScenario(id, ScenarioTest.defineScenario({...}))\`\uFF0C\u914D\u7F6E\u4E2D\u7684\u573A\u666F id\u3001\u6587\u4EF6\u6CE8\u518C id \u5FC5\u987B\u4E00\u81F4\u3002
 5. \u6BCF\u4E00\u6B65\u5199 \`name\`\u3001\`method\`\u3001\`path\`\u3001\`status\`\uFF0C\u5E76\u4E3A\u5173\u952E\u4E1A\u52A1\u7ED3\u679C\u5199 \`assertions\`\u3002Query \u53C2\u6570\u53EA\u80FD\u5199\u5728\u6B65\u9AA4\u9876\u5C42 \`params\`\uFF0C\u4E0D\u80FD\u5199\u6210 \`request.params\`\u3002\u7528 \`extract\` \u4FDD\u5B58\u54CD\u5E94 ID\u3001Token \u6216\u72B6\u6001\uFF0C\u518D\u7528 \`{{vars.name}}\` \u4E32\u8054\u540E\u7EED\u6B65\u9AA4\u3002
-6. \u8BA4\u8BC1\u662F\u666E\u901A\u9879\u76EE\u6B65\u9AA4\uFF1A\u786E\u8BA4\u767B\u5F55\u63A5\u53E3\u65F6\u5148\u767B\u5F55\u5E76\u63D0\u53D6 Token\uFF1B\u65E0\u6CD5\u786E\u8BA4\u65F6\u4EC5\u58F0\u660E\u53D8\u91CF\u5E76\u5728\u5177\u4F53 Header\u3001Query \u6216 Body \u4E2D\u5F15\u7528\uFF0C\u4E0D\u865A\u6784\u6846\u67B6\u7EA7\u8BA4\u8BC1\u3002
+6. \u8BA4\u8BC1\u662F\u666E\u901A\u9879\u76EE\u6B65\u9AA4\uFF1A\u786E\u8BA4\u767B\u5F55\u63A5\u53E3\u65F6\u5148\u767B\u5F55\u5E76\u63D0\u53D6 Token\uFF1B\u65E0\u6CD5\u786E\u8BA4\u65F6\u4EC5\u58F0\u660E\u53D8\u91CF\u5E76\u5728\u5177\u4F53 Header\u3001Query \u6216 Body \u4E2D\u5F15\u7528\uFF0C\u4E0D\u865A\u6784\u6846\u67B6\u7EA7\u8BA4\u8BC1\u3002\u6D4F\u89C8\u5668 Cookie \u4F1A\u8BDD\u5FC5\u987B\u6709\u9879\u76EE\u8BC1\u636E\u5E76\u663E\u5F0F\u8BBE\u7F6E request.credentials \u4E3A include\uFF1BNode CLI \u5F53\u524D\u4E0D\u63D0\u4F9B\u81EA\u52A8 Cookie Jar\u3002
 7. \`runId\` \u548C \`runNo\` \u662F\u6BCF\u6B21\u6267\u884C\u81EA\u52A8\u751F\u6210\u7684\u5185\u7F6E\u53D8\u91CF\uFF0C\u4E0D\u8981\u5728\u914D\u7F6E\u6216\u573A\u666F\u4E2D\u91CD\u65B0\u5B9A\u4E49\u3002\u5199\u5165\u573A\u666F\u4F7F\u7528 \`scenario-{{vars.runNo}}\` \u7B49\u6D4B\u8BD5\u6807\u8BB0\u3002\u6E05\u7406\u53EA\u80FD\u6309\u521A\u63D0\u53D6\u7684 ID \u6216\u6D4B\u8BD5\u6807\u8BB0\u7CBE\u786E\u5B9A\u4F4D\uFF0C\u5E76\u7528 \`when\` \u9632\u6B62\u7A7A\u503C\u5220\u9664\uFF1B\u65E0\u6CD5\u786E\u8BA4\u5B89\u5168\u6E05\u7406\u6761\u4EF6\u65F6\u4E0D\u751F\u6210\u5220\u9664\u6B65\u9AA4\u3002
 8. \u9ED8\u8BA4\u4FDD\u6301 \`failurePolicy: "stop"\`\u3002\u53EA\u6709\u5728\u5B8C\u6210\u72B6\u6001\u5B57\u6BB5\u548C\u7EC8\u6001\u503C\u90FD\u6709\u8BC1\u636E\u65F6\u624D\u4F7F\u7528 \`retryUntil\`\uFF0C\u4E14 assertions \u5FC5\u987B\u65AD\u8A00\u8BE5\u7EC8\u6001\u503C\uFF1B\u53EA\u65AD\u8A00\u5B57\u6BB5\u5B58\u5728\u4F1A\u7ACB\u5373\u901A\u8FC7\uFF0C\u7981\u6B62\u914D\u5408 \`retryUntil\`\u3002\u5B8C\u6210\u72B6\u6001\u672A\u77E5\u65F6\u6700\u591A\u751F\u6210\u4E00\u6B21\u72B6\u6001\u67E5\u8BE2\u3002\u4E0D\u8981\u5199\u56FA\u5B9A sleep\u3002
 9. \u9519\u8BEF\u54CD\u5E94\u4F53\u6CA1\u6709\u4EE3\u7801\u3001\u6587\u6863\u6216\u65E2\u6709\u6D4B\u8BD5\u4F9D\u636E\u65F6\uFF0C\u53EA\u65AD\u8A00\u5DF2\u786E\u8BA4\u7684 HTTP status\uFF0C\u4E0D\u80FD\u731C\u6D4B\u6216\u65AD\u8A00 code\u3001message\u3001error \u7B49\u5B57\u6BB5\u5B58\u5728\u3002
@@ -68095,7 +68148,7 @@ var SCENARIO_PATTERNS = [
   "        ]",
   "    }));",
   "",
-  "\u8BA4\u8BC1\u4F4D\u4E8E Query\u3001Cookie \u6216 Body \u65F6\uFF0C\u76F4\u63A5\u5728 params\u3001request.headers \u6216 request.body \u5F15\u7528\u53D8\u91CF\u3002\u6CA1\u6709\u53EF\u786E\u8BA4\u767B\u5F55\u63A5\u53E3\u65F6\uFF0C\u53EA\u5728 vars \u548C variables \u4E2D\u58F0\u660E\u5DF2\u6709\u51ED\u636E\uFF0C\u4E0D\u80FD\u865A\u6784\u767B\u5F55\u6D41\u7A0B\u3002",
+  '\u8BA4\u8BC1\u4F4D\u4E8E Query\u3001Header \u6216 Body \u65F6\uFF0C\u76F4\u63A5\u5728 params\u3001request.headers \u6216 request.body \u5F15\u7528\u53D8\u91CF\u3002\u6D4F\u89C8\u5668 Cookie \u4F1A\u8BDD\u5FC5\u987B\u6709\u4EE3\u7801\u4F9D\u636E\u5E76\u663E\u5F0F\u8BBE\u7F6E request.credentials: "include"\uFF1BNode CLI \u5F53\u524D\u4E0D\u63D0\u4F9B\u81EA\u52A8 Cookie Jar\u3002\u6CA1\u6709\u53EF\u786E\u8BA4\u767B\u5F55\u63A5\u53E3\u65F6\uFF0C\u53EA\u5728 vars \u548C variables \u4E2D\u58F0\u660E\u5DF2\u6709\u51ED\u636E\uFF0C\u4E0D\u80FD\u865A\u6784\u767B\u5F55\u6D41\u7A0B\u3002',
   "",
   "## \u6A21\u5F0F\u4E8C\uFF1A\u53EA\u8BFB\u5217\u8868\u3001\u63D0\u53D6 ID\u3001\u8BE6\u60C5\u6821\u9A8C",
   "",
@@ -68152,7 +68205,8 @@ var SCENARIO_PATTERNS = [
   "",
   "AI \u65E0\u6CD5\u5B9A\u4F4D\u63A5\u53E3\u65F6\uFF0C\u63D0\u4F9B Controller \u6587\u4EF6\u8DEF\u5F84\u3001OpenAPI \u5BFC\u51FA\u3001\u524D\u7AEF API \u6A21\u5757\u8DEF\u5F84\u3001\u5DF2\u6709\u8BF7\u6C42\u54CD\u5E94\u6837\u4F8B\u3001\u8BA4\u8BC1\u63A5\u53E3\u6837\u4F8B\u6216\u6D4B\u8BD5\u53D8\u91CF\u540D\u4E2D\u7684\u4EFB\u4E00\u9879\u3002\u4E0D\u8981\u63D0\u4F9B\u751F\u4EA7\u51ED\u636E\u6216\u4E2A\u4EBA\u6570\u636E\u3002"
 ].join("\n");
-function createProjectFiles(directory = "scenario-test") {
+function createProjectFiles(directory = "scenario-test", options = {}) {
+  const storagePrefix = options.storagePrefix || "scenario-test.project";
   return {
     [`${directory}/index.html`]: `<!doctype html>
 <html lang="zh-CN">
@@ -68176,6 +68230,7 @@ function createProjectFiles(directory = "scenario-test") {
         { key: "local", name: "\u672C\u5730\u5F00\u53D1", baseUrl: "http://localhost:8080" }
     ],
     defaultEnvKey: "local",
+    storagePrefix: ${JSON.stringify(storagePrefix)},
     requestTimeoutMs: 30000,
     vars: {},
     variables: [],
@@ -68247,7 +68302,7 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
 
 \`CLI \u73AF\u5883\u53D8\u91CF / \u6D4F\u89C8\u5668\u9875\u9762\u8986\u76D6 > scenario.config.js \u7684 vars > \u573A\u666F vars > variables[].defaultValue\`
 
-\u6D4F\u89C8\u5668\u4E2D\u4FDD\u5B58\u7684\u53D8\u91CF\u4F1A\u6309\u73AF\u5883\u4FDD\u5B58\u5230 LocalStorage\uFF1B\u70B9\u51FB\u6E05\u9664\u5F53\u524D\u73AF\u5883\u8986\u76D6\u540E\uFF0C\u7ACB\u5373\u56DE\u9000\u5230 \`vars\`\u3002CLI \u53EA\u8BFB\u53D6\u7CFB\u7EDF\u73AF\u5883\u53D8\u91CF\u548C\u914D\u7F6E\u6587\u4EF6\uFF0C\u4E0D\u8BFB\u53D6\u6D4F\u89C8\u5668 LocalStorage\u3002
+\u6D4F\u89C8\u5668\u4E2D\u4FDD\u5B58\u7684\u53D8\u91CF\u4F1A\u6309\u9879\u76EE \`storagePrefix\` \u548C\u73AF\u5883\u4FDD\u5B58\u5230 LocalStorage\uFF1B\u70B9\u51FB\u6E05\u9664\u5F53\u524D\u73AF\u5883\u8986\u76D6\u540E\uFF0C\u7ACB\u5373\u56DE\u9000\u5230 \`vars\`\u3002CLI \u53EA\u8BFB\u53D6\u7CFB\u7EDF\u73AF\u5883\u53D8\u91CF\u548C\u914D\u7F6E\u6587\u4EF6\uFF0C\u4E0D\u8BFB\u53D6\u6D4F\u89C8\u5668 LocalStorage\u3002 \`init\` \u4F1A\u6839\u636E\u9879\u76EE\u76EE\u5F55\u540D\u751F\u6210\u9694\u79BB\u524D\u7F00\u3002
 
 ## \u7F16\u5199\u573A\u666F
 
@@ -68286,8 +68341,9 @@ ScenarioTest.registerScenario("create-order", ScenarioTest.defineScenario({
 
 - \u7528 \`{{vars.name}}\` \u5728 path\u3001Query\u3001Header\u3001Body \u4E2D\u5F15\u7528\u53D8\u91CF\u3002
 - \u7528 \`extract\` \u4ECE\u54CD\u5E94\u63D0\u53D6 ID\u3001Token \u6216\u72B6\u6001\uFF0C\u518D\u4F9B\u540E\u7EED\u6B65\u9AA4\u4F7F\u7528\u3002
-- \u767B\u5F55\u3001\u6362 Token\u3001Cookie\u3001\u7B7E\u540D\u90FD\u6309\u666E\u901A\u6B65\u9AA4\u548C\u53D8\u91CF\u5B9E\u73B0\uFF1B\u8BA4\u8BC1\u65B9\u5F0F\u7531\u9879\u76EE\u573A\u666F\u51B3\u5B9A\uFF0C\u516C\u5171\u6846\u67B6\u4E0D\u4F1A\u731C\u6D4B\u6216\u5F3A\u5236\u7EDF\u4E00\u3002
+- \u767B\u5F55\u3001\u6362 Token\u3001\u7B7E\u540D\u90FD\u6309\u666E\u901A\u6B65\u9AA4\u548C\u53D8\u91CF\u5B9E\u73B0\uFF1B\u6D4F\u89C8\u5668 Cookie \u4F1A\u8BDD\u663E\u5F0F\u4F7F\u7528 \`request.credentials: "include"\`\uFF0CNode CLI \u5F53\u524D\u4E0D\u63D0\u4F9B\u81EA\u52A8 Cookie Jar\u3002
 - \u6BCF\u4E00\u6B65\u81F3\u5C11\u5199 \`name\`\u3001\`method\`\u3001\`path\`\u3001\`status\`\uFF1B\u5173\u952E\u7ED3\u679C\u8865\u5145 \`assertions\`\u3002
+- \u672A\u5199 \`status\` \u548C \`assertions\` \u65F6\u8FD0\u884C\u65F6\u9ED8\u8BA4\u8981\u6C42 HTTP 2xx\uFF0C\u4E0D\u80FD\u628A\u5F02\u5E38\u54CD\u5E94\u5F53\u6210\u529F\u3002
 - \u6700\u7EC8\u4E00\u81F4\u6027\u4F7F\u7528 \`retryUntil\`\uFF0C\u907F\u514D\u56FA\u5B9A\u7B49\u5F85\uFF1B\u524D\u7F6E\u53D8\u91CF\u53EF\u80FD\u4E3A\u7A7A\u7684\u5220\u9664\u64CD\u4F5C\u4F7F\u7528 \`when\` \u4FDD\u62A4\u3002
 - \u9ED8\u8BA4\u5931\u8D25\u5373\u505C\u6B62\uFF1B\u53EA\u6709\u9700\u8981\u6536\u96C6\u591A\u4E2A\u5931\u8D25\u65F6\u624D\u5728\u573A\u666F\u4E0A\u8BBE \`failurePolicy: "continue"\`\u3002
 
@@ -68355,6 +68411,11 @@ Remove-Item Env:SCENARIO_CLIENT_SECRET
 }
 
 // src/cli.js
+function argumentValue(argv, index, option) {
+  const value = argv[index + 1];
+  if (!value || value.startsWith("--")) throw new Error(`${option} \u7F3A\u5C11\u53C2\u6570\u503C`);
+  return value;
+}
 function parseArgs(argv) {
   const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", port: 4300, project: "", dir: "", libraryUrl: "", force: false };
   let start = 0;
@@ -68364,24 +68425,28 @@ function parseArgs(argv) {
   }
   for (let index = start; index < argv.length; index += 1) {
     const item = argv[index];
-    if (item === "--config") args.config = argv[++index] || "";
-    else if (item === "--scenario") args.scenario = argv[++index] || "";
-    else if (item === "--env") args.env = argv[++index] || "";
-    else if (item === "--base-url") args.baseUrl = argv[++index] || "";
-    else if (["--token", "--authorization"].includes(item)) args.authorization = argv[++index] || "";
-    else if (item === "--port") args.port = Number(argv[++index] || 4300);
-    else if (item === "--project") args.project = argv[++index] || "";
-    else if (item === "--dir") args.dir = argv[++index] || "";
-    else if (item === "--library-url") args.libraryUrl = argv[++index] || "";
+    if (item === "--config") args.config = argumentValue(argv, index++, item);
+    else if (item === "--scenario") args.scenario = argumentValue(argv, index++, item);
+    else if (item === "--env") args.env = argumentValue(argv, index++, item);
+    else if (item === "--base-url") args.baseUrl = argumentValue(argv, index++, item);
+    else if (["--token", "--authorization"].includes(item)) args.authorization = argumentValue(argv, index++, item);
+    else if (item === "--port") args.port = Number(argumentValue(argv, index++, item));
+    else if (item === "--project") args.project = argumentValue(argv, index++, item);
+    else if (item === "--dir") args.dir = argumentValue(argv, index++, item);
+    else if (item === "--library-url") args.libraryUrl = argumentValue(argv, index++, item);
     else if (item === "--force") args.force = true;
     else if (item === "--all") args.all = true;
     else if (["--help", "-h"].includes(item)) args.help = true;
+    else if (item.startsWith("-")) throw new Error(`\u672A\u77E5\u53C2\u6570: ${item}`);
     else if (!args.scenario && args.command === "run") args.scenario = item;
+    else throw new Error(`\u65E0\u6CD5\u8BC6\u522B\u7684\u53C2\u6570: ${item}`);
   }
+  if (args.all && args.scenario) throw new Error("--all \u4E0E --scenario \u4E0D\u80FD\u540C\u65F6\u4F7F\u7528");
+  if (!Number.isInteger(args.port) || args.port < 1 || args.port > 65535) throw new Error("--port \u5FC5\u987B\u662F 1-65535 \u7684\u6574\u6570");
   return args;
 }
 function printHelp() {
-  console.log(`scenario-test 0.2.12
+  console.log(`scenario-test ${VERSION}
 
 Usage:
   node scenario-test-cli.cjs --config ./scenario.config.js --env local --all
@@ -68875,6 +68940,8 @@ var ScenarioTest = (() => {
     const definitions = Array.isArray(step.assertions) ? [...step.assertions] : [];
     if (step.status !== void 0 && !definitions.some((item) => item.target === "status")) {
       definitions.unshift({ name: \`\\u8FD4\\u56DE HTTP \${step.status}\`, target: "status", equals: step.status });
+    } else if (step.status === void 0 && definitions.length === 0) {
+      definitions.push({ name: "\\u8FD4\\u56DE HTTP 2xx", target: "status", matches: "^2\\\\d\\\\d$" });
     }
     return definitions.map((definition) => evaluateAssertion(definition, response, runtime));
   }
@@ -68917,10 +68984,33 @@ var ScenarioTest = (() => {
   function invariant(condition, message) {
     if (!condition) throw new TypeError(message);
   }
+  function nonEmptyString(value) {
+    return typeof value === "string" && Boolean(value.trim());
+  }
+  function assertUnique(items, field, label) {
+    const seen = /* @__PURE__ */ new Set();
+    for (const item of items) {
+      const value = item[field];
+      invariant(!seen.has(value), \`\${label}\\u91CD\\u590D: \${value}\`);
+      seen.add(value);
+    }
+  }
   function defineScenario(input) {
     invariant(isPlainObject(input), "\\u573A\\u666F\\u5FC5\\u987B\\u662F\\u5BF9\\u8C61");
     invariant(typeof input.name === "string" && input.name.trim(), "\\u573A\\u666F\\u7F3A\\u5C11 name");
     invariant(Array.isArray(input.steps), \`\\u573A\\u666F \${input.name} \\u7F3A\\u5C11 steps \\u6570\\u7EC4\`);
+    input.steps.forEach((step, index) => {
+      invariant(isPlainObject(step), \`\\u573A\\u666F \${input.name} \\u7B2C \${index + 1} \\u6B65\\u5FC5\\u987B\\u662F\\u5BF9\\u8C61\`);
+      invariant(nonEmptyString(step.name), \`\\u573A\\u666F \${input.name} \\u7B2C \${index + 1} \\u6B65\\u7F3A\\u5C11 name\`);
+      if (step.method !== void 0) invariant(nonEmptyString(step.method), \`\\u6B65\\u9AA4 \${step.name} \\u7684 method \\u65E0\\u6548\`);
+      if (step.retryUntil !== void 0) {
+        invariant(isPlainObject(step.retryUntil), \`\\u6B65\\u9AA4 \${step.name} \\u7684 retryUntil \\u5FC5\\u987B\\u662F\\u5BF9\\u8C61\`);
+        const maxAttempts = Number(step.retryUntil.maxAttempts ?? 10);
+        const intervalMs = Number(step.retryUntil.intervalMs ?? 2e3);
+        invariant(Number.isInteger(maxAttempts) && maxAttempts >= 1, \`\\u6B65\\u9AA4 \${step.name} \\u7684 maxAttempts \\u5FC5\\u987B\\u662F\\u6B63\\u6574\\u6570\`);
+        invariant(Number.isFinite(intervalMs) && intervalMs >= 0, \`\\u6B65\\u9AA4 \${step.name} \\u7684 intervalMs \\u4E0D\\u80FD\\u4E3A\\u8D1F\\u6570\`);
+      }
+    });
     const failurePolicy = input.failurePolicy || "stop";
     invariant(["stop", "continue"].includes(failurePolicy), "failurePolicy \\u53EA\\u80FD\\u662F stop \\u6216 continue");
     return { ...input, failurePolicy, steps: [...input.steps] };
@@ -68929,23 +69019,40 @@ var ScenarioTest = (() => {
     invariant(isPlainObject(input), "\\u914D\\u7F6E\\u5FC5\\u987B\\u662F\\u5BF9\\u8C61");
     const envs = Array.isArray(input.envs) ? input.envs.map((env) => ({ ...env })) : [];
     for (const env of envs) {
-      invariant(env.key && env.name, "\\u6BCF\\u4E2A\\u73AF\\u5883\\u5FC5\\u987B\\u5305\\u542B key \\u548C name");
+      invariant(nonEmptyString(env.key) && nonEmptyString(env.name), "\\u6BCF\\u4E2A\\u73AF\\u5883\\u5FC5\\u987B\\u5305\\u542B\\u975E\\u7A7A key \\u548C name");
     }
+    assertUnique(envs, "key", "\\u73AF\\u5883 key");
     const scenarios = (Array.isArray(input.scenarios) ? input.scenarios : []).map((entry, index) => {
-      if (typeof entry === "string") return { id: entry, name: entry, url: entry };
+      if (typeof entry === "string") {
+        invariant(nonEmptyString(entry), \`\\u7B2C \${index + 1} \\u4E2A\\u573A\\u666F\\u5730\\u5740\\u4E0D\\u80FD\\u4E3A\\u7A7A\`);
+        return { id: entry, name: entry, url: entry };
+      }
       invariant(isPlainObject(entry), \`\\u7B2C \${index + 1} \\u4E2A\\u573A\\u666F\\u6E05\\u5355\\u9879\\u65E0\\u6548\`);
       const url = entry.url || entry.file || entry.path || "";
       const id = entry.id || url || \`scenario-\${index + 1}\`;
+      invariant(nonEmptyString(id), \`\\u7B2C \${index + 1} \\u4E2A\\u573A\\u666F\\u7F3A\\u5C11 id\`);
+      invariant(nonEmptyString(url), \`\\u573A\\u666F \${id} \\u7F3A\\u5C11 url\`);
       return { ...entry, id, name: entry.name || id, url };
     });
-    const variables = Array.isArray(input.variables) ? input.variables.map((item) => ({ ...item })) : [];
+    assertUnique(scenarios, "id", "\\u573A\\u666F id");
+    const variables = Array.isArray(input.variables) ? input.variables.map((item, index) => {
+      invariant(isPlainObject(item), \`\\u7B2C \${index + 1} \\u4E2A\\u53D8\\u91CF\\u5B9A\\u4E49\\u65E0\\u6548\`);
+      invariant(nonEmptyString(item.name), \`\\u7B2C \${index + 1} \\u4E2A\\u53D8\\u91CF\\u7F3A\\u5C11 name\`);
+      if (item.env !== void 0) invariant(nonEmptyString(item.env), \`\\u53D8\\u91CF \${item.name} \\u7684 env \\u65E0\\u6548\`);
+      return { ...item };
+    }) : [];
+    assertUnique(variables, "name", "\\u53D8\\u91CF name");
+    const defaultEnvKey = input.defaultEnvKey || envs[0]?.key || "";
+    invariant(!defaultEnvKey || envs.some((env) => env.key === defaultEnvKey), \`defaultEnvKey \\u4E0D\\u5B58\\u5728: \${defaultEnvKey}\`);
+    const requestTimeoutMs = Number(input.requestTimeoutMs ?? 3e4);
+    invariant(Number.isFinite(requestTimeoutMs) && requestTimeoutMs > 0, "requestTimeoutMs \\u5FC5\\u987B\\u662F\\u6B63\\u6570");
     return {
       ...input,
       envs,
       scenarios,
       variables,
-      defaultEnvKey: input.defaultEnvKey || envs[0]?.key || "",
-      requestTimeoutMs: Number(input.requestTimeoutMs || 3e4),
+      defaultEnvKey,
+      requestTimeoutMs,
       vars: { ...input.scenarioVars || {}, ...input.vars || {} },
       storagePrefix: input.storagePrefix || "scenario-test"
     };
@@ -69012,9 +69119,17 @@ var ScenarioTest = (() => {
       }
     };
   }
+  function createRunIdentifiers() {
+    const timestamp = String(Date.now());
+    const random = globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID().replace(/-/g, "").slice(0, 8) : Math.random().toString(16).slice(2, 10).padEnd(8, "0");
+    return {
+      runId: \`\${timestamp}-\${random}\`,
+      runNo: \`\${timestamp.slice(-6)}-\${random.slice(0, 4)}\`
+    };
+  }
   function buildGeneratedVars(scenario, baseVars, environmentVariables) {
-    const runId = String(Date.now());
-    const vars = { ...scenario.vars || {}, ...baseVars || {}, runId, runNo: runId.slice(-6) };
+    const identifiers = createRunIdentifiers();
+    const vars = { ...scenario.vars || {}, ...baseVars || {}, ...identifiers };
     for (const [name, environmentName] of Object.entries(scenario.envVars || {})) {
       const value = environmentVariables?.[environmentName] ?? vars[name];
       if (value === void 0 || value === null || value === "") {
@@ -69080,6 +69195,8 @@ var ScenarioTest = (() => {
       headers.Authorization = options.authorization;
     }
     const fetchOptions = { method, headers };
+    if (request.credentials !== void 0) fetchOptions.credentials = request.credentials;
+    if (request.redirect !== void 0) fetchOptions.redirect = request.redirect;
     if (request.fileUpload) {
       if (!options.io?.createUploadBody) throw new Error("\\u5F53\\u524D\\u8FD0\\u884C\\u73AF\\u5883\\u4E0D\\u652F\\u6301 fileUpload");
       const upload = await options.io.createUploadBody(resolve(request.fileUpload, runtime), runtime);
@@ -69203,7 +69320,7 @@ var ScenarioTest = (() => {
       const config = runOptions.config || engineOptions.config || {};
       const runtime = createRuntime(scenario, {
         config,
-        vars: runOptions.vars,
+        vars: { ...engineOptions.vars || {}, ...runOptions.vars || {} },
         environmentVariables: runOptions.environmentVariables || engineOptions.environmentVariables
       });
       const results = [];
@@ -69461,6 +69578,8 @@ var ScenarioTest = (() => {
         return item && item.target === "status";
       })) {
         defs.unshift({ name: "\\u8FD4\\u56DE HTTP " + step.status, target: "status", equals: step.status });
+      } else if (step.status === void 0 && defs.length === 0) {
+        defs.push({ name: "\\u8FD4\\u56DE HTTP 2xx", target: "status", matches: "^2\\\\d\\\\d$" });
       }
       return defs.map(function(def) {
         return evaluateAssertion2(def, response, runtime);
@@ -70198,10 +70317,11 @@ var ScenarioTest = (() => {
       }
       ul.innerHTML = steps.map(function(s, i) {
         var ok = s.passed;
+        var skipped = s.skipped;
         var seqNum = i + 1;
-        var seqCls = ok ? "bg-emerald-500 text-white" : "bg-rose-500 text-white";
+        var seqCls = skipped ? "bg-slate-400 text-white" : ok ? "bg-emerald-500 text-white" : "bg-rose-500 text-white";
         var nameCls = ok ? "text-slate-700 group-hover:text-emerald-700" : "text-rose-800";
-        var statusCls = ok ? "text-emerald-600 bg-emerald-50 border-emerald-100" : "text-rose-600 bg-rose-100 border-rose-200 shadow-sm";
+        var statusCls = skipped ? "text-slate-600 bg-slate-100 border-slate-200" : ok ? "text-emerald-600 bg-emerald-50 border-emerald-100" : "text-rose-600 bg-rose-100 border-rose-200 shadow-sm";
         var timeCls = ok ? "text-slate-400" : "text-rose-400";
         var bgCls = ok ? "hover:bg-slate-50/50" : "bg-rose-50/20";
         var methodColor = { GET: "text-emerald-600", POST: "text-orange-500", PUT: "text-amber-600", DELETE: "text-rose-600", PATCH: "text-purple-600" }[s.method] || "text-slate-600";
@@ -70905,6 +71025,14 @@ var ScenarioTest = (() => {
       }
       return String(Date.now()) + String(Math.random()).slice(2);
     }
+    function createRunIdentifiers2() {
+      var timestamp = String(Date.now());
+      var random = window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID().replace(/-/g, "").slice(0, 8) : Math.random().toString(16).slice(2, 10).padEnd(8, "0");
+      return {
+        runId: timestamp + "-" + random,
+        runNo: timestamp.slice(-6) + "-" + random.slice(0, 4)
+      };
+    }
     function buildScenarioRuntimeVars() {
       var cfg = appConfig;
       var scenario = state.scenario || {};
@@ -70917,11 +71045,8 @@ var ScenarioTest = (() => {
           return def.label;
         }).join("\\u3001") + "\\u3002\\u8BF7\\u5728\\u201C\\u914D\\u7F6E\\u53C2\\u6570 \\u2192 \\u5F53\\u524D\\u573A\\u666F\\u51ED\\u636E\\u201D\\u4E2D\\u586B\\u5199\\u5E76\\u4FDD\\u5B58\\u3002");
       }
-      var runSeed = String(Date.now());
-      var vars = Object.assign({}, cfg.vars || {}, scenario.vars || {}, scenarioVars, {
-        runId: runSeed,
-        runNo: runSeed.slice(-6)
-      });
+      var identifiers = createRunIdentifiers2();
+      var vars = Object.assign({}, scenario.vars || {}, cfg.vars || {}, scenarioVars, identifiers);
       (scenario.generatedVars || []).forEach(function(def) {
         if (!def || !def.name) return;
         if (def.type === "timestamp") {
@@ -70978,21 +71103,6 @@ var ScenarioTest = (() => {
       if (panel) panel.classList.add("open");
       if (chevron) chevron.classList.add("rotate-180");
     }
-    async function clearSmsRateLimit(runtime, phone, hospitalCode) {
-      var baseUrl = runtime.baseUrl;
-      var query = "phone=" + encodeURIComponent(phone);
-      if (hospitalCode) {
-        query += "&hospitalCode=" + encodeURIComponent(hospitalCode);
-      }
-      var url = joinUrl2(baseUrl, "mobile/auth/clearSmsRateLimit?" + query);
-      try {
-        await withRuntimeTimeout(function() {
-          return fetch(url, { method: "POST", signal: runtime.abortController.signal });
-        }, runtime, 5e3);
-      } catch (e) {
-        if (runtime.abortController.signal.aborted) throw e;
-      }
-    }
     async function withRuntimeTimeout(operation, runtime, timeoutMs) {
       var timedOut = false;
       var timer = setTimeout(function() {
@@ -71028,6 +71138,24 @@ var ScenarioTest = (() => {
       });
     }
     async function executeStep(step, runtime, cfg) {
+      if (step.when !== void 0) {
+        var shouldRun = typeof step.when === "object" ? evaluateAssertion2(step.when, { status: 0, headers: {}, body: null, bodyText: "" }, runtime).passed : Boolean(resolve2(step.when, runtime));
+        if (!shouldRun) {
+          return {
+            name: step.name || "\\u672A\\u547D\\u540D\\u6B65\\u9AA4",
+            method: "SKIP",
+            path: resolveString2(step.path || "", runtime) || "",
+            status: "SKIPPED",
+            duration: 0,
+            passed: true,
+            skipped: true,
+            error: "",
+            assertions: [],
+            request: null,
+            response: null
+          };
+        }
+      }
       var request = resolve2(clone2(step.request || {}), runtime) || {};
       var method = String(step.method || request.method || "GET").toUpperCase();
       var rawPath = step.path || request.path || "";
@@ -71042,6 +71170,8 @@ var ScenarioTest = (() => {
       }
       var bodyData = request.body;
       var fetchOptions = { method, headers, signal: runtime.abortController.signal };
+      if (request.credentials !== void 0) fetchOptions.credentials = request.credentials;
+      if (request.redirect !== void 0) fetchOptions.redirect = request.redirect;
       if (bodyData !== void 0 && bodyData !== null && method !== "GET" && method !== "HEAD") {
         if (typeof bodyData === "string") {
           fetchOptions.body = bodyData;
@@ -71069,100 +71199,85 @@ var ScenarioTest = (() => {
           bodyText: fetchResult.text
         };
       }
-      var MAX_RETRIES = 2;
-      for (var attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-        try {
-          var responseData = await sendRequest();
-          var headerObj = responseData.headers;
-          var body = responseData.body;
-          if (step.autoClearSmsRateLimit !== false && body && body.code === 40004 && path.indexOf("sendSmsCode") >= 0 && attempt < MAX_RETRIES) {
-            var phone = bodyData && bodyData.phone;
-            var hospitalCode = bodyData && bodyData.hospitalCode;
-            if (phone) {
-              console.log("[\\u81EA\\u52A8\\u6E05\\u9664\\u9650\\u6D41] phone=" + phone + (hospitalCode ? ", hospitalCode=" + hospitalCode : "") + " (attempt " + (attempt + 1) + ")");
-              await clearSmsRateLimit(runtime, phone, hospitalCode);
-              await new Promise(function(r) {
-                setTimeout(r, 500);
-              });
-              continue;
+      try {
+        var responseData = await sendRequest();
+        var headerObj = responseData.headers;
+        var body = responseData.body;
+        runtime.lastResponse = responseData;
+        runtime.lastResponseBody = body;
+        applyExtract2(step, responseData, runtime);
+        var assertions = buildAssertions2(step, responseData, runtime);
+        var failedAssertion = assertions.find(function(item) {
+          return !item.passed;
+        });
+        var requestAttempts = 1;
+        if (failedAssertion && step.retryUntil) {
+          var maxAttempts = Number(step.retryUntil.maxAttempts || 10);
+          var intervalMs = Number(step.retryUntil.intervalMs || 2e3);
+          if (!isFinite(maxAttempts) || maxAttempts < 1) maxAttempts = 10;
+          if (!isFinite(intervalMs) || intervalMs < 0) intervalMs = 2e3;
+          for (var retryIndex = 1; retryIndex <= maxAttempts; retryIndex += 1) {
+            await waitForRetry(intervalMs, runtime);
+            responseData = await sendRequest();
+            requestAttempts = retryIndex + 1;
+            headerObj = responseData.headers;
+            body = responseData.body;
+            runtime.lastResponse = responseData;
+            runtime.lastResponseBody = body;
+            applyExtract2(step, responseData, runtime);
+            assertions = buildAssertions2(step, responseData, runtime);
+            failedAssertion = assertions.find(function(item) {
+              return !item.passed;
+            });
+            if (!failedAssertion) {
+              return {
+                name: step.name,
+                method,
+                path,
+                status: responseData.status,
+                duration: performance.now() - startedAt,
+                attempts: requestAttempts,
+                passed: true,
+                error: "",
+                request: { headers, body: bodyData },
+                response: { headers: headerObj, body, bodyText: responseData.bodyText },
+                assertions
+              };
             }
           }
-          runtime.lastResponse = responseData;
-          runtime.lastResponseBody = body;
-          applyExtract2(step, responseData, runtime);
-          var assertions = buildAssertions2(step, responseData, runtime);
-          var failedAssertion = assertions.find(function(item) {
-            return !item.passed;
-          });
-          var requestAttempts = 1;
-          if (failedAssertion && step.retryUntil) {
-            var maxAttempts = Number(step.retryUntil.maxAttempts || 10);
-            var intervalMs = Number(step.retryUntil.intervalMs || 2e3);
-            if (!isFinite(maxAttempts) || maxAttempts < 1) maxAttempts = 10;
-            if (!isFinite(intervalMs) || intervalMs < 0) intervalMs = 2e3;
-            for (var retryIndex = 1; retryIndex <= maxAttempts; retryIndex += 1) {
-              await waitForRetry(intervalMs, runtime);
-              responseData = await sendRequest();
-              requestAttempts = retryIndex + 1;
-              headerObj = responseData.headers;
-              body = responseData.body;
-              runtime.lastResponse = responseData;
-              runtime.lastResponseBody = body;
-              applyExtract2(step, responseData, runtime);
-              assertions = buildAssertions2(step, responseData, runtime);
-              failedAssertion = assertions.find(function(item) {
-                return !item.passed;
-              });
-              if (!failedAssertion) {
-                return {
-                  name: step.name,
-                  method,
-                  path,
-                  status: responseData.status,
-                  duration: performance.now() - startedAt,
-                  attempts: requestAttempts,
-                  passed: true,
-                  error: "",
-                  request: { headers, body: bodyData },
-                  response: { headers: headerObj, body, bodyText: responseData.bodyText },
-                  assertions
-                };
-              }
-            }
-          }
-          return {
-            name: step.name,
-            method,
-            path,
-            status: responseData.status,
-            duration: performance.now() - startedAt,
-            attempts: requestAttempts,
-            passed: !failedAssertion,
-            error: failedAssertion ? failedAssertion.name : "",
-            request: { headers, body: bodyData },
-            response: { headers: headerObj, body, bodyText: responseData.bodyText },
-            assertions
-          };
-        } catch (error) {
-          var cancelled = runtime.cancelled;
-          var timedOut = error && error.scenarioTimedOut;
-          var errorMessage = cancelled ? "\\u7528\\u6237\\u5DF2\\u53D6\\u6D88\\u6267\\u884C" : timedOut ? "\\u8BF7\\u6C42\\u8D85\\u65F6\\uFF08" + timeoutMs + "ms\\uFF09" : error && error.message ? error.message : "\\u8BF7\\u6C42\\u6267\\u884C\\u5931\\u8D25";
-          return {
-            name: step.name,
-            method,
-            path,
-            status: cancelled ? "CANCELLED" : timedOut ? "TIMEOUT" : "ERROR",
-            duration: performance.now() - startedAt,
-            attempts: requestAttempts || attempt + 1,
-            passed: false,
-            cancelled,
-            timedOut,
-            error: errorMessage,
-            request: { headers, body: bodyData },
-            response: { headers: {}, body: null },
-            assertions: [{ name: cancelled ? "\\u6267\\u884C\\u672A\\u53D6\\u6D88" : timedOut ? "\\u8BF7\\u6C42\\u672A\\u8D85\\u65F6" : "\\u8BF7\\u6C42\\u6267\\u884C\\u6210\\u529F", passed: false, actual: errorMessage, expected: "\\u65E0\\u5F02\\u5E38" }]
-          };
         }
+        return {
+          name: step.name,
+          method,
+          path,
+          status: responseData.status,
+          duration: performance.now() - startedAt,
+          attempts: requestAttempts,
+          passed: !failedAssertion,
+          error: failedAssertion ? failedAssertion.name : "",
+          request: { headers, body: bodyData },
+          response: { headers: headerObj, body, bodyText: responseData.bodyText },
+          assertions
+        };
+      } catch (error) {
+        var cancelled = runtime.cancelled;
+        var timedOut = error && error.scenarioTimedOut;
+        var errorMessage = cancelled ? "\\u7528\\u6237\\u5DF2\\u53D6\\u6D88\\u6267\\u884C" : timedOut ? "\\u8BF7\\u6C42\\u8D85\\u65F6\\uFF08" + timeoutMs + "ms\\uFF09" : error && error.message ? error.message : "\\u8BF7\\u6C42\\u6267\\u884C\\u5931\\u8D25";
+        return {
+          name: step.name,
+          method,
+          path,
+          status: cancelled ? "CANCELLED" : timedOut ? "TIMEOUT" : "ERROR",
+          duration: performance.now() - startedAt,
+          attempts: requestAttempts || 1,
+          passed: false,
+          cancelled,
+          timedOut,
+          error: errorMessage,
+          request: { headers, body: bodyData },
+          response: { headers: {}, body: null },
+          assertions: [{ name: cancelled ? "\\u6267\\u884C\\u672A\\u53D6\\u6D88" : timedOut ? "\\u8BF7\\u6C42\\u672A\\u8D85\\u65F6" : "\\u8BF7\\u6C42\\u6267\\u884C\\u6210\\u529F", passed: false, actual: errorMessage, expected: "\\u65E0\\u5F02\\u5E38" }]
+        };
       }
     }
     function createExecutionRuntime() {
@@ -72260,6 +72375,8 @@ var ScenarioTest = (() => {
     const definitions = Array.isArray(step.assertions) ? [...step.assertions] : [];
     if (step.status !== void 0 && !definitions.some((item) => item.target === "status")) {
       definitions.unshift({ name: \`\\u8FD4\\u56DE HTTP \${step.status}\`, target: "status", equals: step.status });
+    } else if (step.status === void 0 && definitions.length === 0) {
+      definitions.push({ name: "\\u8FD4\\u56DE HTTP 2xx", target: "status", matches: "^2\\\\d\\\\d$" });
     }
     return definitions.map((definition) => evaluateAssertion(definition, response, runtime));
   }
@@ -72302,10 +72419,33 @@ var ScenarioTest = (() => {
   function invariant(condition, message) {
     if (!condition) throw new TypeError(message);
   }
+  function nonEmptyString(value) {
+    return typeof value === "string" && Boolean(value.trim());
+  }
+  function assertUnique(items, field, label) {
+    const seen = /* @__PURE__ */ new Set();
+    for (const item of items) {
+      const value = item[field];
+      invariant(!seen.has(value), \`\${label}\\u91CD\\u590D: \${value}\`);
+      seen.add(value);
+    }
+  }
   function defineScenario(input) {
     invariant(isPlainObject(input), "\\u573A\\u666F\\u5FC5\\u987B\\u662F\\u5BF9\\u8C61");
     invariant(typeof input.name === "string" && input.name.trim(), "\\u573A\\u666F\\u7F3A\\u5C11 name");
     invariant(Array.isArray(input.steps), \`\\u573A\\u666F \${input.name} \\u7F3A\\u5C11 steps \\u6570\\u7EC4\`);
+    input.steps.forEach((step, index) => {
+      invariant(isPlainObject(step), \`\\u573A\\u666F \${input.name} \\u7B2C \${index + 1} \\u6B65\\u5FC5\\u987B\\u662F\\u5BF9\\u8C61\`);
+      invariant(nonEmptyString(step.name), \`\\u573A\\u666F \${input.name} \\u7B2C \${index + 1} \\u6B65\\u7F3A\\u5C11 name\`);
+      if (step.method !== void 0) invariant(nonEmptyString(step.method), \`\\u6B65\\u9AA4 \${step.name} \\u7684 method \\u65E0\\u6548\`);
+      if (step.retryUntil !== void 0) {
+        invariant(isPlainObject(step.retryUntil), \`\\u6B65\\u9AA4 \${step.name} \\u7684 retryUntil \\u5FC5\\u987B\\u662F\\u5BF9\\u8C61\`);
+        const maxAttempts = Number(step.retryUntil.maxAttempts ?? 10);
+        const intervalMs = Number(step.retryUntil.intervalMs ?? 2e3);
+        invariant(Number.isInteger(maxAttempts) && maxAttempts >= 1, \`\\u6B65\\u9AA4 \${step.name} \\u7684 maxAttempts \\u5FC5\\u987B\\u662F\\u6B63\\u6574\\u6570\`);
+        invariant(Number.isFinite(intervalMs) && intervalMs >= 0, \`\\u6B65\\u9AA4 \${step.name} \\u7684 intervalMs \\u4E0D\\u80FD\\u4E3A\\u8D1F\\u6570\`);
+      }
+    });
     const failurePolicy = input.failurePolicy || "stop";
     invariant(["stop", "continue"].includes(failurePolicy), "failurePolicy \\u53EA\\u80FD\\u662F stop \\u6216 continue");
     return { ...input, failurePolicy, steps: [...input.steps] };
@@ -72314,23 +72454,40 @@ var ScenarioTest = (() => {
     invariant(isPlainObject(input), "\\u914D\\u7F6E\\u5FC5\\u987B\\u662F\\u5BF9\\u8C61");
     const envs = Array.isArray(input.envs) ? input.envs.map((env) => ({ ...env })) : [];
     for (const env of envs) {
-      invariant(env.key && env.name, "\\u6BCF\\u4E2A\\u73AF\\u5883\\u5FC5\\u987B\\u5305\\u542B key \\u548C name");
+      invariant(nonEmptyString(env.key) && nonEmptyString(env.name), "\\u6BCF\\u4E2A\\u73AF\\u5883\\u5FC5\\u987B\\u5305\\u542B\\u975E\\u7A7A key \\u548C name");
     }
+    assertUnique(envs, "key", "\\u73AF\\u5883 key");
     const scenarios = (Array.isArray(input.scenarios) ? input.scenarios : []).map((entry, index) => {
-      if (typeof entry === "string") return { id: entry, name: entry, url: entry };
+      if (typeof entry === "string") {
+        invariant(nonEmptyString(entry), \`\\u7B2C \${index + 1} \\u4E2A\\u573A\\u666F\\u5730\\u5740\\u4E0D\\u80FD\\u4E3A\\u7A7A\`);
+        return { id: entry, name: entry, url: entry };
+      }
       invariant(isPlainObject(entry), \`\\u7B2C \${index + 1} \\u4E2A\\u573A\\u666F\\u6E05\\u5355\\u9879\\u65E0\\u6548\`);
       const url = entry.url || entry.file || entry.path || "";
       const id = entry.id || url || \`scenario-\${index + 1}\`;
+      invariant(nonEmptyString(id), \`\\u7B2C \${index + 1} \\u4E2A\\u573A\\u666F\\u7F3A\\u5C11 id\`);
+      invariant(nonEmptyString(url), \`\\u573A\\u666F \${id} \\u7F3A\\u5C11 url\`);
       return { ...entry, id, name: entry.name || id, url };
     });
-    const variables = Array.isArray(input.variables) ? input.variables.map((item) => ({ ...item })) : [];
+    assertUnique(scenarios, "id", "\\u573A\\u666F id");
+    const variables = Array.isArray(input.variables) ? input.variables.map((item, index) => {
+      invariant(isPlainObject(item), \`\\u7B2C \${index + 1} \\u4E2A\\u53D8\\u91CF\\u5B9A\\u4E49\\u65E0\\u6548\`);
+      invariant(nonEmptyString(item.name), \`\\u7B2C \${index + 1} \\u4E2A\\u53D8\\u91CF\\u7F3A\\u5C11 name\`);
+      if (item.env !== void 0) invariant(nonEmptyString(item.env), \`\\u53D8\\u91CF \${item.name} \\u7684 env \\u65E0\\u6548\`);
+      return { ...item };
+    }) : [];
+    assertUnique(variables, "name", "\\u53D8\\u91CF name");
+    const defaultEnvKey = input.defaultEnvKey || envs[0]?.key || "";
+    invariant(!defaultEnvKey || envs.some((env) => env.key === defaultEnvKey), \`defaultEnvKey \\u4E0D\\u5B58\\u5728: \${defaultEnvKey}\`);
+    const requestTimeoutMs = Number(input.requestTimeoutMs ?? 3e4);
+    invariant(Number.isFinite(requestTimeoutMs) && requestTimeoutMs > 0, "requestTimeoutMs \\u5FC5\\u987B\\u662F\\u6B63\\u6570");
     return {
       ...input,
       envs,
       scenarios,
       variables,
-      defaultEnvKey: input.defaultEnvKey || envs[0]?.key || "",
-      requestTimeoutMs: Number(input.requestTimeoutMs || 3e4),
+      defaultEnvKey,
+      requestTimeoutMs,
       vars: { ...input.scenarioVars || {}, ...input.vars || {} },
       storagePrefix: input.storagePrefix || "scenario-test"
     };
@@ -72397,9 +72554,17 @@ var ScenarioTest = (() => {
       }
     };
   }
+  function createRunIdentifiers() {
+    const timestamp = String(Date.now());
+    const random = globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID().replace(/-/g, "").slice(0, 8) : Math.random().toString(16).slice(2, 10).padEnd(8, "0");
+    return {
+      runId: \`\${timestamp}-\${random}\`,
+      runNo: \`\${timestamp.slice(-6)}-\${random.slice(0, 4)}\`
+    };
+  }
   function buildGeneratedVars(scenario, baseVars, environmentVariables) {
-    const runId = String(Date.now());
-    const vars = { ...scenario.vars || {}, ...baseVars || {}, runId, runNo: runId.slice(-6) };
+    const identifiers = createRunIdentifiers();
+    const vars = { ...scenario.vars || {}, ...baseVars || {}, ...identifiers };
     for (const [name, environmentName] of Object.entries(scenario.envVars || {})) {
       const value = environmentVariables?.[environmentName] ?? vars[name];
       if (value === void 0 || value === null || value === "") {
@@ -72465,6 +72630,8 @@ var ScenarioTest = (() => {
       headers.Authorization = options.authorization;
     }
     const fetchOptions = { method, headers };
+    if (request.credentials !== void 0) fetchOptions.credentials = request.credentials;
+    if (request.redirect !== void 0) fetchOptions.redirect = request.redirect;
     if (request.fileUpload) {
       if (!options.io?.createUploadBody) throw new Error("\\u5F53\\u524D\\u8FD0\\u884C\\u73AF\\u5883\\u4E0D\\u652F\\u6301 fileUpload");
       const upload = await options.io.createUploadBody(resolve(request.fileUpload, runtime), runtime);
@@ -72588,7 +72755,7 @@ var ScenarioTest = (() => {
       const config = runOptions.config || engineOptions.config || {};
       const runtime = createRuntime(scenario, {
         config,
-        vars: runOptions.vars,
+        vars: { ...engineOptions.vars || {}, ...runOptions.vars || {} },
         environmentVariables: runOptions.environmentVariables || engineOptions.environmentVariables
       });
       const results = [];
@@ -72846,6 +73013,8 @@ var ScenarioTest = (() => {
         return item && item.target === "status";
       })) {
         defs.unshift({ name: "\\u8FD4\\u56DE HTTP " + step.status, target: "status", equals: step.status });
+      } else if (step.status === void 0 && defs.length === 0) {
+        defs.push({ name: "\\u8FD4\\u56DE HTTP 2xx", target: "status", matches: "^2\\\\d\\\\d$" });
       }
       return defs.map(function(def) {
         return evaluateAssertion2(def, response, runtime);
@@ -73583,10 +73752,11 @@ var ScenarioTest = (() => {
       }
       ul.innerHTML = steps.map(function(s, i) {
         var ok = s.passed;
+        var skipped = s.skipped;
         var seqNum = i + 1;
-        var seqCls = ok ? "bg-emerald-500 text-white" : "bg-rose-500 text-white";
+        var seqCls = skipped ? "bg-slate-400 text-white" : ok ? "bg-emerald-500 text-white" : "bg-rose-500 text-white";
         var nameCls = ok ? "text-slate-700 group-hover:text-emerald-700" : "text-rose-800";
-        var statusCls = ok ? "text-emerald-600 bg-emerald-50 border-emerald-100" : "text-rose-600 bg-rose-100 border-rose-200 shadow-sm";
+        var statusCls = skipped ? "text-slate-600 bg-slate-100 border-slate-200" : ok ? "text-emerald-600 bg-emerald-50 border-emerald-100" : "text-rose-600 bg-rose-100 border-rose-200 shadow-sm";
         var timeCls = ok ? "text-slate-400" : "text-rose-400";
         var bgCls = ok ? "hover:bg-slate-50/50" : "bg-rose-50/20";
         var methodColor = { GET: "text-emerald-600", POST: "text-orange-500", PUT: "text-amber-600", DELETE: "text-rose-600", PATCH: "text-purple-600" }[s.method] || "text-slate-600";
@@ -74290,6 +74460,14 @@ var ScenarioTest = (() => {
       }
       return String(Date.now()) + String(Math.random()).slice(2);
     }
+    function createRunIdentifiers2() {
+      var timestamp = String(Date.now());
+      var random = window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID().replace(/-/g, "").slice(0, 8) : Math.random().toString(16).slice(2, 10).padEnd(8, "0");
+      return {
+        runId: timestamp + "-" + random,
+        runNo: timestamp.slice(-6) + "-" + random.slice(0, 4)
+      };
+    }
     function buildScenarioRuntimeVars() {
       var cfg = appConfig;
       var scenario = state.scenario || {};
@@ -74302,11 +74480,8 @@ var ScenarioTest = (() => {
           return def.label;
         }).join("\\u3001") + "\\u3002\\u8BF7\\u5728\\u201C\\u914D\\u7F6E\\u53C2\\u6570 \\u2192 \\u5F53\\u524D\\u573A\\u666F\\u51ED\\u636E\\u201D\\u4E2D\\u586B\\u5199\\u5E76\\u4FDD\\u5B58\\u3002");
       }
-      var runSeed = String(Date.now());
-      var vars = Object.assign({}, cfg.vars || {}, scenario.vars || {}, scenarioVars, {
-        runId: runSeed,
-        runNo: runSeed.slice(-6)
-      });
+      var identifiers = createRunIdentifiers2();
+      var vars = Object.assign({}, scenario.vars || {}, cfg.vars || {}, scenarioVars, identifiers);
       (scenario.generatedVars || []).forEach(function(def) {
         if (!def || !def.name) return;
         if (def.type === "timestamp") {
@@ -74363,21 +74538,6 @@ var ScenarioTest = (() => {
       if (panel) panel.classList.add("open");
       if (chevron) chevron.classList.add("rotate-180");
     }
-    async function clearSmsRateLimit(runtime, phone, hospitalCode) {
-      var baseUrl = runtime.baseUrl;
-      var query = "phone=" + encodeURIComponent(phone);
-      if (hospitalCode) {
-        query += "&hospitalCode=" + encodeURIComponent(hospitalCode);
-      }
-      var url = joinUrl2(baseUrl, "mobile/auth/clearSmsRateLimit?" + query);
-      try {
-        await withRuntimeTimeout(function() {
-          return fetch(url, { method: "POST", signal: runtime.abortController.signal });
-        }, runtime, 5e3);
-      } catch (e) {
-        if (runtime.abortController.signal.aborted) throw e;
-      }
-    }
     async function withRuntimeTimeout(operation, runtime, timeoutMs) {
       var timedOut = false;
       var timer = setTimeout(function() {
@@ -74413,6 +74573,24 @@ var ScenarioTest = (() => {
       });
     }
     async function executeStep(step, runtime, cfg) {
+      if (step.when !== void 0) {
+        var shouldRun = typeof step.when === "object" ? evaluateAssertion2(step.when, { status: 0, headers: {}, body: null, bodyText: "" }, runtime).passed : Boolean(resolve2(step.when, runtime));
+        if (!shouldRun) {
+          return {
+            name: step.name || "\\u672A\\u547D\\u540D\\u6B65\\u9AA4",
+            method: "SKIP",
+            path: resolveString2(step.path || "", runtime) || "",
+            status: "SKIPPED",
+            duration: 0,
+            passed: true,
+            skipped: true,
+            error: "",
+            assertions: [],
+            request: null,
+            response: null
+          };
+        }
+      }
       var request = resolve2(clone2(step.request || {}), runtime) || {};
       var method = String(step.method || request.method || "GET").toUpperCase();
       var rawPath = step.path || request.path || "";
@@ -74427,6 +74605,8 @@ var ScenarioTest = (() => {
       }
       var bodyData = request.body;
       var fetchOptions = { method, headers, signal: runtime.abortController.signal };
+      if (request.credentials !== void 0) fetchOptions.credentials = request.credentials;
+      if (request.redirect !== void 0) fetchOptions.redirect = request.redirect;
       if (bodyData !== void 0 && bodyData !== null && method !== "GET" && method !== "HEAD") {
         if (typeof bodyData === "string") {
           fetchOptions.body = bodyData;
@@ -74454,100 +74634,85 @@ var ScenarioTest = (() => {
           bodyText: fetchResult.text
         };
       }
-      var MAX_RETRIES = 2;
-      for (var attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-        try {
-          var responseData = await sendRequest();
-          var headerObj = responseData.headers;
-          var body = responseData.body;
-          if (step.autoClearSmsRateLimit !== false && body && body.code === 40004 && path.indexOf("sendSmsCode") >= 0 && attempt < MAX_RETRIES) {
-            var phone = bodyData && bodyData.phone;
-            var hospitalCode = bodyData && bodyData.hospitalCode;
-            if (phone) {
-              console.log("[\\u81EA\\u52A8\\u6E05\\u9664\\u9650\\u6D41] phone=" + phone + (hospitalCode ? ", hospitalCode=" + hospitalCode : "") + " (attempt " + (attempt + 1) + ")");
-              await clearSmsRateLimit(runtime, phone, hospitalCode);
-              await new Promise(function(r) {
-                setTimeout(r, 500);
-              });
-              continue;
+      try {
+        var responseData = await sendRequest();
+        var headerObj = responseData.headers;
+        var body = responseData.body;
+        runtime.lastResponse = responseData;
+        runtime.lastResponseBody = body;
+        applyExtract2(step, responseData, runtime);
+        var assertions = buildAssertions2(step, responseData, runtime);
+        var failedAssertion = assertions.find(function(item) {
+          return !item.passed;
+        });
+        var requestAttempts = 1;
+        if (failedAssertion && step.retryUntil) {
+          var maxAttempts = Number(step.retryUntil.maxAttempts || 10);
+          var intervalMs = Number(step.retryUntil.intervalMs || 2e3);
+          if (!isFinite(maxAttempts) || maxAttempts < 1) maxAttempts = 10;
+          if (!isFinite(intervalMs) || intervalMs < 0) intervalMs = 2e3;
+          for (var retryIndex = 1; retryIndex <= maxAttempts; retryIndex += 1) {
+            await waitForRetry(intervalMs, runtime);
+            responseData = await sendRequest();
+            requestAttempts = retryIndex + 1;
+            headerObj = responseData.headers;
+            body = responseData.body;
+            runtime.lastResponse = responseData;
+            runtime.lastResponseBody = body;
+            applyExtract2(step, responseData, runtime);
+            assertions = buildAssertions2(step, responseData, runtime);
+            failedAssertion = assertions.find(function(item) {
+              return !item.passed;
+            });
+            if (!failedAssertion) {
+              return {
+                name: step.name,
+                method,
+                path,
+                status: responseData.status,
+                duration: performance.now() - startedAt,
+                attempts: requestAttempts,
+                passed: true,
+                error: "",
+                request: { headers, body: bodyData },
+                response: { headers: headerObj, body, bodyText: responseData.bodyText },
+                assertions
+              };
             }
           }
-          runtime.lastResponse = responseData;
-          runtime.lastResponseBody = body;
-          applyExtract2(step, responseData, runtime);
-          var assertions = buildAssertions2(step, responseData, runtime);
-          var failedAssertion = assertions.find(function(item) {
-            return !item.passed;
-          });
-          var requestAttempts = 1;
-          if (failedAssertion && step.retryUntil) {
-            var maxAttempts = Number(step.retryUntil.maxAttempts || 10);
-            var intervalMs = Number(step.retryUntil.intervalMs || 2e3);
-            if (!isFinite(maxAttempts) || maxAttempts < 1) maxAttempts = 10;
-            if (!isFinite(intervalMs) || intervalMs < 0) intervalMs = 2e3;
-            for (var retryIndex = 1; retryIndex <= maxAttempts; retryIndex += 1) {
-              await waitForRetry(intervalMs, runtime);
-              responseData = await sendRequest();
-              requestAttempts = retryIndex + 1;
-              headerObj = responseData.headers;
-              body = responseData.body;
-              runtime.lastResponse = responseData;
-              runtime.lastResponseBody = body;
-              applyExtract2(step, responseData, runtime);
-              assertions = buildAssertions2(step, responseData, runtime);
-              failedAssertion = assertions.find(function(item) {
-                return !item.passed;
-              });
-              if (!failedAssertion) {
-                return {
-                  name: step.name,
-                  method,
-                  path,
-                  status: responseData.status,
-                  duration: performance.now() - startedAt,
-                  attempts: requestAttempts,
-                  passed: true,
-                  error: "",
-                  request: { headers, body: bodyData },
-                  response: { headers: headerObj, body, bodyText: responseData.bodyText },
-                  assertions
-                };
-              }
-            }
-          }
-          return {
-            name: step.name,
-            method,
-            path,
-            status: responseData.status,
-            duration: performance.now() - startedAt,
-            attempts: requestAttempts,
-            passed: !failedAssertion,
-            error: failedAssertion ? failedAssertion.name : "",
-            request: { headers, body: bodyData },
-            response: { headers: headerObj, body, bodyText: responseData.bodyText },
-            assertions
-          };
-        } catch (error) {
-          var cancelled = runtime.cancelled;
-          var timedOut = error && error.scenarioTimedOut;
-          var errorMessage = cancelled ? "\\u7528\\u6237\\u5DF2\\u53D6\\u6D88\\u6267\\u884C" : timedOut ? "\\u8BF7\\u6C42\\u8D85\\u65F6\\uFF08" + timeoutMs + "ms\\uFF09" : error && error.message ? error.message : "\\u8BF7\\u6C42\\u6267\\u884C\\u5931\\u8D25";
-          return {
-            name: step.name,
-            method,
-            path,
-            status: cancelled ? "CANCELLED" : timedOut ? "TIMEOUT" : "ERROR",
-            duration: performance.now() - startedAt,
-            attempts: requestAttempts || attempt + 1,
-            passed: false,
-            cancelled,
-            timedOut,
-            error: errorMessage,
-            request: { headers, body: bodyData },
-            response: { headers: {}, body: null },
-            assertions: [{ name: cancelled ? "\\u6267\\u884C\\u672A\\u53D6\\u6D88" : timedOut ? "\\u8BF7\\u6C42\\u672A\\u8D85\\u65F6" : "\\u8BF7\\u6C42\\u6267\\u884C\\u6210\\u529F", passed: false, actual: errorMessage, expected: "\\u65E0\\u5F02\\u5E38" }]
-          };
         }
+        return {
+          name: step.name,
+          method,
+          path,
+          status: responseData.status,
+          duration: performance.now() - startedAt,
+          attempts: requestAttempts,
+          passed: !failedAssertion,
+          error: failedAssertion ? failedAssertion.name : "",
+          request: { headers, body: bodyData },
+          response: { headers: headerObj, body, bodyText: responseData.bodyText },
+          assertions
+        };
+      } catch (error) {
+        var cancelled = runtime.cancelled;
+        var timedOut = error && error.scenarioTimedOut;
+        var errorMessage = cancelled ? "\\u7528\\u6237\\u5DF2\\u53D6\\u6D88\\u6267\\u884C" : timedOut ? "\\u8BF7\\u6C42\\u8D85\\u65F6\\uFF08" + timeoutMs + "ms\\uFF09" : error && error.message ? error.message : "\\u8BF7\\u6C42\\u6267\\u884C\\u5931\\u8D25";
+        return {
+          name: step.name,
+          method,
+          path,
+          status: cancelled ? "CANCELLED" : timedOut ? "TIMEOUT" : "ERROR",
+          duration: performance.now() - startedAt,
+          attempts: requestAttempts || 1,
+          passed: false,
+          cancelled,
+          timedOut,
+          error: errorMessage,
+          request: { headers, body: bodyData },
+          response: { headers: {}, body: null },
+          assertions: [{ name: cancelled ? "\\u6267\\u884C\\u672A\\u53D6\\u6D88" : timedOut ? "\\u8BF7\\u6C42\\u672A\\u8D85\\u65F6" : "\\u8BF7\\u6C42\\u6267\\u884C\\u6210\\u529F", passed: false, actual: errorMessage, expected: "\\u65E0\\u5F02\\u5E38" }]
+        };
       }
     }
     function createExecutionRuntime() {
@@ -75221,9 +75386,11 @@ async function initCommand(args) {
   const projectRoot = import_node_path4.default.resolve(args.project || process.cwd());
   const directory = resolveInitDirectory(projectRoot, args.dir);
   const libraryUrl = args.libraryUrl || DEFAULT_LIBRARY_URL;
+  const projectName = import_node_path4.default.basename(projectRoot).trim() || "project";
+  const storagePrefix = `scenario-test.${projectName.replace(/[^\p{L}\p{N}._-]+/gu, "-")}`;
   const created = [];
   const skipped = [];
-  for (const [relativePath, content] of Object.entries(createProjectFiles(directory))) {
+  for (const [relativePath, content] of Object.entries(createProjectFiles(directory, { storagePrefix }))) {
     (writeProjectFile(projectRoot, relativePath, content, args.force) ? created : skipped).push(relativePath);
   }
   const cliPath = `${directory}/scenario-test-cli.cjs`;
@@ -75327,8 +75494,8 @@ async function runCommand(args) {
     for (const plugin of plugins) {
       await plugin?.afterScenario?.(report, { config, configDir, entry, environment, scenario });
     }
-    total += report.executed;
-    failed += report.failed + (report.executed < report.planned ? 1 : 0);
+    total += report.planned;
+    failed += report.failed + (report.planned - report.executed);
     console.log(`Summary: ${report.executed - report.failed}/${report.executed} executed steps passed (${report.executed}/${report.planned} executed)`);
   }
   console.log(`

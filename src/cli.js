@@ -234,8 +234,8 @@ async function runCommand(args) {
         for (const plugin of plugins) {
             await plugin?.afterScenario?.(report, { config, configDir, entry, environment, scenario });
         }
-        total += report.executed;
-        failed += report.failed + (report.executed < report.planned ? 1 : 0);
+        total += report.planned;
+        failed += report.failed + (report.planned - report.executed);
         console.log(`Summary: ${report.executed - report.failed}/${report.executed} executed steps passed (${report.executed}/${report.planned} executed)`);
     }
     console.log(`\nOverall: ${total - failed}/${total} passed`);

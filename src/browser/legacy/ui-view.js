@@ -364,10 +364,11 @@ const legacyView = (function () {
 
         ul.innerHTML = steps.map(function (s, i) {
             var ok = s.passed;
+            var skipped = s.skipped;
             var seqNum = i + 1;
-            var seqCls = ok ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white';
+            var seqCls = skipped ? 'bg-slate-400 text-white' : (ok ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white');
             var nameCls = ok ? 'text-slate-700 group-hover:text-emerald-700' : 'text-rose-800';
-            var statusCls = ok ? 'text-emerald-600 bg-emerald-50 border-emerald-100' : 'text-rose-600 bg-rose-100 border-rose-200 shadow-sm';
+            var statusCls = skipped ? 'text-slate-600 bg-slate-100 border-slate-200' : (ok ? 'text-emerald-600 bg-emerald-50 border-emerald-100' : 'text-rose-600 bg-rose-100 border-rose-200 shadow-sm');
             var timeCls = ok ? 'text-slate-400' : 'text-rose-400';
             var bgCls = ok ? 'hover:bg-slate-50/50' : 'bg-rose-50/20';
             var methodColor = { GET: 'text-emerald-600', POST: 'text-orange-500', PUT: 'text-amber-600', DELETE: 'text-rose-600', PATCH: 'text-purple-600' }[s.method] || 'text-slate-600';
