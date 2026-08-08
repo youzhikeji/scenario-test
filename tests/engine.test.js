@@ -162,3 +162,129 @@ test("when 条件不满足时安全跳过步骤", async () => {
     assert.equal(report.results[0].status, "SKIPPED");
     assert.equal(report.results[0].passed, true);
 });
+
+test("全局参数注入 header/query/cookie", async () => {
+    let captured;
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        globals: [
+            { type: "header", name: "X-Trace", value: "trace-1" },
+            { type: "query", name: "source", value: "scenario-test" },
+            { type: "cookie", name: "sid", value: "abc-123" }
+        ],
+        fetch: async (url, options) => {
+            captured = { url, headers: options.headers };
+            return jsonResponse({ ok: true });
+        }
+    });
+    await engine.runScenario(defineScenario({ name: "全局参数", steps: [{ name: "g", path: "api/list" }] }));
+    assert.equal(captured.headers["X-Trace"], "trace-1");
+    assert.equal(captured.headers.Cookie, "sid=abc-123");
+    assert.match(captured.url, /[?&]source=scenario-test$/);
+});
+
+test("全局参数值支持 vars 模板且同名参数步骤优先", async () => {
+    let captured;
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        vars: { traceId: "vars-trace" },
+        globals: [
+            { type: "header", name: "X-Trace", value: "{{vars.traceId}}" },
+            { type: "header", name: "X-Override", value: "global" },
+            { type: "query", name: "page", value: "global-page" }
+        ],
+        fetch: async (url, options) => {
+            captured = { url, headers: options.headers };
+            return jsonResponse({ ok: true });
+        }
+    });
+    await engine.runScenario(defineScenario({
+        name: "模板与覆盖",
+        steps: [{
+            name: "g",
+            path: "api/list",
+            params: { page: 2 },
+            request: { headers: { "X-Override": "step" } }
+        }]
+    }));
+    assert.equal(captured.headers["X-Trace"], "vars-trace");
+    assert.equal(captured.headers["X-Override"], "step");
+    assert.match(captured.url, /[?&]page=2$/);
+    assert.doesNotMatch(captured.url, /global-page/);
+});
+
+test("cookie 全局参数追加到已有 Cookie 头", async () => {
+    let captured;
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        globals: [{ type: "cookie", name: "sid", value: "abc" }],
+        fetch: async (url, options) => {
+            captured = options.headers;
+            return jsonResponse({ ok: true });
+        }
+    });
+    await engine.runScenario(defineScenario({
+        name: "Cookie 合并",
+        steps: [{ name: "g", path: "api", request: { headers: { Cookie: "a=1" } } }]
+    }));
+    assert.equal(captured.Cookie, "a=1; sid=abc");
+});
+
+test("绝对 URL 不注入全局参数与 authorization", async () => {
+    let captured;
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        authorization: "Bearer env-token",
+        globals: [{ type: "header", name: "X-Trace", value: "t" }],
+        fetch: async (url, options) => {
+            captured = { url, headers: options.headers };
+            return jsonResponse({ ok: true });
+        }
+    });
+    await engine.runScenario(defineScenario({
+        name: "外部地址",
+        steps: [{ name: "g", path: "https://external.example.com/api" }]
+    }));
+    assert.equal(captured.headers["X-Trace"], undefined);
+    assert.equal(captured.headers.Authorization, undefined);
+});
+
+test("旧 authorization 配置兜底注入且全局 header 优先", async () => {
+    let captured;
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        authorization: "Bearer legacy-token",
+        fetch: async (url, options) => {
+            captured = options.headers;
+            return jsonResponse({ ok: true });
+        }
+    });
+    await engine.runScenario(defineScenario({ name: "兼容", steps: [{ name: "g", path: "api" }] }));
+    assert.equal(captured.Authorization, "Bearer legacy-token");
+
+    const engine2 = createEngine({
+        baseUrl: "https://mock.local",
+        authorization: "Bearer legacy-token",
+        globals: [{ type: "header", name: "Authorization", value: "Bearer global-token" }],
+        fetch: async (url, options) => {
+            captured = options.headers;
+            return jsonResponse({ ok: true });
+        }
+    });
+    await engine2.runScenario(defineScenario({ name: "兼容2", steps: [{ name: "g", path: "api" }] }));
+    assert.equal(captured.Authorization, "Bearer global-token");
+});
+
+test("defineConfig 拒绝非法全局参数", async () => {
+    const { defineConfig } = await import("../src/index.js");
+    assert.throws(() => defineConfig({ envs: [{ key: "a", name: "A" }], globals: [{ type: "body", name: "x", value: "1" }] }), /type 必须是 header\/cookie\/query/);
+    assert.throws(() => defineConfig({ globals: [{ type: "header", name: "" }] }), /缺少 name/);
+    assert.throws(() => defineConfig({ globals: [{ type: "header", name: "X", value: "1" }, { type: "header", name: "X", value: "2" }] }), /全局参数重复/);
+    const config = defineConfig({
+        globals: [{ type: "header", name: "X-G", value: "g" }],
+        envs: [{ key: "a", name: "A", globals: [{ type: "query", name: "q", value: 1 }] }]
+    });
+    assert.deepEqual(config.globals, [{ type: "header", name: "X-G", value: "g" }]);
+    assert.deepEqual(config.envs[0].globals, [{ type: "query", name: "q", value: "1" }]);
+});
+

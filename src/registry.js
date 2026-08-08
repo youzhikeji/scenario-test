@@ -22,6 +22,22 @@ function assertUnique(items, field, label) {
     }
 }
 
+function normalizeGlobals(globals, label) {
+    const result = Array.isArray(globals) ? globals.map((item, index) => {
+        invariant(isPlainObject(item), `${label}第 ${index + 1} 个全局参数必须是对象`);
+        invariant(["header", "cookie", "query"].includes(item.type), `${label}第 ${index + 1} 个全局参数 type 必须是 header/cookie/query`);
+        invariant(nonEmptyString(item.name), `${label}第 ${index + 1} 个全局参数缺少 name`);
+        return { type: item.type, name: item.name, value: item.value == null ? "" : String(item.value) };
+    }) : [];
+    const seen = new Set();
+    for (const item of result) {
+        const key = `${item.type}:${item.name}`;
+        invariant(!seen.has(key), `${label}全局参数重复: ${key}`);
+        seen.add(key);
+    }
+    return result;
+}
+
 export function defineScenario(input) {
     invariant(isPlainObject(input), "场景必须是对象");
     invariant(typeof input.name === "string" && input.name.trim(), "场景缺少 name");
@@ -45,7 +61,11 @@ export function defineScenario(input) {
 
 export function defineConfig(input) {
     invariant(isPlainObject(input), "配置必须是对象");
-    const envs = Array.isArray(input.envs) ? input.envs.map((env) => ({ ...env })) : [];
+    const globals = normalizeGlobals(input.globals, "全局");
+    const envs = Array.isArray(input.envs) ? input.envs.map((env) => ({
+        ...env,
+        globals: normalizeGlobals(env.globals, `环境 ${env.key} 的`)
+    })) : [];
     for (const env of envs) {
         invariant(nonEmptyString(env.key) && nonEmptyString(env.name), "每个环境必须包含非空 key 和 name");
     }
@@ -76,6 +96,7 @@ export function defineConfig(input) {
     invariant(Number.isFinite(requestTimeoutMs) && requestTimeoutMs > 0, "requestTimeoutMs 必须是正数");
     return {
         ...input,
+        globals,
         envs,
         scenarios,
         variables,

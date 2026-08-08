@@ -134,7 +134,15 @@ export function createProjectFiles(directory = "scenario-test", options = {}) {
 `,
         [`${directory}/scenario.config.js`]: `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
     envs: [
-        { key: "local", name: "本地开发", baseUrl: "http://localhost:8080" }
+        {
+            key: "local",
+            name: "本地开发",
+            baseUrl: "http://localhost:8080",
+            // 全局参数：追加到本环境每个请求，支持 header / cookie / query
+            globals: [
+                { type: "header", name: "X-Project", value: "my-project" }
+            ]
+        }
     ],
     defaultEnvKey: "local",
     storagePrefix: ${JSON.stringify(storagePrefix)},
@@ -174,9 +182,10 @@ export function createProjectFiles(directory = "scenario-test", options = {}) {
 
 ## 配置环境和变量
 
-\`scenario.config.js\` 只有四个核心概念：
+\`scenario.config.js\` 只有五个核心概念：
 
 - \`envs\`：环境名称和接口基础地址。每个环境必须有唯一的 \`key\`。
+- \`globals\`：全局参数，追加到每个请求。支持 \`header\` / \`cookie\` / \`query\` 三种类型，可配置在顶层（所有环境生效）或单个环境内。值支持 \`{{vars.xxx}}\` 模板；步骤显式声明的同名参数优先于全局参数。CLI 可用 \`SCENARIO_GLOBALS\` 环境变量（JSON 数组）覆盖，如 \`[{"type":"header","name":"Authorization","value":"Bearer x"}]\`。
 - \`vars\`：本项目启动时使用的默认变量。私有项目可在这里保存团队联调 Key、Secret、Token、测试账号等。
 - \`variables\`：页面上需要展示或允许覆盖的变量元数据，包括标签、是否必填，以及可选的 CLI 环境变量名。实际默认值优先写在 \`vars\`，不要重复维护。
 - \`scenarios\`：场景 id、名称和对应 JS 文件地址。
@@ -185,6 +194,9 @@ export function createProjectFiles(directory = "scenario-test", options = {}) {
 
 \`\`\`js
 ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+    globals: [
+        { type: "header", name: "X-Project", value: "project-test" }
+    ],
     envs: [
         { key: "local", name: "本地开发", baseUrl: "http://localhost:8080" },
         { key: "test", name: "测试环境", baseUrl: "https://test.example.com" }

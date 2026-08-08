@@ -1,4 +1,8 @@
 ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+    globals: [
+        { type: "header", name: "X-Scenario-Env", value: "basic-example" },
+        { type: "query", name: "source", value: "scenario-test" }
+    ],
     envs: [
         { key: "mock", name: "Mock 环境", baseUrl: "https://mock.local" }
     ],

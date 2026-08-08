@@ -136,7 +136,7 @@ const legacyAdhoc = (function () {
         node.classList.remove('hidden');
         node.innerHTML = '<div class="flex items-center justify-between"><div class="text-sm font-bold ' + statusClass + '">' + (result.passed ? '请求完成' : '请求失败') + '</div><div class="text-xs text-slate-500">状态：' + esc(result.status) + ' ｜ 耗时：' + esc(fmt(result.duration)) + '</div></div>' +
             (result.error ? '<div class="mt-3 rounded border border-rose-200 bg-rose-50 p-2 text-sm text-rose-700">' + esc(result.error) + '</div>' : '') +
-            '<div class="mt-3 grid gap-3 md:grid-cols-2"><div><div class="mb-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">Response Headers</div><pre class="overflow-x-auto rounded bg-slate-900 p-3 text-xs leading-tight text-slate-300">' + esc(safeJson(sanitizeSensitive(response.headers, ''))) + '</pre></div><div><div class="mb-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">Response Body</div><pre class="overflow-x-auto rounded bg-slate-900 p-3 text-xs leading-tight text-slate-300">' + esc(safeJson(sanitizeSensitive(response.body, ''))) + '</pre></div></div>';
+            '<div class="mt-3 grid gap-3 md:grid-cols-2"><div><div class="mb-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">响应头</div><pre class="overflow-x-auto rounded bg-slate-900 p-3 text-xs leading-tight text-slate-300">' + esc(safeJson(sanitizeSensitive(response.headers, ''))) + '</pre></div><div><div class="mb-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">响应体</div><pre class="overflow-x-auto rounded bg-slate-900 p-3 text-xs leading-tight text-slate-300">' + esc(safeJson(sanitizeSensitive(response.body, ''))) + '</pre></div></div>';
     }
 
     function syncAdhocFormDisabled(disabled) {
@@ -229,7 +229,7 @@ const legacyAdhoc = (function () {
         document.getElementById('adhocModal').classList.add('hidden');
     }
 
-    async function executeAdhocRequest(executeStepFn, getEnvFn, getBaseUrlFn, getAuthFn) {
+    async function executeAdhocRequest(executeStepFn, getEnvFn, getBaseUrlFn, getAuthFn, getGlobalsFn) {
         if (adhocState.running) return;
         try {
             var step = buildAdhocStep({
@@ -247,6 +247,7 @@ const legacyAdhoc = (function () {
                 lastResponseBody: null,
                 baseUrl: getBaseUrlFn ? getBaseUrlFn() : '',
                 authorization: getAuthFn ? getAuthFn() : '',
+                globals: getGlobalsFn ? getGlobalsFn() : [],
                 environment: environment ? clone(environment) : null,
                 startedAt: Date.now(),
                 abortController: new AbortController(),
@@ -266,7 +267,7 @@ const legacyAdhoc = (function () {
         }
     }
 
-    function bindAdhocRequestEvents(getStepByIdxFn, getRuntimeByIdxFn, executeStepFn, getEnvFn, getBaseUrlFn, getAuthFn) {
+    function bindAdhocRequestEvents(getStepByIdxFn, getRuntimeByIdxFn, executeStepFn, getEnvFn, getBaseUrlFn, getAuthFn, getGlobalsFn) {
         document.getElementById('stepsList').addEventListener('click', function (event) {
             var button = event.target.closest('[data-adhoc-step]');
             if (!button) return;
@@ -280,7 +281,7 @@ const legacyAdhoc = (function () {
         document.getElementById('adhocCloseBtn').addEventListener('click', closeAdhocModal);
         document.getElementById('adhocCancelBtn').addEventListener('click', closeAdhocModal);
         document.getElementById('adhocExecuteBtn').addEventListener('click', function () {
-            executeAdhocRequest(executeStepFn, getEnvFn, getBaseUrlFn, getAuthFn);
+            executeAdhocRequest(executeStepFn, getEnvFn, getBaseUrlFn, getAuthFn, getGlobalsFn);
         });
         var addBtn = document.getElementById('adhocAddParamBtn');
         if (addBtn) {

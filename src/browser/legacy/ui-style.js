@@ -231,8 +231,8 @@ const legacyStyle = (function () {
             .report-empty__title { color: #334155; font-size: 14px; font-weight: 700; }
             .report-empty__hint { margin-top: 8px; font-size: 12px; }
 
-            #configPanel { background: #1e293b !important; border-color: #334155 !important; border-radius: 5px !important; }
-            #configPanel input, #configPanel select { border-radius: 3px !important; }
+            #configModal > div { background: #1e293b !important; border-color: #334155 !important; border-radius: 5px !important; }
+            #configModal input, #configModal select { border-radius: 3px !important; }
             #adhocModal > div { background: var(--workspace-surface) !important; border: 1px solid var(--workspace-line); border-radius: 5px !important; }
             .scenario-step-loading { display: none; position: fixed; z-index: 40; top: 54px; right: 16px; pointer-events: none; }
             .scenario-step-loading--visible { display: block; }

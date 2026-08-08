@@ -9,6 +9,7 @@
   "browser": "dist/scenario-test.umd.js",
   "scripts": {
     "build": "node scripts/build.mjs",
+    "dev": "node scripts/dev.mjs",
     "test": "node --test tests/*.test.js",
     "test:browser": "node tests/browser.test.mjs",
     "check": "npm run build && npm test"

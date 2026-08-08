@@ -29,6 +29,40 @@ export function createLegacyRuntime(options) {
     var esc = core.esc;
     var fmt = core.fmt;
     var safeJson = core.safeJson;
+    var GLOBAL_TYPES = ['header', 'cookie', 'query'];
+
+    // 常见 Header 的常用值建议（参考 Apifox 的取值选项）
+    var HEADER_VALUE_OPTIONS = {
+        'Authorization': ['Bearer {{vars.token}}', 'Token {{vars.token}}', 'Basic dXNlcjpwYXNz'],
+        'Content-Type': ['application/json', 'application/x-www-form-urlencoded', 'multipart/form-data', 'text/plain', 'application/xml'],
+        'Accept': ['application/json', 'text/plain', '*/*', 'application/xml'],
+        'Accept-Language': ['zh-CN', 'zh-CN,zh;q=0.9', 'en-US', 'en'],
+        'Cache-Control': ['no-cache', 'no-store', 'max-age=0'],
+        'X-Request-Id': ['{{vars.runId}}', '{{vars.runNo}}']
+    };
+
+    // 动态 datalist 的全局唯一 id 计数器
+    var globalValueListSeq = 0;
+
+    // 合并多组全局参数：按 type:name 去重，后合并的覆盖先合并的
+    function mergeGlobals() {
+        var lists = Array.prototype.slice.call(arguments);
+        var merged = {};
+        for (var i = 0; i < lists.length; i += 1) {
+            var list = lists[i];
+            if (!Array.isArray(list)) continue;
+            for (var j = 0; j < list.length; j += 1) {
+                var item = list[j];
+                if (!item || GLOBAL_TYPES.indexOf(item.type) < 0 || typeof item.name !== 'string' || !item.name.trim()) continue;
+                merged[item.type + ':' + item.name] = {
+                    type: item.type,
+                    name: item.name,
+                    value: item.value == null ? '' : String(item.value)
+                };
+            }
+        }
+        return Object.keys(merged).map(function (key) { return merged[key]; });
+    }
     var appConfig = options.config || {};
     var getRegisteredScenario = options.getScenario || function () { return null; };
 
@@ -97,6 +131,7 @@ export function createLegacyRuntime(options) {
         return {
             baseUrl: keys.baseUrl || 'scenario.testing.baseUrl',
             authorization: keys.authorization || 'scenario.testing.authorization',
+            globals: keys.globals || 'scenario.testing.globals',
             environment: keys.environment || 'scenario.testing.environment',
             theme: keys.theme || 'scenario.testing.theme',
             scenarioVars: keys.scenarioVars || 'scenario.testing.scenarioVars',
@@ -236,6 +271,29 @@ export function createLegacyRuntime(options) {
         } catch (e) {
             return (environment && environment.authorization) || cfg.authorization || '';
         }
+    }
+
+    // 生效的全局参数：配置 globals < 环境 globals < 页面覆盖；旧 authorization 自动映射为 header 参数
+    function getEffectiveGlobals() {
+        var cfg = appConfig;
+        var keys = getStorageKeys();
+        var environment = getSelectedEnvironment();
+        var stored = [];
+        try {
+            var raw = window.localStorage.getItem(getEnvironmentStorageKey(keys.globals, environment));
+            if (raw) {
+                var parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) stored = parsed;
+            }
+        } catch (e) {
+            stored = [];
+        }
+        var merged = mergeGlobals(cfg.globals, environment && environment.globals, stored);
+        var authorization = getEffectiveAuthorization();
+        if (authorization && !merged.some(function (g) { return g.type === 'header' && g.name.toLowerCase() === 'authorization'; })) {
+            merged = merged.concat([{ type: 'header', name: 'Authorization', value: authorization }]);
+        }
+        return merged;
     }
 
     function persistSetting(key, value) {
@@ -422,8 +480,40 @@ export function createLegacyRuntime(options) {
         var path = buildUrl(rawPath, rawParams, runtime);
         var headers = request.headers && isPlainObject(request.headers) ? request.headers : {};
         var absoluteUrl = /^https?:\/\//i.test(path);
-        var authorization = runtime.authorization;
         var allowEnvironmentAuthorization = !absoluteUrl || request.useEnvironmentAuthorization === true;
+        var globals = runtime.globals || [];
+        if (allowEnvironmentAuthorization && globals.length) {
+            // query：追加 URL 参数，跳过步骤参数已存在的 key
+            var existingKeys = {};
+            var queryIndex = path.indexOf('?');
+            if (queryIndex >= 0) {
+                path.slice(queryIndex + 1).split('&').forEach(function (pair) {
+                    var key = pair.split('=')[0];
+                    if (key) existingKeys[decodeURIComponent(key)] = true;
+                });
+            }
+            var queryPairs = [];
+            globals.forEach(function (g) {
+                if (g.type !== 'query' || existingKeys[g.name]) return;
+                queryPairs.push(encodeURIComponent(g.name) + '=' + encodeURIComponent(String(resolveString(g.value, runtime))));
+            });
+            if (queryPairs.length) path = path + (queryIndex >= 0 ? '&' : '?') + queryPairs.join('&');
+            // cookie：多个全局 cookie 合并为一个 Cookie 头，追加到已有 Cookie 之后
+            var cookieParts = globals.filter(function (g) { return g.type === 'cookie'; })
+                .map(function (g) { return g.name + '=' + resolveString(g.value, runtime); });
+            if (cookieParts.length) {
+                var cookieKey = null;
+                Object.keys(headers).forEach(function (key) { if (key.toLowerCase() === 'cookie') cookieKey = key; });
+                if (cookieKey) headers[cookieKey] = headers[cookieKey] + '; ' + cookieParts.join('; ');
+                else headers.Cookie = cookieParts.join('; ');
+            }
+            // header：步骤显式声明同名头时全局参数不覆盖
+            globals.forEach(function (g) {
+                if (g.type !== 'header' || hasHeader(headers, g.name)) return;
+                headers[g.name] = resolveString(g.value, runtime);
+            });
+        }
+        var authorization = runtime.authorization;
         if (authorization && allowEnvironmentAuthorization && !hasHeader(headers, 'Authorization')) {
             headers.Authorization = authorization;
         }
@@ -548,6 +638,7 @@ export function createLegacyRuntime(options) {
             lastResponseBody: null,
             baseUrl: getEffectiveBaseUrl(),
             authorization: getEffectiveAuthorization(),
+            globals: getEffectiveGlobals(),
             environment: environment ? clone(environment) : null,
             startedAt: Date.now(),
             abortController: new AbortController(),
@@ -626,7 +717,7 @@ export function createLegacyRuntime(options) {
             var element = document.getElementById(id);
             if (element) element.disabled = disabled;
         });
-        document.querySelectorAll('#configPanel input, #configPanel select, #configPanel button').forEach(function (element) {
+        document.querySelectorAll('#configModal input, #configModal select, #configModal button').forEach(function (element) {
             element.disabled = disabled;
         });
     }
@@ -817,19 +908,132 @@ export function createLegacyRuntime(options) {
         }).join('');
     }
 
+    // 构建 header 类型的参数名/参数值 datalist 片段（type 不为 header 时返回空）
+    function buildGlobalInputAttrs(g, index) {
+        if (g.type !== 'header') return { nameList: '', valueList: '', valueDatalist: '' };
+        var valueOptions = HEADER_VALUE_OPTIONS[g.name];
+        var nameList = ' list="globalHeaderNameList"';
+        if (!valueOptions || !valueOptions.length) return { nameList: nameList, valueList: '', valueDatalist: '' };
+        var listId = 'globalValueList_' + (++globalValueListSeq);
+        var valueDatalist = '<datalist id="' + listId + '">' +
+            valueOptions.map(function (value) { return '<option value="' + esc(value) + '"></option>'; }).join('') +
+            '</datalist>';
+        return { nameList: nameList, valueList: ' list="' + listId + '"', valueDatalist: valueDatalist };
+    }
+
+    // 刷新单行 header 参数值的常用值建议（参数名变化时调用）
+    function refreshHeaderValueDatalist(row, name) {
+        var valueInput = row.querySelector('.global-value');
+        var existing = row.querySelector('.global-value-datalist');
+        var options = HEADER_VALUE_OPTIONS[name] || [];
+        if (!options.length) {
+            if (existing) existing.remove();
+            if (valueInput) valueInput.removeAttribute('list');
+            return;
+        }
+        var listId = 'globalValueList_' + (++globalValueListSeq);
+        if (!existing) {
+            existing = document.createElement('datalist');
+            existing.className = 'global-value-datalist';
+            row.appendChild(existing);
+        }
+        existing.id = listId;
+        existing.innerHTML = options.map(function (value) { return '<option value="' + esc(value) + '"></option>'; }).join('');
+        if (valueInput) valueInput.setAttribute('list', listId);
+    }
+
+    function renderGlobalsInput() {
+        var container = document.getElementById('globalsInput');
+        if (!container) return;
+        var globals = getEffectiveGlobals();
+        container.innerHTML = globals.map(function (g, index) {
+            var typeOptions = GLOBAL_TYPES.map(function (type) {
+                return '<option value="' + type + '"' + (g.type === type ? ' selected' : '') + '>' + type + '</option>';
+            }).join('');
+            var attrs = buildGlobalInputAttrs(g, index);
+            return '<div class="global-param-row flex items-center gap-2" data-index="' + index + '">' +
+                '<select class="global-type flex-shrink-0 px-2 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">' + typeOptions + '</select>' +
+                '<input class="global-name flex-1 min-w-0 px-2 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"' + attrs.nameList + ' placeholder="参数名" value="' + esc(g.name) + '" />' +
+                '<input class="global-value flex-1 min-w-0 px-2 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"' + attrs.valueList + ' placeholder="参数值，支持 {{vars.xxx}}" value="' + esc(g.value) + '" />' +
+                '<button type="button" class="global-remove flex-shrink-0 px-2.5 py-2 rounded-md bg-slate-700 text-slate-300 text-xs font-bold hover:bg-slate-600 transition-colors" title="删除该参数">✕</button>' +
+                attrs.valueDatalist +
+                '</div>';
+        }).join('');
+    }
+
+    function collectGlobalsFromInput() {
+        var list = [];
+        var rows = document.querySelectorAll('#globalsInput .global-param-row');
+        rows.forEach(function (row) {
+            var type = row.querySelector('.global-type').value;
+            var name = String(row.querySelector('.global-name').value || '').trim();
+            if (!name) return;
+            list.push({ type: type, name: name, value: row.querySelector('.global-value').value });
+        });
+        return list;
+    }
+
+    function bindGlobalsEvents() {
+        var addBtn = document.getElementById('addGlobalBtn');
+        if (!addBtn) return;
+        addBtn.addEventListener('click', function () {
+            var container = document.getElementById('globalsInput');
+            if (!container) return;
+            var row = document.createElement('div');
+            row.className = 'global-param-row flex items-center gap-2';
+            row.innerHTML = '<select class="global-type flex-shrink-0 px-2 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">' +
+                GLOBAL_TYPES.map(function (type) { return '<option value="' + type + '">' + type + '</option>'; }).join('') +
+                '</select>' +
+                '<input class="global-name flex-1 min-w-0 px-2 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500" list="globalHeaderNameList" placeholder="参数名" />' +
+                '<input class="global-value flex-1 min-w-0 px-2 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500" placeholder="参数值，支持 {{vars.xxx}}" />' +
+                '<button type="button" class="global-remove flex-shrink-0 px-2.5 py-2 rounded-md bg-slate-700 text-slate-300 text-xs font-bold hover:bg-slate-600 transition-colors" title="删除该参数">✕</button>';
+            container.appendChild(row);
+        });
+        document.addEventListener('click', function (event) {
+            var target = event.target;
+            if (!target || !target.classList || !target.classList.contains('global-remove')) return;
+            var row = target.closest('.global-param-row');
+            if (row) row.parentNode.removeChild(row);
+        });
+        // 参数名变化时刷新该行 header 值的常用值建议
+        document.addEventListener('input', function (event) {
+            var target = event.target;
+            if (!target || !target.classList || !target.classList.contains('global-name')) return;
+            var row = target.closest('.global-param-row');
+            if (!row || row.querySelector('.global-type').value !== 'header') return;
+            refreshHeaderValueDatalist(row, String(target.value || '').trim());
+        });
+        // 类型切换时同步 name 的 Header 下拉与 value 建议
+        document.addEventListener('change', function (event) {
+            var target = event.target;
+            if (!target || !target.classList || !target.classList.contains('global-type')) return;
+            var row = target.closest('.global-param-row');
+            if (!row) return;
+            var nameInput = row.querySelector('.global-name');
+            var valueInput = row.querySelector('.global-value');
+            var existing = row.querySelector('.global-value-datalist');
+            if (target.value === 'header') {
+                if (nameInput) nameInput.setAttribute('list', 'globalHeaderNameList');
+                if (valueInput) refreshHeaderValueDatalist(row, String(nameInput ? nameInput.value : '').trim());
+            } else {
+                if (nameInput) nameInput.removeAttribute('list');
+                if (existing) existing.remove();
+                if (valueInput) valueInput.removeAttribute('list');
+            }
+        });
+    }
+
     function syncSettingsInputs() {
         var keys = getStorageKeys();
         var environment = getSelectedEnvironment();
         renderEnvironmentSelects();
         renderScenarioVariableInputs();
+        renderGlobalsInput();
         var baseUrlInput = document.getElementById('baseUrlInput');
-        var authorizationInput = document.getElementById('authorizationInput');
         try {
             if (baseUrlInput) baseUrlInput.value = window.localStorage.getItem(getEnvironmentStorageKey(keys.baseUrl, environment)) || '';
-            if (authorizationInput) authorizationInput.value = window.localStorage.getItem(getEnvironmentStorageKey(keys.authorization, environment)) || '';
         } catch (e) {
             if (baseUrlInput) baseUrlInput.value = '';
-            if (authorizationInput) authorizationInput.value = '';
         }
     }
 
@@ -844,15 +1048,18 @@ export function createLegacyRuntime(options) {
         if (titleNode) titleNode.textContent = title;
         if (envNode) envNode.textContent = environment ? (environment.name || environment.key) : '默认环境';
         var effectiveBaseUrl = getEffectiveBaseUrl();
-        var effectiveAuth = getEffectiveAuthorization();
+        var globals = getEffectiveGlobals();
         if (baseLabel) baseLabel.textContent = effectiveBaseUrl || '(未配置)';
         if (authLabel && authValue) {
-            if (effectiveAuth) {
+            if (globals.length) {
                 authLabel.style.display = 'inline';
-                authValue.textContent = effectiveAuth;
+                var summary = globals.slice(0, 3).map(function (g) { return g.type + ':' + g.name; }).join(', ');
+                authValue.textContent = summary + (globals.length > 3 ? ' 等 ' + globals.length + ' 项' : '');
+                authLabel.title = safeJson(globals);
             } else {
                 authLabel.style.display = 'none';
                 authValue.textContent = '';
+                authLabel.title = '';
             }
         }
     }
@@ -872,6 +1079,8 @@ export function createLegacyRuntime(options) {
         var envSelectPanel = document.getElementById('environmentInput');
         var saveBtn = document.getElementById('saveSettingsBtn');
         var clearBtn = document.getElementById('clearSettingsBtn');
+        var configToggleBtn = document.getElementById('configToggleBtn');
+        var configCloseBtn = document.getElementById('configCloseBtn');
         var keys = getStorageKeys();
         var noticeTimer = null;
 
@@ -886,6 +1095,31 @@ export function createLegacyRuntime(options) {
                 notice.classList.add('hidden');
             }, 2500);
         }
+
+        function openConfigModal() {
+            var modal = document.getElementById('configModal');
+            if (!modal) return;
+            syncSettingsInputs();
+            modal.classList.remove('hidden');
+        }
+
+        function closeConfigModal() {
+            var modal = document.getElementById('configModal');
+            if (modal) modal.classList.add('hidden');
+        }
+
+        if (configToggleBtn) {
+            configToggleBtn.addEventListener('click', openConfigModal);
+        }
+        if (configCloseBtn) {
+            configCloseBtn.addEventListener('click', closeConfigModal);
+        }
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape') closeConfigModal();
+        });
+        document.getElementById('configModal').addEventListener('click', function (event) {
+            if (event.target === document.getElementById('configModal')) closeConfigModal();
+        });
 
         function selectEnvironment(envKey) {
             persistSetting(keys.environment, envKey);
@@ -906,11 +1140,10 @@ export function createLegacyRuntime(options) {
             saveBtn.addEventListener('click', function () {
                 var environment = getSelectedEnvironment();
                 var baseUrlInput = document.getElementById('baseUrlInput');
-                var authorizationInput = document.getElementById('authorizationInput');
                 var baseUrl = String(baseUrlInput.value || '').trim().replace(/\/+$/, '');
-                var authorization = String(authorizationInput.value || '').trim();
+                var globals = collectGlobalsFromInput();
                 persistSetting(getEnvironmentStorageKey(keys.baseUrl, environment), baseUrl);
-                persistSetting(getEnvironmentStorageKey(keys.authorization, environment), authorization);
+                persistSetting(getEnvironmentStorageKey(keys.globals, environment), globals.length ? JSON.stringify(globals) : '');
                 persistScenarioVariables();
                 updateHeader();
                 showSettingsNotice('当前环境设置已保存并生效');
@@ -920,7 +1153,7 @@ export function createLegacyRuntime(options) {
             clearBtn.addEventListener('click', function () {
                 var environment = getSelectedEnvironment();
                 persistSetting(getEnvironmentStorageKey(keys.baseUrl, environment), '');
-                persistSetting(getEnvironmentStorageKey(keys.authorization, environment), '');
+                persistSetting(getEnvironmentStorageKey(keys.globals, environment), '');
                 getScenarioVariableDefinitions().forEach(function (def) {
                     persistSetting(getScenarioVariableStorageKey(def.name, environment), '');
                 });
@@ -1073,6 +1306,7 @@ export function createLegacyRuntime(options) {
         bindThemeEvents();
         syncSettingsInputs();
         bindSettingsEvents();
+        bindGlobalsEvents();
         bindReportActions();
 
         uiAdhoc.bindAdhocRequestEvents(
@@ -1083,7 +1317,8 @@ export function createLegacyRuntime(options) {
             executeStep,
             getSelectedEnvironment,
             getEffectiveBaseUrl,
-            getEffectiveAuthorization
+            getEffectiveAuthorization,
+            getEffectiveGlobals
         );
 
         updateHeader();

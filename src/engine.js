@@ -150,11 +150,46 @@ async function readResponse(response, step, io, runtime) {
 async function executeHttp(step, runtime, options) {
     const request = resolve(clone(step.request || {}), runtime) || {};
     const method = String(step.method || request.method || "GET").toUpperCase();
-    const requestPath = buildUrl(step.path || request.path || "", step.params || request.params, runtime);
+    let requestPath = buildUrl(step.path || request.path || "", step.params || request.params, runtime);
     const headers = { ...(request.headers || {}) };
     const absoluteUrl = /^https?:\/\//i.test(requestPath);
-    if (options.authorization && (!absoluteUrl || request.useEnvironmentAuthorization === true)
-        && !hasHeader(headers, "Authorization")) {
+    const allowEnvironmentAuthorization = !absoluteUrl || request.useEnvironmentAuthorization === true;
+    const globals = options.globals || [];
+    if (allowEnvironmentAuthorization && globals.length) {
+        // query：追加 URL 参数，跳过步骤参数已存在的 key
+        const existingKeys = new Set();
+        const queryIndex = requestPath.indexOf("?");
+        if (queryIndex >= 0) {
+            for (const pair of requestPath.slice(queryIndex + 1).split("&")) {
+                const key = pair.split("=")[0];
+                if (key) existingKeys.add(decodeURIComponent(key));
+            }
+        }
+        const queryPairs = [];
+        for (const global of globals) {
+            if (global.type !== "query" || existingKeys.has(global.name)) continue;
+            queryPairs.push(`${encodeURIComponent(global.name)}=${encodeURIComponent(String(resolveString(global.value, runtime)))}`);
+        }
+        if (queryPairs.length) requestPath = `${requestPath}${queryIndex >= 0 ? "&" : "?"}${queryPairs.join("&")}`;
+        // cookie：多个全局 cookie 合并为一个 Cookie 头，追加到已有 Cookie 之后
+        const cookieParts = globals
+            .filter((global) => global.type === "cookie")
+            .map((global) => `${global.name}=${resolveString(global.value, runtime)}`);
+        if (cookieParts.length) {
+            const cookieKey = Object.keys(headers).find((key) => key.toLowerCase() === "cookie");
+            const mergedCookie = cookieKey
+                ? `${headers[cookieKey]}; ${cookieParts.join("; ")}`
+                : cookieParts.join("; ");
+            if (cookieKey) headers[cookieKey] = mergedCookie;
+            else headers.Cookie = mergedCookie;
+        }
+        // header：步骤显式声明同名头时全局参数不覆盖
+        for (const global of globals) {
+            if (global.type !== "header" || hasHeader(headers, global.name)) continue;
+            headers[global.name] = resolveString(global.value, runtime);
+        }
+    }
+    if (options.authorization && allowEnvironmentAuthorization && !hasHeader(headers, "Authorization")) {
         headers.Authorization = options.authorization;
     }
     const fetchOptions = { method, headers };

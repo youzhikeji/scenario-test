@@ -7,6 +7,7 @@ import { createXlsxAdapter, readWorkbookRows } from "./adapters/xlsx.js";
 import { DEFAULT_LIBRARY_URL, createProjectFiles } from "./init-templates.js";
 import { VERSION } from "./version.generated.js";
 import { validatePath } from "./utils/path-validator.js";
+import { mergeGlobals } from "./core.js";
 
 function argumentValue(argv, index, option) {
     const value = argv[index + 1];
@@ -64,6 +65,25 @@ function parseArgs(argv) {
     return args;
 }
 
+function parseGlobalsEnv() {
+    const raw = process.env.SCENARIO_GLOBALS;
+    if (!raw) return [];
+    let parsed;
+    try {
+        parsed = JSON.parse(raw);
+    } catch {
+        throw new Error("SCENARIO_GLOBALS 必须是合法的 JSON 数组，例如 [{\"type\":\"header\",\"name\":\"X-Token\",\"value\":\"abc\"}]");
+    }
+    if (!Array.isArray(parsed)) throw new Error("SCENARIO_GLOBALS 必须是 JSON 数组");
+    return parsed.map((item, index) => {
+        if (!item || typeof item !== "object" || !["header", "cookie", "query"].includes(item.type)
+            || typeof item.name !== "string" || !item.name.trim()) {
+            throw new Error(`SCENARIO_GLOBALS 第 ${index + 1} 项无效，格式应为 { type: "header|cookie|query", name, value }`);
+        }
+        return { type: item.type, name: item.name, value: item.value == null ? "" : String(item.value) };
+    });
+}
+
 function printHelp() {
     console.log(`scenario-test ${VERSION}
 
@@ -83,8 +103,12 @@ Options:
   --allow-external-plugins  允许加载外部插件（有安全风险）
 
 认证选项:
-  环境变量 SCENARIO_AUTH    推荐方式，设置授权令牌
-  --authorization <v>       （已弃用）命令行传递令牌
+  环境变量 SCENARIO_AUTH       推荐方式，设置授权令牌
+  --authorization <v>          （已弃用）命令行传递令牌
+
+全局参数选项（追加到每个请求）:
+  环境变量 SCENARIO_GLOBALS    JSON 数组，如 [{"type":"header","name":"X-Token","value":"abc"}]
+                               支持 header / cookie / query 三种类型，覆盖配置中的同名参数
 
 初始化选项:
   --project <path>      项目根目录
@@ -253,6 +277,7 @@ async function runCommand(args) {
     const configPath = resolveConfigPath(args.config);
     const configDir = path.dirname(configPath);
     const config = ScenarioTest.loadConfigFile(configPath, ScenarioTest);
+    const envGlobals = parseGlobalsEnv();
     const environment = selectEnvironment(config, args.env);
     const entries = args.all
         ? config.scenarios
@@ -265,6 +290,7 @@ async function runCommand(args) {
         config,
         baseUrl: String(args.baseUrl || environment.baseUrl || config.baseUrl || "").replace(/\/+$/, ""),
         authorization: args.authorization || environment.authorization || config.authorization || "",
+        globals: mergeGlobals(config.globals, environment.globals, envGlobals),
         requestTimeoutMs: config.requestTimeoutMs,
         vars: configVariables(config),
         environmentVariables: process.env,

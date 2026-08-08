@@ -97,3 +97,58 @@ test("CLI Overall 统计按计划步骤数计算", async () => {
         fs.rmSync(directory, { recursive: true, force: true });
     }
 });
+
+test("CLI SCENARIO_GLOBALS 环境变量注入全局参数", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-globals-"));
+    const server = http.createServer((request, response) => {
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({
+            url: request.url,
+            header: request.headers["x-trace"],
+            cookie: request.headers.cookie
+        }));
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+        const port = server.address().port;
+        fs.mkdirSync(path.join(directory, "scenarios"));
+        fs.writeFileSync(path.join(directory, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1:${port}"}],scenarios:[{id:"echo",name:"Echo",url:"scenarios/echo.js"}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/echo.js"), `ScenarioTest.registerScenario("echo",ScenarioTest.defineScenario({name:"Echo",steps:[{name:"echo",path:"api",status:200,assertions:[{path:"header",equals:"cli-trace"},{path:"cookie",includes:"sid=cli-123"},{path:"url",includes:"source=cli"}]}]}));`, "utf8");
+        const cli = path.resolve(import.meta.dirname, "../dist/scenario-test-cli.cjs");
+        const globals = JSON.stringify([
+            { type: "header", name: "X-Trace", value: "cli-trace" },
+            { type: "cookie", name: "sid", value: "cli-123" },
+            { type: "query", name: "source", value: "cli" }
+        ]);
+        const result = await new Promise((resolve) => {
+            const child = spawn(process.execPath, [cli, "--config", path.join(directory, "scenario.config.js"), "--all"], { env: { ...process.env, SCENARIO_GLOBALS: globals }, stdio: ["ignore", "pipe", "pipe"] });
+            let stdout = "";
+            let stderr = "";
+            child.stdout.on("data", (chunk) => { stdout += chunk; });
+            child.stderr.on("data", (chunk) => { stderr += chunk; });
+            child.on("close", (code) => resolve({ code, stdout, stderr }));
+        });
+        assert.equal(result.code, 0, result.stderr);
+        assert.match(result.stdout, /\[PASS\] echo/);
+        assert.match(result.stdout, /Overall: 1\/1 passed/);
+    } finally {
+        server.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
+test("CLI SCENARIO_GLOBALS 非法 JSON 时报错", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-badglobals-"));
+    try {
+        fs.writeFileSync(path.join(directory, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1"}],scenarios:[]}));`, "utf8");
+        const cli = path.resolve(import.meta.dirname, "../src/cli.js");
+        const result = spawnSync(process.execPath, [cli, "--config", path.join(directory, "scenario.config.js")], {
+            encoding: "utf8",
+            env: { ...process.env, SCENARIO_GLOBALS: "not-json" }
+        });
+        assert.notEqual(result.status, 0);
+        assert.match(result.stderr, /SCENARIO_GLOBALS 必须是合法的 JSON 数组/);
+    } finally {
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});

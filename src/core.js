@@ -1,5 +1,28 @@
 import md5Impl from "blueimp-md5";
 
+// 全局参数支持的类型：追加到每个请求的 header / cookie / query
+export const GLOBAL_TYPES = ["header", "cookie", "query"];
+
+export function isGlobalParam(item) {
+    return Boolean(item && GLOBAL_TYPES.includes(item.type) && typeof item.name === "string" && item.name.trim());
+}
+
+export function normalizeGlobalParam(item) {
+    return { type: item.type, name: item.name, value: item.value == null ? "" : String(item.value) };
+}
+
+// 合并多组全局参数：按 type:name 去重，后合并的覆盖先合并的
+export function mergeGlobals(...lists) {
+    const merged = new Map();
+    for (const list of lists) {
+        for (const item of list || []) {
+            if (!isGlobalParam(item)) continue;
+            merged.set(`${item.type}:${item.name}`, normalizeGlobalParam(item));
+        }
+    }
+    return [...merged.values()];
+}
+
 export function clone(value) {
     return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 }

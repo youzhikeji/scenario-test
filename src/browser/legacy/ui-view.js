@@ -64,7 +64,7 @@ const legacyView = (function () {
                 <button id="runBtn" class="scenario-header-button scenario-header-button--primary">执行全部</button>
                 <button id="cancelBtn" disabled class="scenario-header-text-action scenario-header-text-action--danger">停止</button>
                 <button id="resetBtn" class="scenario-header-text-action">清除行</button>
-                <button id="configToggleBtn" onclick="document.getElementById('configPanel').classList.toggle('hidden')" class="scenario-header-button scenario-header-button--config">
+                <button id="configToggleBtn" class="scenario-header-button scenario-header-button--config">
                     <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                     <span>配置参数</span>
                 </button>
@@ -72,43 +72,27 @@ const legacyView = (function () {
             </div>
         </header>
         <main class="scenario-workspace max-w-full mx-auto px-2 py-2">
-            <div id="configPanel" class="hidden bg-slate-800 rounded-lg shadow-md border border-slate-700 p-4 mb-4 text-slate-200">
-                <div class="flex items-center justify-between mb-3 border-b border-slate-700 pb-2">
-                    <div class="text-sm font-bold text-white flex items-center space-x-2">
-                        <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-                        <span>环境参数配置</span>
-                    </div>
-                    <button onclick="document.getElementById('configPanel').classList.add('hidden')" class="text-slate-400 hover:text-white transition-colors">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                    </button>
-                </div>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <label class="flex flex-col gap-1.5">
-                        <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">测试环境</span>
-                        <select id="environmentInput" class="px-3 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"></select>
-                    </label>
-                    <label class="flex flex-col gap-1.5">
-                        <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Base URL</span>
-                        <input id="baseUrlInput" type="text" placeholder="留空默认使用当前页面服务地址" class="px-3 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">
-                    </label>
-                    <label class="flex flex-col gap-1.5">
-                        <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Authorization Token</span>
-                        <input id="authorizationInput" type="text" placeholder="留空则请求不带 Authorization" class="px-3 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">
-                    </label>
-                </div>
-                <div class="mt-4 border-t border-slate-700 pt-3">
-                    <div class="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">场景变量</div>
-                    <div id="scenarioVarsInput" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
-                </div>
-                <div class="mt-4 flex flex-wrap items-center justify-between border-t border-slate-700 pt-3">
-                    <div class="text-[11px] text-slate-400 flex items-center gap-2"><span>当前生效 Base URL:</span> <span id="baseUrlLabel" class="font-mono text-emerald-400"></span><span id="authLabel" class="font-mono text-amber-400 border-l border-slate-600 pl-2" style="display:none">Token: <span id="authValue"></span></span></div>
-                    <div class="flex flex-wrap items-center justify-end gap-2 mt-2 sm:mt-0">
-                        <span id="settingsNotice" role="status" aria-live="polite" class="hidden text-xs font-medium text-emerald-400"></span>
-                        <button id="saveSettingsBtn" class="px-4 py-1.5 rounded-md bg-emerald-500 text-white text-xs font-bold hover:bg-emerald-600 transition-colors shadow-sm">保存并生效</button>
-                        <button id="clearSettingsBtn" class="px-4 py-1.5 rounded-md bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold hover:bg-slate-600 transition-colors">清除当前环境覆盖</button>
-                    </div>
-                </div>
-            </div>
+            <datalist id="globalHeaderNameList">
+                <option value="Accept"></option>
+                <option value="Accept-Charset"></option>
+                <option value="Accept-Encoding"></option>
+                <option value="Accept-Language"></option>
+                <option value="Authorization"></option>
+                <option value="Cache-Control"></option>
+                <option value="Connection"></option>
+                <option value="Content-Encoding"></option>
+                <option value="Content-Length"></option>
+                <option value="Content-Type"></option>
+                <option value="Cookie"></option>
+                <option value="Host"></option>
+                <option value="Origin"></option>
+                <option value="Referer"></option>
+                <option value="User-Agent"></option>
+                <option value="X-Client-Id"></option>
+                <option value="X-Project"></option>
+                <option value="X-Request-Id"></option>
+                <option value="X-Token"></option>
+            </datalist>
             <div class="scenario-grid grid grid-cols-1 xl:grid-cols-[minmax(164px,1fr)_minmax(500px,3.18fr)_minmax(280px,1.75fr)] gap-2 mb-2">
                 <aside class="scenario-pane scenario-pane--scenarios bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden xl:max-h-[calc(100vh-52px)] flex flex-col">
                     <div class="px-4 py-3 border-b border-slate-100 bg-slate-50/50 flex-shrink-0">
@@ -142,6 +126,46 @@ const legacyView = (function () {
                 </div>
             </div>
         </main>
+        <div id="configModal" class="hidden fixed inset-0 z-40 bg-slate-950/20 p-4 flex items-center justify-center">
+            <div class="w-full max-w-3xl max-h-[85vh] overflow-y-auto rounded-lg bg-slate-800 shadow-xl border border-slate-700 text-slate-200">
+                <div class="flex items-center justify-between border-b border-slate-700 px-5 py-4">
+                    <div>
+                        <div class="text-sm font-bold text-white">环境参数配置</div>
+                        <div class="mt-1 text-[11px] text-slate-400">测试环境、全局参数与场景变量，保存后按环境生效。</div>
+                    </div>
+                    <button id="configCloseBtn" type="button" class="rounded px-2 py-1 text-slate-400 hover:bg-slate-700 hover:text-white">关闭</button>
+                </div>
+                <div class="space-y-4 p-5">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <label class="flex flex-col gap-1.5">
+                            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">测试环境</span>
+                            <select id="environmentInput" class="px-3 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"></select>
+                        </label>
+                        <label class="flex flex-col gap-1.5">
+                            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">接口基础地址</span>
+                            <input id="baseUrlInput" type="text" placeholder="留空默认使用当前页面服务地址" class="px-3 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">
+                        </label>
+                    </div>
+                    <div class="border-t border-slate-700 pt-4">
+                        <div class="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">全局参数 <span class="normal-case font-normal text-slate-500">（追加到每个请求，支持 header / cookie / query）</span></div>
+                        <div id="globalsInput" class="space-y-2"></div>
+                        <button type="button" id="addGlobalBtn" class="mt-2 px-3 py-1.5 rounded-md bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold hover:bg-slate-600 transition-colors">+ 添加全局参数</button>
+                    </div>
+                    <div class="border-t border-slate-700 pt-4">
+                        <div class="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">场景变量</div>
+                        <div id="scenarioVarsInput" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+                    </div>
+                    <div class="flex flex-wrap items-center justify-between border-t border-slate-700 pt-4">
+                        <div class="text-[11px] text-slate-400 flex items-center gap-2"><span>当前生效接口地址:</span> <span id="baseUrlLabel" class="font-mono text-emerald-400"></span><span id="authLabel" class="font-mono text-amber-400 border-l border-slate-600 pl-2" style="display:none">全局参数: <span id="authValue"></span></span></div>
+                        <div class="flex flex-wrap items-center justify-end gap-2 mt-2 sm:mt-0">
+                            <span id="settingsNotice" role="status" aria-live="polite" class="hidden text-xs font-medium text-emerald-400"></span>
+                            <button id="saveSettingsBtn" class="px-4 py-1.5 rounded-md bg-emerald-500 text-white text-xs font-bold hover:bg-emerald-600 transition-colors shadow-sm">保存并生效</button>
+                            <button id="clearSettingsBtn" class="px-4 py-1.5 rounded-md bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold hover:bg-slate-600 transition-colors">清除当前环境覆盖</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
         <div id="adhocModal" class="hidden fixed inset-0 z-30 bg-slate-950/40 p-4 overflow-y-auto">
             <div class="mx-auto my-8 max-w-3xl rounded-lg bg-white shadow-xl">
                 <div class="flex items-center justify-between border-b border-slate-200 px-5 py-4">
@@ -160,7 +184,7 @@ const legacyView = (function () {
                     </div>
                     <div class="block">
                         <div class="flex items-center justify-between">
-                            <span class="text-xs font-bold text-slate-600">Query 参数 (Params)</span>
+                            <span class="text-xs font-bold text-slate-600">查询参数</span>
                             <button id="adhocAddParamBtn" type="button" class="text-xs font-bold text-emerald-600 hover:text-emerald-700">+ 添加参数</button>
                         </div>
                         <div id="adhocParamsContainer" class="mt-2 space-y-2 max-h-48 overflow-y-auto rounded border border-slate-200 bg-slate-50/50 p-2"></div>
@@ -298,7 +322,7 @@ const legacyView = (function () {
                 <button data-f="fail" onclick="window.__R.filter('fail')" class="filter-btn px-3 py-1 text-xs font-medium text-slate-600 hover:bg-white rounded">失败 (${failed})</button>
             </div>
             <div class="flex items-center space-x-2">
-                <input type="search" placeholder="搜索步骤/URL..." oninput="window.__R.search(this.value)" class="px-2.5 py-1 rounded border border-slate-200 text-xs bg-white focus:outline-none focus:border-emerald-500 w-44">
+                <input type="search" placeholder="搜索步骤/地址..." oninput="window.__R.search(this.value)" class="px-2.5 py-1 rounded border border-slate-200 text-xs bg-white focus:outline-none focus:border-emerald-500 w-44">
             </div>
         `;
     }
@@ -340,7 +364,7 @@ const legacyView = (function () {
                         (reqBody
                             ? '<div>' +
                                 '<div class="flex items-center justify-between text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1.5">' +
-                                    '<span class="flex items-center"><div class="w-1.5 h-1.5 bg-slate-400 mr-2 rounded-full"></div>REQUEST BODY</span>' +
+                                    '<span class="flex items-center"><div class="w-1.5 h-1.5 bg-slate-400 mr-2 rounded-full"></div>请求体</span>' +
                                     '<span class="text-slate-400 font-mono font-normal">JSON</span>' +
                                 '</div>' +
                                 '<pre class="bg-[#1e293b] p-3.5 rounded-xl text-slate-200 overflow-x-auto font-mono text-[12px] leading-relaxed shadow-sm border border-slate-700/50">' + reqBody + '</pre>' +
@@ -382,14 +406,14 @@ const legacyView = (function () {
             if (!ok && s.error) {
                 errorHtml = '<div class="my-2 p-2 bg-rose-50 rounded border border-rose-200 flex items-center space-x-2">' +
                     '<svg class="w-4 h-4 text-rose-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>' +
-                    '<span class="text-rose-800 font-bold text-[12px]">Assertion Failed:</span>' +
+                    '<span class="text-rose-800 font-bold text-[12px]">断言失败:</span>' +
                     '<span class="text-rose-600 text-[12px] font-mono break-all">' + esc(s.error) + '</span></div>';
             }
 
             var assertHtml = '';
             if (s.assertions && s.assertions.length) {
                 assertHtml = '<div class="py-3 border-t border-slate-200 mt-2">' +
-                    '<div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-2">Assertions</div>' +
+                    '<div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-2">断言结果</div>' +
                     '<div class="flex flex-wrap gap-2">' + s.assertions.map(function (a) {
                         var ac = a.passed ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-rose-50 text-rose-700 border-rose-100';
                         var ap = a.passed ? 'M5 13l4 4L19 7' : 'M6 18L18 6M6 6l12 12';
@@ -428,18 +452,18 @@ const legacyView = (function () {
                 '</div>' +
                 '<div class="' + detailPanelCls + '">' +
                     '<div class="sm:hidden mb-3 pb-3 border-b border-slate-200">' +
-                         '<div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1">API Endpoint</div>' +
+                         '<div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1">接口地址</div>' +
                          '<div class="flex items-center space-x-2"><span class="text-xs font-bold ' + methodColor + '">' + s.method + '</span><span class="text-xs font-mono break-all">' + esc(s.path) + '</span></div>' +
                     '</div>' +
                     errorHtml +
                     '<div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-0 md:divide-x divide-slate-200 py-3">' +
                         '<div class="md:pr-6 space-y-3">' +
-                            (reqHeaders ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 bg-slate-300 mr-2 rounded-full"></div>Request Headers</div><pre class="bg-slate-800 p-2.5 rounded text-slate-300 overflow-x-auto font-mono leading-tight shadow-inner">' + reqHeaders + '</pre></div>' : '') +
-                            (reqBody ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 bg-emerald-400 mr-2 rounded-full"></div>Request Body</div><pre class="bg-slate-800 p-2.5 rounded ' + bodyColor + ' overflow-x-auto font-mono leading-tight shadow-inner">' + reqBody + '</pre></div>' : '') +
+                            (reqHeaders ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 bg-slate-300 mr-2 rounded-full"></div>请求头</div><pre class="bg-slate-800 p-2.5 rounded text-slate-300 overflow-x-auto font-mono leading-tight shadow-inner">' + reqHeaders + '</pre></div>' : '') +
+                            (reqBody ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 bg-emerald-400 mr-2 rounded-full"></div>请求体</div><pre class="bg-slate-800 p-2.5 rounded ' + bodyColor + ' overflow-x-auto font-mono leading-tight shadow-inner">' + reqBody + '</pre></div>' : '') +
                         '</div>' +
                         '<div class="md:pl-6 space-y-3">' +
-                            (resHeaders ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 bg-slate-300 mr-2 rounded-full"></div>Response Headers</div><pre class="bg-slate-800 p-2.5 rounded text-slate-300 overflow-x-auto font-mono leading-tight shadow-inner">' + resHeaders + '</pre></div>' : '') +
-                            (resBody ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 ' + (ok ? 'bg-emerald-400' : 'bg-rose-400') + ' mr-2 rounded-full"></div>Response Body</div><pre class="bg-slate-800 p-2.5 rounded ' + bodyColor + ' overflow-x-auto font-mono leading-tight shadow-inner">' + resBody + '</pre></div>' : '') +
+                            (resHeaders ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 bg-slate-300 mr-2 rounded-full"></div>响应头</div><pre class="bg-slate-800 p-2.5 rounded text-slate-300 overflow-x-auto font-mono leading-tight shadow-inner">' + resHeaders + '</pre></div>' : '') +
+                            (resBody ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 ' + (ok ? 'bg-emerald-400' : 'bg-rose-400') + ' mr-2 rounded-full"></div>响应体</div><pre class="bg-slate-800 p-2.5 rounded ' + bodyColor + ' overflow-x-auto font-mono leading-tight shadow-inner">' + resBody + '</pre></div>' : '') +
                         '</div>' +
                     '</div>' +
                     assertHtml +

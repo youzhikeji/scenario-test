@@ -24,6 +24,7 @@ function toRuntimeConfig(config) {
         storageKeys: {
             baseUrl: `${prefix}.baseUrl`,
             authorization: `${prefix}.authorization`,
+            globals: `${prefix}.globals`,
             environment: `${prefix}.environment`,
             theme: `${prefix}.theme`,
             scenarioVars: `${prefix}.scenarioVars`,
