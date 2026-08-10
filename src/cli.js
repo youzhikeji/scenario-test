@@ -231,18 +231,12 @@ function sha256File(filePath) {
     return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
 }
 
-// 项目版本锁（框架管理文件）：不存在则创建；已存在但版本与当前 CLI 不一致时更新
-// （init 负责维护版本锁，为未来 upgrade 命令建立所有权基础）。source 不写本机路径。
+// 项目版本锁（框架管理文件）：不存在则创建；已存在但版本或文件哈希与当前不一致时更新
+// （init 负责维护版本锁，为未来 upgrade 命令建立所有权基础；手工替换过框架文件时，
+//   即使版本号一致也会重算 SHA256 刷新锁，保证 doctor 版本握手能恢复健康）。
+// source 不写本机路径。
 function writeVersionLock(projectRoot, directory) {
     const target = path.resolve(projectRoot, directory, ".scenario-test-version.json");
-    if (fs.existsSync(target)) {
-        try {
-            const existing = JSON.parse(fs.readFileSync(target, "utf8"));
-            if (existing.runtimeVersion === VERSION && existing.contractVersion === CONTRACT_VERSION) return false;
-        } catch {
-            // 版本锁损坏：重新生成
-        }
-    }
     const files = {
         cli: "scenario-test-cli.cjs",
         umd: "scenario-test.umd.js",
@@ -253,6 +247,21 @@ function writeVersionLock(projectRoot, directory) {
     for (const fileName of Object.values(files)) {
         const filePath = path.resolve(projectRoot, directory, fileName);
         if (fs.existsSync(filePath)) sha256[fileName] = sha256File(filePath);
+    }
+    if (fs.existsSync(target)) {
+        try {
+            const existing = JSON.parse(fs.readFileSync(target, "utf8"));
+            if (existing.runtimeVersion === VERSION && existing.contractVersion === CONTRACT_VERSION) {
+                // 版本号一致时也校验框架管理文件哈希：所有文件哈希都一致才跳过写入；
+                // 任一文件被替换/缺失（哈希变化）时重新写入锁
+                const unchanged = Object.values(files).every(
+                    (fileName) => existing.sha256?.[fileName] !== undefined && existing.sha256[fileName] === sha256[fileName]
+                );
+                if (unchanged) return false;
+            }
+        } catch {
+            // 版本锁损坏：重新生成
+        }
     }
     const lock = {
         runtimeVersion: VERSION,
@@ -512,8 +521,17 @@ function capabilitiesCommand(args) {
 }
 
 function doctorCommand(args) {
-    const configPath = resolveConfigPath(args.config);
-    const configDir = path.dirname(configPath);
+    // 配置缺失不提前抛错：把（可能不存在的）配置路径交给 doctor 汇总报告，
+    // config 检查 FAIL 但版本/文件握手等其他检查继续执行，--json 仍输出结构化 JSON
+    let configPath;
+    let configDir;
+    try {
+        configPath = resolveConfigPath(args.config);
+        configDir = path.dirname(configPath);
+    } catch (error) {
+        configPath = path.resolve(args.config || "scenario.config.js");
+        configDir = path.dirname(configPath);
+    }
     const report = buildDoctorReport({ configPath, api: ScenarioTest, configDir });
     if (args.json) {
         // JSON 模式 stdout 纯净：只输出合法 JSON

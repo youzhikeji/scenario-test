@@ -3,7 +3,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
 import test from "node:test";
+import * as esmExports from "../src/index.js";
 import { contract } from "../src/index.js";
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -45,6 +47,7 @@ test("d.ts 覆盖公共 API 与 UMD 全局声明", () => {
         "export interface Assertion",
         "export interface ExtractDefinition",
         "export interface WhenDefinition",
+        "export interface ScenarioApp",
         "export function createApp",
         "export function createEngine",
         "export function defineConfig",
@@ -57,6 +60,32 @@ test("d.ts 覆盖公共 API 与 UMD 全局声明", () => {
     }
     // WhenDefinition.from 只能 vars（与 contract 一致）
     assert.match(dts, /from: WhenSource/);
+});
+
+test("d.ts 声明的公共导出符号（value）必须存在于 ESM 与 CJS 实际导出中（无幻影符号）", () => {
+    const dts = fs.readFileSync(dtsPath, "utf8");
+    // 提取 d.ts 声明的运行时 value 符号：export function / export const / export declare const
+    const declared = new Set();
+    for (const match of dts.matchAll(/^export (?:declare )?(?:function|const|var|let)\s+(\w+)/gm)) {
+        declared.add(match[1]);
+    }
+    assert.ok(declared.size > 0, "d.ts 未声明任何 value 导出");
+    assert.ok(declared.has("VERSION"), "d.ts 应声明 VERSION");
+    assert.ok(declared.has("CONTRACT_VERSION"), "d.ts 应声明 CONTRACT_VERSION");
+    assert.ok(declared.has("createApp"), "d.ts 应声明 createApp");
+
+    const esmNames = new Set(Object.keys(esmExports));
+    const missingInEsm = [...declared].filter((name) => !esmNames.has(name));
+    assert.deepEqual(missingInEsm, [], `d.ts 声明了 ESM 中不存在的导出: ${missingInEsm.join(", ")}`);
+
+    // CJS 产物（构建后存在时验证；未构建时跳过，由 npm run build 后的复跑覆盖）
+    const cjsPath = path.join(root, "dist", "scenario-test.cjs");
+    if (fs.existsSync(cjsPath)) {
+        const require = createRequire(import.meta.url);
+        const cjsExports = require(cjsPath);
+        const missingInCjs = [...declared].filter((name) => !(name in cjsExports));
+        assert.deepEqual(missingInCjs, [], `d.ts 声明了 CJS 中不存在的导出: ${missingInCjs.join(", ")}`);
+    }
 });
 
 function runTsc(args) {

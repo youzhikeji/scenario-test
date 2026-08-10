@@ -139,6 +139,64 @@ test("doctor：版本锁版本不一致为 error（退出码 1）", () => {
     }
 });
 
+test("doctor --json：配置文件缺失时输出结构化 JSON 且退出码 1，其余检查继续执行", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-doctor-missing-"));
+    try {
+        const missingConfig = path.join(dir, "missing.config.js");
+        const result = spawnSync(process.execPath, [cli, "doctor", "--config", missingConfig, "--json"], { encoding: "utf8" });
+        assert.equal(result.status, 1);
+        assert.equal(result.stderr, "", "配置缺失时 stderr 不应输出异常堆栈");
+        const parsed = JSON.parse(result.stdout);
+        assert.equal(parsed.status, "FAILED");
+        assert.equal(parsed.tool, "scenario-test doctor");
+        const configCheck = parsed.checks.find((check) => check.name === "config");
+        assert.ok(configCheck, "配置缺失时应输出 name: config 的检查项");
+        assert.equal(configCheck.status, "FAIL");
+        assert.match(configCheck.message, /配置文件不存在/);
+        assert.equal(parsed.exitCode, 1);
+        // 其他检查（版本/文件握手）仍继续执行
+        assert.ok(parsed.checks.some((check) => check.name === "cli" && check.status === "PASS"));
+        assert.ok(parsed.checks.some((check) => check.name === "node-version"));
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test("doctor：配置文件缺失时文本模式输出可读提示，退出码 1，其余检查继续", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-doctor-missing-text-"));
+    try {
+        const result = spawnSync(process.execPath, [cli, "doctor", "--config", path.join(dir, "missing.config.js")], { encoding: "utf8" });
+        assert.equal(result.status, 1);
+        assert.equal(result.stderr, "", "配置缺失时 stderr 不应输出异常堆栈");
+        assert.match(result.stdout, /\[FAIL\] config:/);
+        assert.match(result.stdout, /配置文件不存在/);
+        assert.match(result.stdout, /\[PASS\] cli/);
+        assert.match(result.stdout, /结果: FAILED（退出码 1）/);
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test("doctor：绝对场景路径不 FAIL 仅 WARN，与 run 语义一致", () => {
+    const { project, dir } = initProject();
+    try {
+        const scenarioPath = path.join(dir, "scenarios", "health.js");
+        fs.writeFileSync(path.join(dir, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+            envs: [{ key: "local", name: "本地", baseUrl: "http://127.0.0.1:1" }],
+            defaultEnvKey: "local",
+            scenarios: [{ id: "health", name: "Health", url: ${JSON.stringify(scenarioPath)} }]
+        }));`, "utf8");
+        const result = runDoctor(dir);
+        assert.equal(result.status, 0, result.stdout + result.stderr);
+        assert.match(result.stdout, /\[WARN\] absolute-scenario-path/);
+        assert.match(result.stdout, /建议使用配置目录内相对路径/);
+        assert.match(result.stdout, /\[PASS\] scenario-register/);
+        assert.doesNotMatch(result.stdout, /\[FAIL\]/);
+    } finally {
+        cleanup(project);
+    }
+});
+
 test("doctor --json：stdout 纯净可解析，含 checks/exitCode 与 manual info", () => {
     const { project, dir } = initProject();
     try {

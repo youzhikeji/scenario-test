@@ -291,6 +291,6 @@ examples/
 ---
 
 **更新时间**: 2026-08-10  
-**版本**: v0.5.0
+**版本**: v0.5.1
 
 > 内部说明：上文的 `git clone http://192.168.1.239/...` 是团队内网 GitLab 地址，仅适用于内部开发；对外正式安装渠道是 GitHub Release（https://github.com/youzhikeji/scenario-test/releases），见 [README](../README.md) 的“AI 安装 Prompt”。

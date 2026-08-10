@@ -241,6 +241,19 @@ export interface Engine {
     createRuntime(scenario: ScenarioDefinition, options?: unknown): Runtime;
 }
 
+/** 浏览器工作台实例（createApp 返回值）：覆盖三方常用入口 */
+export interface ScenarioApp {
+    loadScenario(idOrUrl: string): Promise<unknown>;
+    runAll(): Promise<unknown>;
+    runNext(): Promise<unknown>;
+    reset(): void;
+    cancel(): void;
+    rewindToStep(stepNo: number): void;
+    rerunStep(stepNo: number): void;
+    destroy(): void;
+    getState(): unknown;
+}
+
 export function defineConfig(input: ScenarioConfig): ScenarioConfig;
 export function registerConfig(config: ScenarioConfig): ScenarioConfig;
 export function getConfig(): ScenarioConfig | null;
@@ -253,7 +266,7 @@ export function getAdapter(name: string): unknown;
 export function listAdapters(): Map<string, unknown>;
 export function createEngine(options?: EngineOptions): Engine;
 export function runScenario(scenario: ScenarioDefinition, options?: RunOptions): Promise<ScenarioReport>;
-export function createApp(options: { mount: string | Element; config?: ScenarioConfig }): void;
+export function createApp(options: { mount: string | Element; config?: ScenarioConfig }): ScenarioApp;
 
 export function validateAssertion(definition: Assertion, context?: unknown): Assertion;
 export function evaluateAssertion(definition: Assertion, response: unknown, runtime: unknown, context?: unknown): AssertionResult;

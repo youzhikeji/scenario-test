@@ -1,4 +1,4 @@
-/*! scenario-test v0.5.0 */
+/*! scenario-test v0.5.1 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -238,7 +238,7 @@ var require_md5 = __commonJS({
 var import_blueimp_md5 = __toESM(require_md5(), 1);
 
 // src/version.generated.js
-var VERSION = "0.5.0";
+var VERSION = "0.5.1";
 
 // src/contract.js
 var CONTRACT_VERSION = 1;
@@ -616,7 +616,9 @@ function applyExtract(step, response, runtime) {
     if (!definition || !definition.name) continue;
     assertNotReservedVar(definition.name, "extract \u53D8\u91CF");
     let source = response.body;
-    if (definition.from === "headers") source = response.headers;
+    if (definition.target === "status") source = response.status;
+    else if (definition.header) source = headerValue(response.headers, definition.header);
+    else if (definition.from === "headers") source = response.headers;
     else if (definition.from === "bodyText") source = response.bodyText;
     else if (definition.from === "response") source = response;
     const value = definition.path ? getByPath(source, definition.path) : source;
@@ -1594,24 +1596,30 @@ var legacyCore = function(globalRoot) {
     }
     if (def.includes !== void 0) {
       expected = resolve2(def.includes, runtime);
-      passed = passed && String(actual == null ? "" : actual).indexOf(String(expected)) >= 0;
+      passed = passed && (Array.isArray(actual) ? actual.some(function(item) {
+        return deepEqual(item, expected);
+      }) : String(actual == null ? "" : actual).indexOf(String(expected)) >= 0);
     }
     if (def.matches !== void 0) {
       expected = resolve2(def.matches, runtime);
       if (!(def.implicit === true && typeof actual !== "number")) {
-        passed = passed && new RegExp(expected).test(String(actual == null ? "" : actual));
+        try {
+          passed = passed && new RegExp(String(expected)).test(String(actual == null ? "" : actual));
+        } catch (e) {
+          passed = false;
+        }
       }
     }
-    if (Array.isArray(def.oneOf)) {
+    if (def.oneOf !== void 0) {
       expected = resolve2(clone2(def.oneOf), runtime);
-      passed = passed && expected.some(function(item) {
+      passed = passed && Array.isArray(expected) && expected.some(function(item) {
         return deepEqual(actual, item);
       });
     }
     ["gt", "gte", "lt", "lte"].forEach(function(op) {
       if (!Object.prototype.hasOwnProperty.call(def, op)) return;
       expected = resolve2(def[op], runtime);
-      var comparable = typeof actual === "number" && isFinite(actual) && typeof expected === "number" && isFinite(expected);
+      var comparable = typeof actual === "number" && Number.isFinite(actual) && typeof expected === "number" && Number.isFinite(expected);
       if (!comparable) {
         passed = false;
         return;
@@ -1667,10 +1675,17 @@ var legacyCore = function(globalRoot) {
         source = response.status;
       } else if (item.header) {
         source = headerValue2(response.headers, item.header);
+      } else if (item.from === "headers") {
+        source = response.headers;
+      } else if (item.from === "bodyText") {
+        source = response.bodyText;
+      } else if (item.from === "response") {
+        source = response;
       } else {
-        source = item.path ? getByPath2(response.body, item.path) : response.body;
+        source = response.body;
       }
-      if (source === void 0) {
+      var value = item.path ? getByPath2(source, item.path) : source;
+      if (value === void 0) {
         if (item.required === true) {
           failures.push({
             name: "\u63D0\u53D6 " + item.name + "\uFF08\u8DEF\u5F84\u4E0D\u5B58\u5728\uFF09",
@@ -1682,7 +1697,7 @@ var legacyCore = function(globalRoot) {
           warnings.push("\u63D0\u53D6\u53D8\u91CF " + item.name + "\uFF1A\u8DEF\u5F84 " + (item.path || "(\u6574\u4E2A\u54CD\u5E94)") + " \u4E0D\u5B58\u5728\uFF0C\u53D8\u91CF\u503C\u4E3A undefined\uFF08required \u672A\u5F00\u542F\uFF0C\u4E0D\u5F71\u54CD\u6267\u884C\uFF09");
         }
       }
-      runtime.vars[item.name] = source;
+      runtime.vars[item.name] = value;
     });
     return { warnings, failures };
   }
@@ -4331,6 +4346,7 @@ export {
   CONTRACT_VERSION,
   GLOBAL_TYPES,
   RESERVED_VARS,
+  VERSION,
   applyExtract,
   assertNoReservedVars,
   assertNotReservedVar,

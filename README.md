@@ -7,12 +7,12 @@
 将下列 Prompt 粘贴给当前项目的 AI 助手，即可安装到默认的 `scenario-test` 目录。将 `scenario-test` 替换为团队约定的项目内相对目录，例如 `dev/场景测试`；不要使用绝对路径。
 
 ```text
-请在当前项目根目录安装 scenario-test v0.5.0，目标目录为 scenario-test。
+请在当前项目根目录安装 scenario-test v0.5.1，目标目录为 scenario-test。
 
 1. 确认 Node.js 版本不低于 18；不满足时停止并说明原因。
 2. 不克隆公共库源码，不执行 npm install，不修改业务代码、构建配置或已有场景文件。
 3. 仅从以下固定版本地址下载 CLI 到系统临时目录：
-   https://github.com/youzhikeji/scenario-test/releases/download/v0.5.0/scenario-test-cli.cjs
+   https://github.com/youzhikeji/scenario-test/releases/download/v0.5.1/scenario-test-cli.cjs
 4. 使用 node <临时 CLI 路径> init --project . --dir "scenario-test" 执行初始化；不要传 --force。
 5. 检查并报告 scenario-test/index.html、scenario-test/scenario.config.js、scenario-test/AI_SCENARIO_PROMPT.md、scenario-test/SCENARIO_PATTERNS.md、scenario-test/scenario-test.umd.js、scenario-test/scenario-test-cli.cjs、scenario-test/scenario-test.d.ts、scenario-test/scenario-test-capabilities.json 和 scenario-test/.scenario-test-version.json 是已创建还是已保留。初始场景清单应为空，由 AI 根据当前项目真实接口生成。
 6. 运行 doctor 确认安装完整：node scenario-test/scenario-test-cli.cjs doctor --config scenario-test/scenario.config.js；有 FAIL 时停止并报告。
@@ -196,6 +196,17 @@ CLI 从变量定义的 `env` 字段读取环境变量。私有项目可将联调
 - 使用环境变量传递敏感信息
 
 ## 升级指南
+
+### 升级到 v0.5.1
+
+v0.5.1 为修复版本，无破坏性变更。请参考 [CHANGELOG.md](CHANGELOG.md)。
+
+**主要修复**:
+- 浏览器 legacy `includes`/`oneOf`/`extract` 断言语义与 Node 完全一致（新增 parity 一致性测试）。
+- 版本锁在“同版本手工替换框架文件”后可通过重新 `init` 刷新 SHA256，doctor 版本握手恢复健康。
+- `VERSION` 正式从 d.ts / 运行期导出；`createApp` 返回类型修正为 `ScenarioApp`。
+- `doctor` 对场景清单中的绝对路径改为 WARN（与 `run` 一致可执行）；配置文件缺失时 `--json` 仍输出结构化 JSON。
+- 既有项目升级：用新版 CLI 执行 `init`（不传 `--force`）刷新版本锁，再运行 `doctor` 验证。
 
 ### 升级到 v0.5.0
 

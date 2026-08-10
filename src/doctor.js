@@ -219,17 +219,28 @@ export function buildDoctorReport(options) {
         });
 
     // 2. config 可加载（复用 loader/defineConfig）
+    //    配置文件不存在时输出 name: "config" 的 FAIL（--json 结构化输出兼容），
+    //    存在但加载失败时输出 name: "config-load"
     let config = null;
-    try {
-        config = loadConfigFile(configPath, api);
-        checks.push({ name: "config-load", status: "PASS", message: `配置可加载: ${configPath}`, fix: "" });
-    } catch (error) {
+    if (!fs.existsSync(configPath)) {
         checks.push({
-            name: "config-load",
+            name: "config",
             status: "FAIL",
-            message: `配置文件加载失败: ${configPath}（原因: ${error.message}）`,
-            fix: "检查配置语法与 defineConfig 调用；修复后重新运行 doctor"
+            message: `配置文件不存在: ${configPath}`,
+            fix: "创建 scenario.config.js（可用 init 生成模板），或通过 --config 指定正确的配置文件"
         });
+    } else {
+        try {
+            config = loadConfigFile(configPath, api);
+            checks.push({ name: "config-load", status: "PASS", message: `配置可加载: ${configPath}`, fix: "" });
+        } catch (error) {
+            checks.push({
+                name: "config-load",
+                status: "FAIL",
+                message: `配置文件加载失败: ${configPath}（原因: ${error.message}）`,
+                fix: "检查配置语法与 defineConfig 调用；修复后重新运行 doctor"
+            });
+        }
     }
 
     // 3/4/5. 场景清单与文件（config 加载成功才可安全继续）
@@ -259,7 +270,9 @@ export function buildDoctorReport(options) {
                 }
                 let scenarioPath;
                 try {
-                    scenarioPath = validatePath(configDir, entry.url);
+                    // 与 run 命令保持一致：绝对路径直接接受（不禁止），仅提示建议使用相对路径；
+                    // 相对路径仍做配置目录内越界校验（防路径遍历）
+                    scenarioPath = path.isAbsolute(entry.url) ? entry.url : validatePath(configDir, entry.url);
                 } catch (error) {
                     listOk = false;
                     checks.push({
@@ -269,6 +282,14 @@ export function buildDoctorReport(options) {
                         fix: "url 必须是配置目录内的相对路径"
                     });
                     continue;
+                }
+                if (path.isAbsolute(entry.url)) {
+                    checks.push({
+                        name: "absolute-scenario-path",
+                        status: "WARN",
+                        message: `场景 ${entry.id} 使用绝对路径: ${entry.url}（run 可正常执行，但建议使用配置目录内相对路径，便于项目迁移）`,
+                        fix: "将 scenario.config.js 中该场景的 url 改为相对路径"
+                    });
                 }
                 if (!fs.existsSync(scenarioPath)) {
                     listOk = false;
@@ -338,6 +359,7 @@ export function buildDoctorReport(options) {
         tool: "scenario-test doctor",
         runtimeVersion: VERSION,
         contractVersion: CONTRACT_VERSION,
+        status: exitCode === 0 ? "OK" : "FAILED",
         checks,
         info,
         summary,

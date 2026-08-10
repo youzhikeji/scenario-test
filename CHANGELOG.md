@@ -2,6 +2,40 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.1] - 2026-08-10
+
+### 🐛 Bug Fixes
+
+1. **浏览器 legacy includes/oneOf/extract 与 Node 同语义**
+   - `includes`：actual 为数组时改用 JSON 深比较 `some`（修复 `[10,20]` 被字符串化导致 `includes: 2` 假阳性）；非数组保持子串包含。
+   - `matches`：无效正则时断言失败而非抛异常（与 Node 一致）。
+   - `oneOf`：expected 必须为数组（含模板变量解析后），否则断言失败而非抛异常。
+   - `extract`：来源解析与 Node `src/core.js` 完全同语义（`target:'status'`/`header` 简写优先，`from: headers/bodyText/response`，默认 body）；路径取值改为基于解析后的 source。
+   - 新增 `tests/parity.test.js`：浏览器 legacy 与 Node 断言语义一致性测试，禁止静默漂移。
+
+2. **版本锁 SHA256 同版本替换后可刷新**
+   - `init` 的 `writeVersionLock` 在版本号一致时也校验框架管理文件（CLI/UMD/d.ts/capabilities）SHA256：任一文件被手工替换/缺失即重算哈希刷新锁，保证 doctor 版本握手恢复健康。
+
+3. **d.ts VERSION 正式导出**
+   - `src/index.js` 正式导出 `VERSION`（来自 `version.generated.js`），`tests/dts.test.js` 新增导出一致性测试（d.ts 声明与运行期值一致）。
+
+4. **createApp 返回类型**
+   - `scenario-test.d.ts` 新增 `ScenarioApp` 接口，`createApp` 返回类型由 `void` 修正为 `ScenarioApp`（覆盖三方常用入口 loadScenario/runAll/runNext/reset/cancel/rewindToStep/rerunStep/destroy/getState）。
+
+5. **doctor 绝对路径判断与 run 一致**
+   - `doctor` 不再拒绝场景清单中的绝对路径（与 `run` 一致可正常执行），改为 WARN 提示建议使用配置目录内相对路径；相对路径仍保留配置目录内越界校验（防路径遍历）。
+
+6. **doctor 缺配置时输出 JSON 报告**
+   - 配置文件缺失不再提前抛错：输出 `config` FAIL 检查项，版本/文件握手等其他检查继续执行，`--json` 仍输出结构化 JSON（新增顶层 `status` 字段，`OK`/`FAILED`）。
+
+### Migration Guide: v0.5.0 → v0.5.1
+
+1. 无 breaking changes；DSL 与 CLI 行为保持不变。
+2. 既有项目升级：使用新版 CLI 执行 `init`（不传 `--force`，刷新版本锁 SHA256），再运行 `doctor` 验证。
+3. `doctor --json` 报告新增顶层 `status` 字段；配置文件缺失时输出名为 `config` 的 FAIL 检查项（原行为为直接抛错退出）。
+
+---
+
 ## [0.5.0] - 2026-08-10
 
 ### ✨ 三方能力发现闭环

@@ -293,26 +293,38 @@ const legacyCore = (function (globalRoot) {
         }
         if (def.includes !== undefined) {
             expected = resolve(def.includes, runtime);
-            passed = passed && String(actual == null ? '' : actual).indexOf(String(expected)) >= 0;
+            // 与 Node src/core.js 完全同语义：数组用 JSON 深比较 some，非数组用子串包含
+            // （防止 actual=[10,20], includes=2 时数组被字符串化导致假阳性）
+            passed = passed && (Array.isArray(actual)
+                ? actual.some(function (item) { return deepEqual(item, expected); })
+                : String(actual == null ? '' : actual).indexOf(String(expected)) >= 0);
         }
         if (def.matches !== undefined) {
             expected = resolve(def.matches, runtime);
             // 隐式默认断言（无显式 status/assertions 时追加的 HTTP 2xx 检查）仅对数字
             // HTTP 状态码生效；本地适配器（如 prepareXlsx 返回 status: 'LOCAL'）不参与匹配
             if (!(def.implicit === true && typeof actual !== 'number')) {
-                passed = passed && new RegExp(expected).test(String(actual == null ? '' : actual));
+                try {
+                    passed = passed && new RegExp(String(expected)).test(String(actual == null ? '' : actual));
+                } catch (e) {
+                    // 无效正则：断言失败而非抛异常（与 Node 一致）
+                    passed = false;
+                }
             }
         }
-        if (Array.isArray(def.oneOf)) {
+        if (def.oneOf !== undefined) {
             expected = resolve(clone(def.oneOf), runtime);
-            passed = passed && expected.some(function (item) { return deepEqual(actual, item); });
+            // 与 Node 完全同语义：expected 必须是数组（含模板变量解析后），否则断言失败；
+            // 用 JSON 深比较判断实际值是否属于候选之一
+            passed = passed && Array.isArray(expected)
+                && expected.some(function (item) { return deepEqual(actual, item); });
         }
         ['gt', 'gte', 'lt', 'lte'].forEach(function (op) {
             if (!Object.prototype.hasOwnProperty.call(def, op)) return;
             expected = resolve(def[op], runtime);
             // 只接受有限 number，不做字符串隐式转换；类型不符时断言失败而非抛异常
-            var comparable = typeof actual === 'number' && isFinite(actual)
-                && typeof expected === 'number' && isFinite(expected);
+            var comparable = typeof actual === 'number' && Number.isFinite(actual)
+                && typeof expected === 'number' && Number.isFinite(expected);
             if (!comparable) { passed = false; return; }
             if (op === 'gt') passed = passed && actual > expected;
             else if (op === 'gte') passed = passed && actual >= expected;
@@ -375,15 +387,25 @@ const legacyCore = (function (globalRoot) {
         (step.extract || []).forEach(function (item) {
             if (!item || !item.name) return;
             assertNotReservedVar(item.name, 'extract 变量');
+            // 与 Node src/core.js 完全同语义的提取来源解析：
+            //   target:'status' / header 为简写（优先级最高，保留 legacy 行为）
+            //   from: 'headers' | 'bodyText' | 'response'（默认 body）
             var source;
             if (item.target === 'status') {
                 source = response.status;
             } else if (item.header) {
                 source = headerValue(response.headers, item.header);
+            } else if (item.from === 'headers') {
+                source = response.headers;
+            } else if (item.from === 'bodyText') {
+                source = response.bodyText;
+            } else if (item.from === 'response') {
+                source = response;
             } else {
-                source = item.path ? getByPath(response.body, item.path) : response.body;
+                source = response.body;
             }
-            if (source === undefined) {
+            var value = item.path ? getByPath(source, item.path) : source;
+            if (value === undefined) {
                 if (item.required === true) {
                     failures.push({
                         name: '提取 ' + item.name + '（路径不存在）',
@@ -395,7 +417,7 @@ const legacyCore = (function (globalRoot) {
                     warnings.push('提取变量 ' + item.name + '：路径 ' + (item.path || '(整个响应)') + ' 不存在，变量值为 undefined（required 未开启，不影响执行）');
                 }
             }
-            runtime.vars[item.name] = source;
+            runtime.vars[item.name] = value;
         });
         return { warnings: warnings, failures: failures };
     }

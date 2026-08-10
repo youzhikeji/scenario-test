@@ -126,6 +126,44 @@ test("init 重跑：版本锁版本一致时保留，不覆盖项目配置/场�
     }
 });
 
+test("init 重跑：同版本手工替换框架文件后，重新 init 刷新版本锁 SHA256，doctor 恢复健康", () => {
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-init-resha-"));
+    try {
+        const first = spawnSync(process.execPath, [path.join(root, "src/cli.js"), "init", "--project", project], { encoding: "utf8" });
+        assert.equal(first.status, 0, first.stderr);
+        const dir = path.join(project, "scenario-test");
+        const configPath = path.join(dir, "scenario.config.js");
+        const lockPath = path.join(dir, ".scenario-test-version.json");
+        // 手工替换 UMD（保留版本 banner，仅追加内容改变哈希）
+        const umdPath = path.join(dir, "scenario-test.umd.js");
+        fs.writeFileSync(umdPath, `${fs.readFileSync(umdPath, "utf8")}\n// user-patch\n`, "utf8");
+        // 替换后 doctor 报 WARN（SHA256 与版本锁不一致），退出码仍为 0
+        const warn = spawnSync(process.execPath, [path.join(root, "src/cli.js"), "doctor", "--config", configPath], { encoding: "utf8" });
+        assert.equal(warn.status, 0, warn.stdout + warn.stderr);
+        assert.match(warn.stdout, /SHA256 与版本锁记录不一致/);
+        // 重跑 init：版本号一致但哈希变化 → 版本锁必须刷新
+        const lockBefore = JSON.parse(fs.readFileSync(lockPath, "utf8"));
+        const second = spawnSync(process.execPath, [path.join(root, "src/cli.js"), "init", "--project", project], { encoding: "utf8" });
+        assert.equal(second.status, 0, second.stderr);
+        const lockAfter = JSON.parse(fs.readFileSync(lockPath, "utf8"));
+        assert.notEqual(
+            lockAfter.sha256["scenario-test.umd.js"],
+            lockBefore.sha256["scenario-test.umd.js"],
+            "同版本替换后 init 必须重算 SHA256 刷新版本锁"
+        );
+        assert.equal(lockAfter.runtimeVersion, VERSION);
+        // doctor 恢复健康：版本锁 PASS，无 SHA256 WARN
+        const healthy = spawnSync(process.execPath, [path.join(root, "src/cli.js"), "doctor", "--config", configPath], { encoding: "utf8" });
+        assert.equal(healthy.status, 0, healthy.stdout + healthy.stderr);
+        assert.match(healthy.stdout, /\[PASS\] version-lock/);
+        assert.doesNotMatch(healthy.stdout, /SHA256 与版本锁记录不一致/);
+        // 项目配置仍未被覆盖
+        assert.equal(fs.existsSync(configPath), true);
+    } finally {
+        fs.rmSync(project, { recursive: true, force: true });
+    }
+});
+
 test("init 重跑：版本锁版本不一致时更新（框架管理文件），项目文件仍保留", () => {
     const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-init-lockup-"));
     try {
