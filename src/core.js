@@ -138,6 +138,40 @@ export function parseBody(text, contentType) {
     return value;
 }
 
+// ===== 断言 schema（唯一操作符名单，registry 定义期与执行期共用）=====
+export const ASSERTION_OPERATORS = ["exists", "equals", "includes", "matches", "oneOf", "notEquals", "gt", "gte", "lt", "lte"];
+export const ASSERTION_META_KEYS = ["name", "path", "from", "target", "header", "implicit"];
+
+export function formatAssertionContext(context) {
+    if (!context) return "";
+    if (typeof context === "string") return context;
+    const parts = [];
+    if (context.scenarioName) parts.push(`场景 ${context.scenarioName}`);
+    if (context.stepNo !== undefined) parts.push(`第 ${context.stepNo} 步`);
+    if (context.stepName) parts.push(`步骤 ${context.stepName}`);
+    if (context.assertionNo !== undefined) parts.push(`第 ${context.assertionNo} 条`);
+    return parts.join(" ");
+}
+
+export function validateAssertion(definition, context) {
+    const where = formatAssertionContext(context);
+    const prefix = where ? `${where}断言无效` : "断言无效";
+    if (!isPlainObject(definition)) throw new TypeError(`${prefix}: 断言必须是对象`);
+    const keys = Object.keys(definition);
+    const operators = keys.filter((key) => ASSERTION_OPERATORS.includes(key));
+    const unknown = keys.filter((key) => !ASSERTION_OPERATORS.includes(key) && !ASSERTION_META_KEYS.includes(key));
+    if (unknown.length) {
+        throw new TypeError(
+            `${prefix}: 包含未知键 ${unknown.map((key) => `"${key}"`).join(", ")}，` +
+            `允许的元数据键为 ${ASSERTION_META_KEYS.join("/")}，操作符为 ${ASSERTION_OPERATORS.join("/")}`
+        );
+    }
+    if (!operators.length) {
+        throw new TypeError(`${prefix}: 必须至少包含一个操作符（${ASSERTION_OPERATORS.join("/")}）`);
+    }
+    return definition;
+}
+
 function assertionActual(definition, response, runtime) {
     if (definition.target === "status") return response.status;
     if (definition.header) return headerValue(response.headers, definition.header);
@@ -147,7 +181,9 @@ function assertionActual(definition, response, runtime) {
     return definition.path ? getByPath(response.body, definition.path) : response.body;
 }
 
-export function evaluateAssertion(definition, response, runtime) {
+export function evaluateAssertion(definition, response, runtime, context) {
+    // 执行期也校验：防止插件 transform 之后产生非法断言定义
+    validateAssertion(definition, context);
     const actual = assertionActual(definition, response, runtime);
     let expected;
     let passed = true;
@@ -159,6 +195,10 @@ export function evaluateAssertion(definition, response, runtime) {
     if (Object.prototype.hasOwnProperty.call(definition, "equals")) {
         expected = resolve(definition.equals, runtime);
         passed = passed && JSON.stringify(actual) === JSON.stringify(expected);
+    }
+    if (Object.prototype.hasOwnProperty.call(definition, "notEquals")) {
+        expected = resolve(definition.notEquals, runtime);
+        passed = passed && JSON.stringify(actual) !== JSON.stringify(expected);
     }
     if (Object.prototype.hasOwnProperty.call(definition, "includes")) {
         expected = resolve(definition.includes, runtime);
@@ -180,6 +220,18 @@ export function evaluateAssertion(definition, response, runtime) {
         passed = passed && Array.isArray(expected)
             && expected.some((item) => JSON.stringify(item) === JSON.stringify(actual));
     }
+    for (const op of ["gt", "gte", "lt", "lte"]) {
+        if (!Object.prototype.hasOwnProperty.call(definition, op)) continue;
+        expected = resolve(definition[op], runtime);
+        // 只接受有限 number，不做字符串隐式转换；类型不符时断言失败而非抛异常
+        const comparable = typeof actual === "number" && Number.isFinite(actual)
+            && typeof expected === "number" && Number.isFinite(expected);
+        if (!comparable) { passed = false; continue; }
+        if (op === "gt") passed = passed && actual > expected;
+        else if (op === "gte") passed = passed && actual >= expected;
+        else if (op === "lt") passed = passed && actual < expected;
+        else passed = passed && actual <= expected;
+    }
     return {
         name: definition.name || definition.path || "断言",
         passed,
@@ -188,26 +240,57 @@ export function evaluateAssertion(definition, response, runtime) {
     };
 }
 
-export function buildAssertions(step, response, runtime) {
+export function buildAssertions(step, response, runtime, context) {
     const definitions = Array.isArray(step.assertions) ? [...step.assertions] : [];
     if (step.status !== undefined && !definitions.some((item) => item.target === "status")) {
         definitions.unshift({ name: `返回 HTTP ${step.status}`, target: "status", equals: step.status });
     } else if (step.status === undefined && definitions.length === 0) {
         definitions.push({ name: "返回 HTTP 2xx", target: "status", matches: "^2\\d\\d$", implicit: true });
     }
-    return definitions.map((definition) => evaluateAssertion(definition, response, runtime));
+    return definitions.map((definition, index) => evaluateAssertion(definition, response, runtime, { ...(context || {}), assertionNo: index + 1 }));
+}
+
+// ===== 保留变量 =====
+export const RESERVED_VARS = ["runId", "runNo"];
+
+export function assertNotReservedVar(name, label) {
+    if (RESERVED_VARS.includes(name)) {
+        throw new Error(`${label || "变量"} "${name}" 是运行时自动生成的保留变量，禁止声明或覆盖`);
+    }
+}
+
+export function assertNoReservedVars(source, label) {
+    for (const name of Object.keys(source || {})) {
+        assertNotReservedVar(name, label);
+    }
 }
 
 export function applyExtract(step, response, runtime) {
+    const warnings = [];
+    const failures = [];
     for (const definition of step.extract || []) {
         if (!definition || !definition.name) continue;
+        assertNotReservedVar(definition.name, "extract 变量");
         let source = response.body;
         if (definition.from === "headers") source = response.headers;
         else if (definition.from === "bodyText") source = response.bodyText;
         else if (definition.from === "response") source = response;
-        runtime.vars[definition.name] = definition.path ? getByPath(source, definition.path) : source;
+        const value = definition.path ? getByPath(source, definition.path) : source;
+        if (value === undefined) {
+            if (definition.required === true) {
+                failures.push({
+                    name: `提取 ${definition.name}（路径不存在）`,
+                    passed: false,
+                    actual: undefined,
+                    expected: `路径 ${definition.path || "(整个响应)"} 存在`
+                });
+            } else {
+                warnings.push(`提取变量 ${definition.name}：路径 ${definition.path || "(整个响应)"} 不存在，变量值为 undefined（required 未开启，不影响执行）`);
+            }
+        }
+        runtime.vars[definition.name] = value;
     }
-    return runtime.vars;
+    return { warnings, failures };
 }
 
 export function md5(value) {

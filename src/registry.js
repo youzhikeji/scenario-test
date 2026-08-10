@@ -1,4 +1,4 @@
-import { isPlainObject } from "./core.js";
+import { isPlainObject, validateAssertion, assertNoReservedVars, assertNotReservedVar } from "./core.js";
 import { validateAdapter } from "./adapter-types.js";
 
 const scenarioRegistry = new Map();
@@ -42,16 +42,48 @@ export function defineScenario(input) {
     invariant(isPlainObject(input), "场景必须是对象");
     invariant(typeof input.name === "string" && input.name.trim(), "场景缺少 name");
     invariant(Array.isArray(input.steps), `场景 ${input.name} 缺少 steps 数组`);
+    // 保留变量 runId/runNo 由运行时自动生成，定义期拒绝场景 vars 声明
+    assertNoReservedVars(input.vars, `场景 ${input.name} 的 vars`);
     input.steps.forEach((step, index) => {
         invariant(isPlainObject(step), `场景 ${input.name} 第 ${index + 1} 步必须是对象`);
         invariant(nonEmptyString(step.name), `场景 ${input.name} 第 ${index + 1} 步缺少 name`);
         if (step.method !== undefined) invariant(nonEmptyString(step.method), `步骤 ${step.name} 的 method 无效`);
+        // 断言定义期 fail-fast：定位到场景名、步骤序号、断言序号
+        const stepContext = { scenarioName: input.name, stepNo: index + 1, stepName: step.name };
+        if (step.assertions !== undefined) {
+            invariant(Array.isArray(step.assertions), `步骤 ${step.name} 的 assertions 必须是数组`);
+            step.assertions.forEach((definition, assertionIndex) => {
+                validateAssertion(definition, { ...stepContext, assertionNo: assertionIndex + 1 });
+            });
+        }
+        // retryUntil 真实协议：{ maxAttempts, intervalMs, maxElapsedMs }，本身不含断言；
+        // 若调用方额外提供了 assertions，同样做定义期校验（防御性）。
         if (step.retryUntil !== undefined) {
             invariant(isPlainObject(step.retryUntil), `步骤 ${step.name} 的 retryUntil 必须是对象`);
+            if (step.retryUntil.assertions !== undefined) {
+                invariant(Array.isArray(step.retryUntil.assertions), `步骤 ${step.name} 的 retryUntil.assertions 必须是数组`);
+                step.retryUntil.assertions.forEach((definition, assertionIndex) => {
+                    validateAssertion(definition, { ...stepContext, assertionNo: assertionIndex + 1 });
+                });
+            }
             const maxAttempts = Number(step.retryUntil.maxAttempts ?? 10);
             const intervalMs = Number(step.retryUntil.intervalMs ?? 2000);
             invariant(Number.isInteger(maxAttempts) && maxAttempts >= 1, `步骤 ${step.name} 的 maxAttempts 必须是正整数`);
             invariant(Number.isFinite(intervalMs) && intervalMs >= 0, `步骤 ${step.name} 的 intervalMs 不能为负数`);
+        }
+        // when 对象形式只能从 vars 取值，不允许 body/status/header；
+        // 非对象形式（模板字符串/布尔）保持兼容不做校验。
+        if (step.when !== undefined && isPlainObject(step.when)) {
+            if (step.when.from !== "vars") {
+                throw new TypeError(
+                    `步骤 ${step.name} 的 when 对象形式只允许 from: "vars"（当前为 ${JSON.stringify(step.when.from)}），` +
+                    "不允许从响应 body/status/header 取条件"
+                );
+            }
+            if (step.when.target !== undefined || step.when.header !== undefined) {
+                throw new TypeError(`步骤 ${step.name} 的 when 对象形式不允许使用 target/header 条件`);
+            }
+            validateAssertion(step.when, stepContext);
         }
     });
     const failurePolicy = input.failurePolicy || "stop";
@@ -80,6 +112,9 @@ export function defineConfig(input) {
         const id = entry.id || url || `scenario-${index + 1}`;
         invariant(nonEmptyString(id), `第 ${index + 1} 个场景缺少 id`);
         invariant(nonEmptyString(url), `场景 ${id} 缺少 url`);
+        if (entry.manual !== undefined) {
+            invariant(typeof entry.manual === "boolean", `场景 ${id} 的 manual 必须是布尔值`);
+        }
         return { ...entry, id, name: entry.name || id, url };
     });
     assertUnique(scenarios, "id", "场景 id");

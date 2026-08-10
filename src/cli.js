@@ -16,7 +16,7 @@ function argumentValue(argv, index, option) {
 }
 
 function parseArgs(argv) {
-    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", port: 4300, project: "", dir: "", libraryUrl: "", force: false, allowExternalPlugins: false };
+    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", port: 4300, project: "", dir: "", libraryUrl: "", force: false, allowExternalPlugins: false, failOnSkip: false };
     let start = 0;
     if (["run", "serve", "init"].includes(argv[0])) { args.command = argv[0]; start = 1; }
     let deprecatedAuthUsed = false;
@@ -36,6 +36,7 @@ function parseArgs(argv) {
         else if (item === "--library-url") args.libraryUrl = argumentValue(argv, index++, item);
         else if (item === "--force") args.force = true;
         else if (item === "--all") args.all = true;
+        else if (item === "--fail-on-skip") args.failOnSkip = true;
         else if (item === "--allow-external-plugins") args.allowExternalPlugins = true;
         else if (["--help", "-h"].includes(item)) args.help = true;
         else if (item.startsWith("-")) throw new Error(`未知参数: ${item}`);
@@ -97,8 +98,9 @@ Options:
   --config <file>       场景配置文件
   --env <key>           配置中的环境 key
   --base-url <url>      临时覆盖 Base URL
-  --scenario <id>       执行指定场景
-  --all                 执行配置中的全部场景
+  --scenario <id>       执行指定场景（可执行 manual:true 场景）
+  --all                 执行配置中的全部自动场景（默认排除 manual:true）
+  --fail-on-skip        存在任何 SKIP 步骤时最终退出码为 1（默认 false）
   --port <number>       浏览器服务端口，默认 4300
   --allow-external-plugins  允许加载外部插件（有安全风险）
 
@@ -280,9 +282,14 @@ async function runCommand(args) {
     const envGlobals = parseGlobalsEnv();
     const environment = selectEnvironment(config, args.env);
     const entries = args.all
-        ? config.scenarios
+        ? config.scenarios.filter((item) => !item.manual)
         : config.scenarios.filter((item) => [item.id, item.name, item.url].includes(args.scenario || config.scenarios[0]?.id));
-    if (!entries.length) throw new Error(args.scenario ? `未找到场景: ${args.scenario}` : "配置中没有场景");
+    if (!entries.length) {
+        if (args.all && config.scenarios.length > 0 && config.scenarios.every((item) => item.manual)) {
+            throw new Error("配置中的场景全部标记为 manual:true，--all 默认排除手动场景；请使用 --scenario <id> 显式执行");
+        }
+        throw new Error(args.scenario ? `未找到场景: ${args.scenario}` : "配置中没有可自动执行的场景");
+    }
     const plugins = await loadPlugins(config, configDir, { allowExternalPlugins: args.allowExternalPlugins });
     const adapters = { xlsx: createXlsxAdapter({ workspace: configDir }) };
     for (const plugin of plugins) Object.assign(adapters, plugin?.adapters || {});
@@ -299,7 +306,9 @@ async function runCommand(args) {
     };
     if (!baseOptions.baseUrl) throw new Error("缺少 Base URL，请配置环境或传入 --base-url");
     let total = 0;
-    let failed = 0;
+    let passedTotal = 0;
+    let failedTotal = 0;
+    let skippedTotal = 0;
     for (const entry of entries) {
         if (!entry.url) throw new Error(`场景 ${entry.id} 缺少 url`);
         const scenarioPath = path.isAbsolute(entry.url) ? entry.url : path.resolve(configDir, entry.url);
@@ -309,8 +318,11 @@ async function runCommand(args) {
         const report = await ScenarioTest.createEngine(baseOptions).runScenario(scenario, {
             ...baseOptions,
             async onStep(result) {
-                const mark = result.passed ? "PASS" : "FAIL";
+                const mark = result.skipped ? "SKIP" : (result.passed ? "PASS" : "FAIL");
                 console.log(`[${mark}] ${result.name} ${result.method} ${result.path} -> ${result.status} (${ScenarioTest.formatDuration(result.duration)})`);
+                for (const warning of result.warnings || []) {
+                    console.log(`  [WARN] ${warning}`);
+                }
                 for (const assertion of result.assertions.filter((item) => !item.passed)) {
                     console.log(`  - ${assertion.name}: expected=${JSON.stringify(assertion.expected)} actual=${JSON.stringify(assertion.actual)}`);
                 }
@@ -320,11 +332,18 @@ async function runCommand(args) {
             await plugin?.afterScenario?.(report, { config, configDir, entry, environment, scenario });
         }
         total += report.planned;
-        failed += report.failed + (report.planned - report.executed);
-        console.log(`Summary: ${report.executed - report.failed}/${report.executed} executed steps passed (${report.executed}/${report.planned} executed)`);
+        passedTotal += report.passedSteps;
+        // 因 failurePolicy:stop 未执行到位的步骤按失败统计；SKIP 步骤单独计数不并入失败
+        failedTotal += report.failed + (report.planned - report.executed - report.skipped);
+        skippedTotal += report.skipped;
+        console.log(`Summary: passed=${report.passedSteps} failed=${report.failed} skipped=${report.skipped} executed=${report.executed}/${report.planned} planned (状态 ${report.status})`);
     }
-    console.log(`\nOverall: ${total - failed}/${total} passed`);
-    if (failed) process.exitCode = 1;
+    console.log(`\nOverall: ${passedTotal}/${total} passed`);
+    if (failedTotal) process.exitCode = 1;
+    if (args.failOnSkip && skippedTotal > 0) {
+        console.log(`\n--fail-on-skip 已开启，存在 ${skippedTotal} 个 SKIP 步骤，退出码置为 1`);
+        process.exitCode = 1;
+    }
 }
 
 function safeFile(root, relativePath) {
@@ -353,6 +372,11 @@ async function serveCommand(args) {
             const pathname = decodeURIComponent(new URL(request.url, "http://127.0.0.1").pathname);
             let filePath;
             if (pathname === "/__scenario-test__/scenario-test.umd.js") filePath = path.join(libraryDist, "scenario-test.umd.js");
+            else if (pathname === "/dist/scenario-test.umd.js") {
+                // examples 的 index.html 引用 ../../dist/scenario-test.umd.js，浏览器会规范化为 /dist/...
+                // 从公共库 dist 提供该文件，保证示例在 serve 下可运行
+                filePath = path.join(libraryDist, "scenario-test.umd.js");
+            }
             else {
                 const relativePath = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
                 filePath = safeFile(workspace, relativePath);

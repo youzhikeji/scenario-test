@@ -257,12 +257,14 @@ const legacyView = (function () {
             return;
         }
         var total = steps.length;
-        var passed = steps.filter(function (s) { return s.passed; }).length;
-        var failed = total - passed;
-        var passRate = total ? ((passed / total) * 100).toFixed(2) : 0;
-        var failRate = total ? ((failed / total) * 100).toFixed(2) : 0;
+        var skipped = steps.filter(function (s) { return s.skipped; }).length;
+        var executed = total - skipped;
+        var passed = steps.filter(function (s) { return !s.skipped && s.passed; }).length;
+        var failed = steps.filter(function (s) { return !s.skipped && !s.passed; }).length;
+        var passRate = executed ? ((passed / executed) * 100).toFixed(2) : 0;
+        var failRate = executed ? ((failed / executed) * 100).toFixed(2) : 0;
         var totalMs = steps.reduce(function (a, s) { return a + (s.duration || 0); }, 0);
-        var avgMs = total ? totalMs / total : 0;
+        var avgMs = executed ? totalMs / executed : 0;
         var assertTotal = steps.reduce(function (a, s) { return a + (s.assertions ? s.assertions.length : 0); }, 0);
         var assertFailed = steps.reduce(function (a, s) {
             return a + (s.assertions ? s.assertions.filter(function (x) { return !x.passed; }).length : 0);
@@ -285,6 +287,12 @@ const legacyView = (function () {
                     '<span class="w-2 h-2 rounded-full bg-rose-500 shadow-sm"></span>' +
                     '<span class="text-xs font-bold text-rose-600">' + failed + ' <span class="text-rose-500/70 font-medium text-[10px] ml-0.5">(' + failRate + '%)</span></span>' +
                 '</div>' +
+                (skipped
+                    ? '<div class="flex items-center space-x-2 px-2 py-1 rounded bg-slate-100 border border-slate-200/60">' +
+                        '<span class="w-2 h-2 rounded-full bg-slate-400 shadow-sm"></span>' +
+                        '<span class="text-xs font-bold text-slate-600">' + skipped + ' <span class="text-slate-400/80 font-medium text-[10px] ml-0.5">跳过</span></span>' +
+                    '</div>'
+                    : '') +
             '</div>' +
         '</div>';
         var metrics = '<div class="flex space-x-8 mt-4 md:mt-0 pl-6 border-l border-slate-100">' +
@@ -313,13 +321,15 @@ const legacyView = (function () {
             return;
         }
         var total = steps.length;
-        var passed = steps.filter(function (s) { return s.passed; }).length;
-        var failed = total - passed;
+        var skipped = steps.filter(function (s) { return s.skipped; }).length;
+        var passed = steps.filter(function (s) { return !s.skipped && s.passed; }).length;
+        var failed = steps.filter(function (s) { return !s.skipped && !s.passed; }).length;
         filterBar.innerHTML = `
             <div class="flex items-center space-x-1 bg-slate-200/60 p-1 rounded-md">
                 <button data-f="all" onclick="window.__R.filter('all')" class="filter-btn px-3 py-1 text-xs font-bold text-blue-700 bg-white border border-blue-200 rounded shadow-sm">全部 (${total})</button>
                 <button data-f="pass" onclick="window.__R.filter('pass')" class="filter-btn px-3 py-1 text-xs font-medium text-slate-600 hover:bg-white rounded">成功 (${passed})</button>
                 <button data-f="fail" onclick="window.__R.filter('fail')" class="filter-btn px-3 py-1 text-xs font-medium text-slate-600 hover:bg-white rounded">失败 (${failed})</button>
+                ${skipped ? `<button data-f="skip" onclick="window.__R.filter('skip')" class="filter-btn px-3 py-1 text-xs font-medium text-slate-600 hover:bg-white rounded">跳过 (${skipped})</button>` : ''}
             </div>
             <div class="flex items-center space-x-2">
                 <input type="search" placeholder="搜索步骤/地址..." oninput="window.__R.search(this.value)" class="px-2.5 py-1 rounded border border-slate-200 text-xs bg-white focus:outline-none focus:border-emerald-500 w-44">
@@ -431,7 +441,7 @@ const legacyView = (function () {
                 ? '<span class="step-run-actions"><button type="button" data-step-action="rewind" data-step-index="' + i + '" title="仅回退测试运行时与报告，不撤销已发出的业务请求">回退</button><button type="button" data-step-action="rerun" data-step-index="' + i + '" title="从本步骤执行前的变量快照重新执行">重跑</button></span>'
                 : '';
 
-            return '<li class="' + bgCls + ' group transition-colors" data-passed="' + ok + '" data-search="' + esc((s.name + ' ' + s.method + ' ' + s.path).toLowerCase()) + '">' +
+            return '<li class="' + bgCls + ' group transition-colors" data-passed="' + ok + '" data-skipped="' + skipped + '" data-search="' + esc((s.name + ' ' + s.method + ' ' + s.path).toLowerCase()) + '">' +
                 '<div class="px-4 py-2.5 flex items-center justify-between cursor-pointer" onclick="window.__R.toggle(this, event)">' +
                     '<div class="flex items-center space-x-3 w-[70%] lg:w-[80%]">' +
                         '<div class="flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 text-[11px] font-bold shadow-sm ' + seqCls + '">' + seqNum + '</div>' +
@@ -475,20 +485,26 @@ const legacyView = (function () {
     function buildOverallReport(steps, scenario, scenarioFile, executionMode, environment) {
         steps = steps || [];
         var total = steps.length;
-        var passed = steps.filter(function (item) { return item.passed; }).length;
-        var failed = total - passed;
+        var skipped = steps.filter(function (item) { return item.skipped; }).length;
+        var executed = total - skipped;
+        var passed = steps.filter(function (item) { return !item.skipped && item.passed; }).length;
+        var failed = steps.filter(function (item) { return !item.skipped && !item.passed; }).length;
         var duration = steps.reduce(function (sum, item) { return sum + (item.duration || 0); }, 0);
+        var status = failed > 0 ? 'FAILED' : (executed === 0 ? 'SKIPPED' : 'PASSED');
         return {
             title: (scenario && scenario.name) || scenarioFile || '测试报告',
             scenarioFile: scenarioFile || '',
             executionMode: executionMode || 'full',
             environment: environment ? environment.name || environment.key : '默认',
+            status: status,
             summary: {
                 totalSteps: (scenario && scenario.steps && scenario.steps.length) || total,
-                executedSteps: total,
+                plannedSteps: (scenario && scenario.steps && scenario.steps.length) || total,
+                executedSteps: executed,
                 passedSteps: passed,
                 failedSteps: failed,
-                passRate: total ? ((passed / total) * 100).toFixed(2) + '%' : '0.00%',
+                skippedSteps: skipped,
+                passRate: executed ? ((passed / executed) * 100).toFixed(2) + '%' : '0.00%',
                 totalDurationMs: duration,
                 totalDurationFmt: fmt(duration)
             },
@@ -500,9 +516,11 @@ const legacyView = (function () {
                     path: item.path,
                     status: item.status,
                     passed: item.passed,
+                    skipped: Boolean(item.skipped),
                     durationMs: item.duration,
                     durationFmt: fmt(item.duration),
                     error: item.error || '',
+                    warnings: item.warnings || [],
                     request: item.request,
                     response: item.response,
                     assertions: item.assertions || []
@@ -520,19 +538,24 @@ const legacyView = (function () {
         lines.push('- **场景文件**: `' + (report.scenarioFile || '-') + '`');
         lines.push('- **测试环境**: ' + (report.environment || '-'));
         lines.push('- **执行模式**: ' + (report.executionMode || '-'));
-        lines.push('- **结果**: ' + (summary.failedSteps ? '❌ 存在失败' : '✅ 全部通过') + ' (' + summary.passedSteps + '/' + summary.executedSteps + ')');
+        var resultText = summary.failedSteps ? '❌ 存在失败' : (summary.skippedSteps && summary.executedSteps === 0 ? '⏭️ 全部跳过' : '✅ 全部通过');
+        lines.push('- **结果**: ' + resultText + ' (' + summary.passedSteps + '/' + summary.executedSteps + ')');
         lines.push('- **通过率**: ' + summary.passRate);
+        lines.push('- **统计**: 通过 ' + summary.passedSteps + ' / 失败 ' + summary.failedSteps + ' / 跳过 ' + summary.skippedSteps + ' / 执行 ' + summary.executedSteps + ' / 计划 ' + summary.plannedSteps);
         lines.push('- **总耗时**: ' + summary.totalDurationFmt);
         lines.push('');
         lines.push('## 步骤明细');
         lines.push('');
 
         (report.steps || []).forEach(function (step) {
-            var icon = step.passed ? '✅' : '❌';
+            var icon = step.skipped ? '⏭️' : (step.passed ? '✅' : '❌');
             lines.push('### ' + icon + ' 步骤 ' + step.stepNo + ': ' + step.name);
             lines.push('- **请求**: `' + step.method + ' ' + step.path + '`');
             lines.push('- **状态**: ' + step.status + ' | **耗时**: ' + step.durationFmt);
             if (step.error) lines.push('- **失败原因**: ' + step.error);
+            (step.warnings || []).forEach(function (warning) {
+                lines.push('- **警告**: ' + warning);
+            });
             if (step.assertions && step.assertions.length) {
                 lines.push('- **断言结果**:');
                 step.assertions.forEach(function (a) {
@@ -567,9 +590,10 @@ const legacyView = (function () {
         var summary = report.summary;
         var pending = summary.totalSteps - summary.executedSteps;
         var hasFailure = summary.failedSteps > 0;
+        var allSkipped = !hasFailure && summary.executedSteps === 0 && summary.skippedSteps > 0;
         var completed = pending <= 0;
-        var statusClass = hasFailure ? 'report-status--failed' : (completed ? 'report-status--passed' : 'report-status--running');
-        var statusText = hasFailure ? '存在失败' : (completed ? '全部通过' : '执行中');
+        var statusClass = hasFailure ? 'report-status--failed' : (allSkipped ? 'report-status--skipped' : (completed ? 'report-status--passed' : 'report-status--running'));
+        var statusText = hasFailure ? '存在失败' : (allSkipped ? '全部跳过' : (completed ? '全部通过' : '执行中'));
         var modeText = report.executionMode === 'step' ? '单步执行' : '全量执行';
         var progressText = summary.executedSteps + ' / ' + summary.totalSteps;
         var reportSteps = hasFailure ? report.steps.filter(function (step) { return !step.passed; }) : [];
@@ -601,7 +625,9 @@ const legacyView = (function () {
         }).join('');
         var diagnosisHtml = hasFailure
             ? '<div class="report-steps"><div class="report-steps__title">失败步骤</div>' + stepHtml + '</div>'
-            : '<div class="report-healthy"><div class="report-healthy__title">' + (completed ? '所有步骤均已通过' : '当前已执行步骤均通过') + '</div><div class="report-healthy__hint">详细请求与响应请在左侧步骤列表查看；完整报告可通过顶部按钮复制。</div></div>';
+            : (allSkipped
+                ? '<div class="report-healthy"><div class="report-healthy__title">所有步骤均因条件不满足而跳过</div><div class="report-healthy__hint">本次执行未发起任何请求，详细跳过原因请在左侧步骤列表查看。</div></div>'
+                : '<div class="report-healthy"><div class="report-healthy__title">' + (completed ? '所有步骤均已通过' : '当前已执行步骤均通过') + '</div><div class="report-healthy__hint">详细请求与响应请在左侧步骤列表查看；完整报告可通过顶部按钮复制。</div></div>');
 
         node.innerHTML = '<div class="report-content">' +
             '<div class="report-overview">' +
@@ -611,6 +637,7 @@ const legacyView = (function () {
             '<div class="report-metrics">' +
                 '<div class="report-metric"><span class="report-metric__label">通过</span><strong class="report-metric__value report-metric__value--passed">' + summary.passedSteps + '</strong></div>' +
                 '<div class="report-metric"><span class="report-metric__label">失败</span><strong class="report-metric__value ' + (hasFailure ? 'report-metric__value--failed' : '') + '">' + summary.failedSteps + '</strong></div>' +
+                (summary.skippedSteps > 0 ? '<div class="report-metric"><span class="report-metric__label">跳过</span><strong class="report-metric__value">' + summary.skippedSteps + '</strong></div>' : '') +
                 '<div class="report-metric"><span class="report-metric__label">总耗时</span><strong class="report-metric__value report-metric__duration">' + esc(summary.totalDurationFmt) + '</strong></div>' +
             '</div>' +
             '<div class="report-progress"><div class="report-progress__labels"><span>执行进度</span><strong>' + progressText + ' · ' + esc(summary.passRate) + '</strong></div><div class="report-progress__track' + (hasFailure ? ' report-progress__track--failed' : '') + '"><span style="width:' + (summary.totalSteps ? (summary.executedSteps / summary.totalSteps) * 100 : 0) + '%"></span></div></div>' +

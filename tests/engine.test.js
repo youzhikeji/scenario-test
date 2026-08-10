@@ -288,3 +288,104 @@ test("defineConfig 拒绝非法全局参数", async () => {
     assert.deepEqual(config.envs[0].globals, [{ type: "query", name: "q", value: "1" }]);
 });
 
+test("when 对象形式定义期校验：只允许 from vars，禁止 target/header 与未知断言键", () => {
+    const base = { name: "W", steps: [{ name: "s", path: "x" }] };
+    assert.throws(() => defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { path: "code", equals: 200 } }] }), /when 对象形式只允许 from: "vars"/);
+    assert.throws(() => defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { from: "body", path: "code", equals: 200 } }] }), /只允许 from: "vars"/);
+    assert.throws(() => defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { from: "vars", target: "status", equals: 200 } }] }), /不允许使用 target\/header/);
+    assert.throws(() => defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { from: "vars", path: "code", bogus: 1 } }] }), /未知键 "bogus"/);
+    assert.throws(() => defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { from: "vars", path: "code" } }] }), /必须至少包含一个操作符/);
+    // 合法 when 与模板真值形式不抛
+    defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { from: "vars", path: "cleanupId", exists: true } }] });
+    defineScenario({ ...base, steps: [{ name: "s", path: "x", when: "{{vars.flag}}" }] });
+    defineScenario({ ...base, steps: [{ name: "s", path: "x", when: false }] });
+});
+
+test("定义期拒绝非法断言（含 retryUntil 防御性 assertions）", () => {
+    const base = { name: "A", steps: [{ name: "s", path: "x", assertions: [{ path: "code", equals: 200 }] }] };
+    assert.throws(() => defineScenario({ name: "A", steps: [{ name: "s", path: "x", assertions: [{ path: "code" }] }] }), /必须至少包含一个操作符/);
+    assert.throws(() => defineScenario({ name: "A", steps: [{ name: "s", path: "x", assertions: [{ path: "code", equals: 200, foo: 1 }] }] }), /未知键 "foo"/);
+    assert.throws(() => defineScenario({
+        name: "A",
+        steps: [{ name: "s", path: "x", retryUntil: { maxAttempts: 3, assertions: [{ path: "code" }] } }]
+    }), /必须至少包含一个操作符/);
+    // 真实协议：retryUntil 本身不含断言，带合法 maxAttempts/intervalMs 不抛
+    defineScenario({ name: "A", steps: [{ name: "s", path: "x", retryUntil: { maxAttempts: 3, intervalMs: 100 }, assertions: [{ path: "code", equals: 200 }] }] });
+});
+
+test("保留变量 runId/runNo 禁止在 config vars、generatedVars、envVars 中声明", async () => {
+    const ok = async (vars) => {
+        const report = await createEngine({ baseUrl: "https://mock.local", fetch: async () => jsonResponse({}) }).runScenario(
+            defineScenario({ name: "R", steps: [{ name: "s", path: "x" }] }),
+            { vars }
+        );
+        return report;
+    };
+    await ok({ token: "t" });
+    const engineFor = (opts = {}) => createEngine({ baseUrl: "https://mock.local", fetch: async () => jsonResponse({}), ...opts });
+    await assert.rejects(engineFor({ vars: { runId: "x" } }).runScenario(defineScenario({ name: "R", steps: [{ name: "s", path: "x" }] })), /保留变量/);
+    // scenario.vars 定义期拒绝
+    assert.throws(() => defineScenario({ name: "R", vars: { runNo: "x" }, steps: [{ name: "s", path: "x" }] }), /保留变量/);
+    // envVars / generatedVars 运行期拒绝
+    await assert.rejects(engineFor().runScenario(defineScenario({ name: "R", envVars: { runId: "ENV_X" }, steps: [{ name: "s", path: "x" }] })), /保留变量/);
+    await assert.rejects(engineFor().runScenario(defineScenario({ name: "R", generatedVars: [{ name: "runNo", type: "timestamp" }], steps: [{ name: "s", path: "x" }] })), /保留变量/);
+});
+
+test("extract required:true 路径不存在时步骤失败；默认路径缺失产生 warning 并保持兼容", async () => {
+    const engine = createEngine({ baseUrl: "https://mock.local", fetch: async () => jsonResponse({ code: 200 }) });
+    const requiredScenario = defineScenario({
+        name: "强制提取",
+        steps: [{ name: "提取缺失字段", path: "x", extract: [{ name: "missing", path: "data.id", required: true }], assertions: [{ path: "code", equals: 200 }] }]
+    });
+    const requiredReport = await engine.runScenario(requiredScenario);
+    assert.equal(requiredReport.failed, 1);
+    assert.equal(requiredReport.results[0].passed, false);
+    assert.match(requiredReport.results[0].error, /提取 missing/);
+
+    const relaxedScenario = defineScenario({
+        name: "宽松提取",
+        steps: [{ name: "提取缺失字段", path: "x", extract: [{ name: "missing", path: "data.id" }], assertions: [{ path: "code", equals: 200 }] }]
+    });
+    const relaxedReport = await engine.runScenario(relaxedScenario);
+    assert.equal(relaxedReport.failed, 0);
+    assert.equal(relaxedReport.results[0].warnings.length, 1);
+    assert.match(relaxedReport.results[0].warnings[0], /missing/);
+    assert.equal(relaxedReport.results[0].passed, true);
+});
+
+test("SKIP 统计：全跳过为 SKIPPED，部分跳过保持 PASSED，SKIP 不计 executed/passedSteps", async () => {
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        fetch: async () => jsonResponse({ ok: true })
+    });
+    const allSkipped = await engine.runScenario(defineScenario({
+        name: "全跳过",
+        steps: [
+            { name: "a", path: "a", when: { from: "vars", path: "missing", exists: true } },
+            { name: "b", path: "b", when: { from: "vars", path: "missing", exists: true } }
+        ]
+    }));
+    assert.equal(allSkipped.status, "SKIPPED");
+    assert.equal(allSkipped.skipped, 2);
+    assert.equal(allSkipped.executed, 0);
+    assert.equal(allSkipped.passedSteps, 0);
+    assert.equal(allSkipped.failed, 0);
+    assert.equal(allSkipped.passed, true);
+    assert.ok(allSkipped.results.every((item) => item.skipped && item.passed === true));
+
+    const partial = await engine.runScenario(defineScenario({
+        name: "部分跳过",
+        steps: [
+            { name: "执行", path: "a" },
+            { name: "跳过", path: "b", when: { from: "vars", path: "missing", exists: true } }
+        ]
+    }));
+    assert.equal(partial.status, "PASSED");
+    assert.equal(partial.skipped, 1);
+    assert.equal(partial.executed, 1);
+    assert.equal(partial.passedSteps, 1);
+    assert.equal(partial.failed, 0);
+    assert.equal(partial.passed, true);
+    assert.equal(partial.results.filter((item) => item.skipped).length, 1);
+});
+

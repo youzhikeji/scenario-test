@@ -37,12 +37,12 @@ try {
     browser = await chromium.launch({ channel: "chrome", headless: true });
     for (const viewport of [{ width: 1440, height: 900, name: "desktop" }, { width: 390, height: 844, name: "mobile" }]) {
         const page = await browser.newPage({ viewport });
-        await page.route("https://mock.local/health", (route) => route.fulfill({
+        await page.route("https://mock.local/health?*", (route) => route.fulfill({
             status: 200,
             contentType: "application/json",
             body: JSON.stringify({ status: "UP" })
         }));
-        await page.route("https://mock.local/slow", async (route) => {
+        await page.route("https://mock.local/slow?*", async (route) => {
             await new Promise((resolve) => setTimeout(resolve, 5000));
             await route.fulfill({ status: 200, contentType: "application/json", body: "{}" }).catch(() => {});
         });
@@ -72,13 +72,16 @@ try {
         await page.locator("#scenarioVar_expectedStatus").fill("DOWN");
         await page.locator("#saveSettingsBtn").click();
         assert.match(await page.locator("#settingsNotice").textContent(), /已保存并生效/);
+        await page.locator("#configCloseBtn").click();
         await page.locator("#runBtn").click();
         await page.waitForFunction(() => !document.querySelector("#runBtn").disabled && document.querySelector('#stepsList li[data-passed="false"]'));
         assert.equal(await page.locator('#stepsList li[data-passed="false"]').count(), 1);
 
+        await page.locator("#configToggleBtn").click();
         await page.locator("#clearSettingsBtn").click();
         assert.match(await page.locator("#settingsNotice").textContent(), /已恢复配置值/);
         assert.equal(await page.locator("#scenarioVar_expectedStatus").inputValue(), "UP");
+        await page.locator("#configCloseBtn").click();
 
         await page.locator("#runBtn").click();
         await page.waitForFunction(() => !document.querySelector("#runBtn").disabled && document.querySelector('#stepsList li[data-passed="true"]'));
@@ -112,6 +115,10 @@ try {
         assert.equal(await page.locator('#stepsList li[data-passed="true"]').count(), 1);
         assert.match(await page.locator("#stepsList").textContent(), /SKIPPED/);
         assert.equal(recordsRequests.length, 0, `when 不满足时不应发出请求: ${recordsRequests.join(", ")}`);
+        // SKIP 可观测性：全跳过显示"全部跳过"，跳过单独统计且不计入通过数
+        assert.equal(await page.locator('#stepsList li[data-skipped="true"]').count(), 1);
+        assert.match(await page.locator("#reportPanel").textContent(), /全部跳过/);
+        assert.match(await page.locator("#statsPanel").textContent(), /跳过/);
 
         await page.locator('[data-scenario-file="scenarios/health.js"]').click();
         await page.locator("#runBtn").click();

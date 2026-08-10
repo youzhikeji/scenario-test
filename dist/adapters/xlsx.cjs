@@ -1,4 +1,4 @@
-/*! scenario-test v0.3.0 */
+/*! scenario-test v0.4.0 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;

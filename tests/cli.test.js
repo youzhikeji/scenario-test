@@ -152,3 +152,71 @@ test("CLI SCENARIO_GLOBALS 非法 JSON 时报错", async () => {
         fs.rmSync(directory, { recursive: true, force: true });
     }
 });
+
+test("CLI --all 排除 manual 场景，显式 --scenario 可执行，SKIP 输出与 fail-on-skip", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-manual-"));
+    const server = http.createServer((request, response) => {
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ status: "UP" }));
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+        const port = server.address().port;
+        fs.mkdirSync(path.join(directory, "scenarios"));
+        fs.writeFileSync(path.join(directory, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1:${port}"}],scenarios:[
+            {id:"auto",name:"Auto",url:"scenarios/auto.js"},
+            {id:"manual",name:"ManualOnly",url:"scenarios/manual.js",manual:true},
+            {id:"skippable",name:"Skippable",url:"scenarios/skippable.js"}
+        ]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/auto.js"), `ScenarioTest.registerScenario("auto",ScenarioTest.defineScenario({name:"Auto",steps:[{name:"auto-step",path:"health",status:200}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/manual.js"), `ScenarioTest.registerScenario("manual",ScenarioTest.defineScenario({name:"ManualOnly",steps:[{name:"manual-step",path:"health",status:200}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/skippable.js"), `ScenarioTest.registerScenario("skippable",ScenarioTest.defineScenario({name:"Skippable",steps:[{name:"skip-step",path:"health",status:200,when:{from:"vars",path:"missing",exists:true}}]}));`, "utf8");
+        const cli = path.resolve(import.meta.dirname, "../dist/scenario-test-cli.cjs");
+
+        const run = (extraArgs, env) => new Promise((resolve) => {
+            const child = spawn(process.execPath, [cli, "--config", path.join(directory, "scenario.config.js"), ...extraArgs], { env: { ...process.env, ...(env || {}) }, stdio: ["ignore", "pipe", "pipe"] });
+            let stdout = "";
+            let stderr = "";
+            child.stdout.on("data", (chunk) => { stdout += chunk; });
+            child.stderr.on("data", (chunk) => { stderr += chunk; });
+            child.on("close", (code) => resolve({ code, stdout, stderr }));
+        });
+
+        // --all：manual 被排除，SKIP 输出与摘要展示
+        const allResult = await run(["--all"]);
+        assert.equal(allResult.code, 0, allResult.stderr);
+        assert.match(allResult.stdout, /\[PASS\] auto-step/);
+        assert.match(allResult.stdout, /\[SKIP\] skip-step/);
+        assert.doesNotMatch(allResult.stdout, /ManualOnly|manual-step/);
+        assert.match(allResult.stdout, /Summary: passed=1 failed=0 skipped=0 executed=1\/1 planned \(状态 PASSED\)/);
+        assert.match(allResult.stdout, /Summary: passed=0 failed=0 skipped=1 executed=0\/1 planned \(状态 SKIPPED\)/);
+        assert.match(allResult.stdout, /Overall: 1\/2 passed/);
+
+        // --all --fail-on-skip：任何 skip 导致退出码 1
+        const failOnSkip = await run(["--all", "--fail-on-skip"]);
+        assert.equal(failOnSkip.code, 1);
+        assert.match(failOnSkip.stdout, /fail-on-skip 已开启，存在 1 个 SKIP 步骤/);
+
+        // 显式 --scenario 可执行 manual 场景
+        const manualResult = await run(["--scenario", "manual"]);
+        assert.equal(manualResult.code, 0, manualResult.stderr);
+        assert.match(manualResult.stdout, /\[PASS\] manual-step/);
+        assert.match(manualResult.stdout, /Overall: 1\/1 passed/);
+    } finally {
+        server.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
+test("CLI 配置全部为 manual 时 --all 报明确错误", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-allmanual-"));
+    try {
+        fs.writeFileSync(path.join(directory, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1"}],scenarios:[{id:"m1",name:"M1",url:"s1.js",manual:true}]}));`, "utf8");
+        const cli = path.resolve(import.meta.dirname, "../src/cli.js");
+        const result = spawnSync(process.execPath, [cli, "--config", path.join(directory, "scenario.config.js"), "--all"], { encoding: "utf8" });
+        assert.notEqual(result.status, 0);
+        assert.match(result.stderr, /全部标记为 manual:true/);
+    } finally {
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});

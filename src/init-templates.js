@@ -14,9 +14,9 @@ const AUTHORING_PROMPT = `# AI 场景生成 Prompt
 2. 一条场景对应一条完整业务流，而不是一个接口文件。纯查询接口可以组成独立只读场景。
 3. 在 \`scenario.config.js\` 维护 \`envs\`、\`vars\`、\`variables\` 和 \`scenarios\`。私有项目可在 \`vars\` 保存联调凭据；\`variables\` 只声明标签、\`required\` 与可选 \`env\` 映射。源码能确认请求字段但不能确认必填取值时，在配置 \`vars\` 中留空，并在 \`variables\` 中声明为 \`required: true\`；场景只引用该变量，禁止填入猜测值或测试标记。
 4. 先参照 \`SCENARIO_PATTERNS.md\` 的完整模式，再按本项目证据替换路径、字段和响应断言；模式中的尖括号占位内容不得直接写入场景。场景必须使用 \`ScenarioTest.registerScenario(id, ScenarioTest.defineScenario({...}))\`，配置中的场景 id、文件注册 id 必须一致。
-5. 每一步写 \`name\`、\`method\`、\`path\`、\`status\`，并为关键业务结果写 \`assertions\`。Query 参数只能写在步骤顶层 \`params\`，不能写成 \`request.params\`。用 \`extract\` 保存响应 ID、Token 或状态，再用 \`{{vars.name}}\` 串联后续步骤。
+5. 每一步写 \`name\`、\`method\`、\`path\`、\`status\`，并为关键业务结果写 \`assertions\`。Query 参数只能写在步骤顶层 \`params\`，不能写成 \`request.params\`。用 \`extract\` 保存响应 ID、Token 或状态，再用 \`{{vars.name}}\` 串联后续步骤。断言操作符：\`exists\`、\`equals\`、\`notEquals\`、\`includes\`、\`matches\`、\`oneOf\`、\`gt\`、\`gte\`、\`lt\`、\`lte\`；数值比较（如条数不少于 5）用 \`gte: 5\`（仅数字不做字符串转换），"非负整数"这类格式校验用 \`matches: "^\\\\d+$"\`。\`extract\` 项可加 \`required: true\`，路径不存在时该步骤失败。\`when\` 对象形式只允许 \`{ from: "vars", ... }\`，不能基于响应体判断条件。
 6. 认证是普通项目步骤：确认登录接口时先登录并提取 Token；无法确认时仅声明变量并在具体 Header、Query 或 Body 中引用，不虚构框架级认证。浏览器 Cookie 会话必须有项目证据并显式设置 request.credentials 为 include；Node CLI 当前不提供自动 Cookie Jar。
-7. \`runId\` 和 \`runNo\` 是每次执行自动生成的内置变量，不要在配置或场景中重新定义。写入场景使用 \`scenario-{{vars.runNo}}\` 等测试标记。清理只能按刚提取的 ID 或测试标记精确定位，并用 \`when\` 防止空值删除；无法确认安全清理条件时不生成删除步骤。
+7. \`runId\` 和 \`runNo\` 是每次执行自动生成的内置变量，禁止在配置 vars、场景 vars、envVars、generatedVars 或 extract 中重新定义或覆盖。写入场景使用 \`scenario-{{vars.runNo}}\` 等测试标记。清理只能按刚提取的 ID 或测试标记精确定位，并用 \`when\` 防止空值删除；无法确认安全清理条件时不生成删除步骤。
 8. 默认保持 \`failurePolicy: "stop"\`。只有在完成状态字段和终态值都有证据时才使用 \`retryUntil\`，且 assertions 必须断言该终态值；只断言字段存在会立即通过，禁止配合 \`retryUntil\`。完成状态未知时最多生成一次状态查询。不要写固定 sleep。
 9. 错误响应体没有代码、文档或既有测试依据时，只断言已确认的 HTTP status，不能猜测或断言 code、message、error 等字段存在。
 10. 不修改业务代码、构建配置或公共运行时；不写入生产地址、个人数据、固定 Token 或非测试凭据。
@@ -35,8 +35,9 @@ const SCENARIO_PATTERNS = [
     "2. 在 scenario.config.js 增加稳定的场景 id、名称和文件地址；场景文件注册的 id 必须一致。",
     "3. 每条场景独立运行：自己获取认证变量或读取配置变量，自己提取 ID，不能依赖上次运行留下的数据。",
     "4. 每一步都写 name、method、path、status；关键业务结果写 assertions；跨步骤数据通过 extract 保存。Query 参数写在步骤顶层 params，不写 request.params。",
-    "5. runId 和 runNo 由运行时自动生成，不要在 vars 或 variables 中定义。模式中的状态、格式、错误码和响应字段都是结构占位，必须有项目证据才能采用。",
+    "5. runId 和 runNo 由运行时自动生成，不要在 vars、variables、envVars、generatedVars 或 extract 中定义。模式中的状态、格式、错误码和响应字段都是结构占位，必须有项目证据才能采用。",
     "6. 无法确认的必填请求值放入配置 vars 留空，并在 variables 声明 required: true；不得用 PDF、pdf、SUCCESS 或 scenario-{{vars.runNo}} 充当未知枚举。",
+    "7. 断言操作符：exists、equals、notEquals、includes、matches、oneOf、gt、gte、lt、lte；数值比较（条数不少于 N）用 gte: N，格式校验（非负整数）用 matches: '^\\\\d+$'。when 对象形式只允许 from: 'vars'。extract 可加 required: true 强制路径存在。",
     "",
     "## 模式一：登录、提取 Token、后续请求引用",
     "",
@@ -188,7 +189,7 @@ export function createProjectFiles(directory = "scenario-test", options = {}) {
 - \`globals\`：全局参数，追加到每个请求。支持 \`header\` / \`cookie\` / \`query\` 三种类型，可配置在顶层（所有环境生效）或单个环境内。值支持 \`{{vars.xxx}}\` 模板；步骤显式声明的同名参数优先于全局参数。CLI 可用 \`SCENARIO_GLOBALS\` 环境变量（JSON 数组）覆盖，如 \`[{"type":"header","name":"Authorization","value":"Bearer x"}]\`。
 - \`vars\`：本项目启动时使用的默认变量。私有项目可在这里保存团队联调 Key、Secret、Token、测试账号等。
 - \`variables\`：页面上需要展示或允许覆盖的变量元数据，包括标签、是否必填，以及可选的 CLI 环境变量名。实际默认值优先写在 \`vars\`，不要重复维护。
-- \`scenarios\`：场景 id、名称和对应 JS 文件地址。
+- \`scenarios\`：场景 id、名称和对应 JS 文件地址。需要人工前置条件或写数据的场景可加 \`manual: true\`：\`--all\` 默认排除，\`--scenario <id>\` 可显式执行。
 
 最小配置示例：
 
@@ -259,12 +260,15 @@ ScenarioTest.registerScenario("create-order", ScenarioTest.defineScenario({
 常用能力：
 
 - 用 \`{{vars.name}}\` 在 path、Query、Header、Body 中引用变量。
-- 用 \`extract\` 从响应提取 ID、Token 或状态，再供后续步骤使用。
+- 用 \`extract\` 从响应提取 ID、Token 或状态，再供后续步骤使用；路径必填时加 \`required: true\`，缺失会失败，默认缺失只产生 warning。
+- 断言操作符：\`exists\`、\`equals\`、\`notEquals\`、\`includes\`、\`matches\`、\`oneOf\`、\`gt\`、\`gte\`、\`lt\`、\`lte\`；数值比较用 \`gte: 5\`，非负整数等格式校验用 \`matches: "^\\\\d+$"\`。
 - 登录、换 Token、签名都按普通步骤和变量实现；浏览器 Cookie 会话显式使用 \`request.credentials: "include"\`，Node CLI 当前不提供自动 Cookie Jar。
 - 每一步至少写 \`name\`、\`method\`、\`path\`、\`status\`；关键结果补充 \`assertions\`。
 - 未写 \`status\` 和 \`assertions\` 时运行时默认要求 HTTP 2xx，不能把异常响应当成功。
-- 最终一致性使用 \`retryUntil\`，避免固定等待；前置变量可能为空的删除操作使用 \`when\` 保护。
+- 最终一致性使用 \`retryUntil\`，避免固定等待；前置变量可能为空的删除操作使用 \`when\` 保护（\`when\` 对象形式只允许 \`from: "vars"\`）。
+- \`runId\` / \`runNo\` 是运行时保留变量，禁止在配置或场景中声明或覆盖。
 - 默认失败即停止；只有需要收集多个失败时才在场景上设 \`failurePolicy: "continue"\`。
+- SKIP 步骤不计入通过/执行统计，全跳过时场景状态为 SKIPPED；写数据类场景在配置清单中加 \`manual: true\`，\`--all\` 会默认排除，需用 \`--scenario <id>\` 显式执行。
 
 完整 DSL 与示例见公共库 README；项目内新增用例优先遵循 \`AI_SCENARIO_PROMPT.md\` 和 \`SCENARIO_PATTERNS.md\`。
 

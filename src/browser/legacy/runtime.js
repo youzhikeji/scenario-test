@@ -25,6 +25,8 @@ export function createLegacyRuntime(options) {
     var evaluateAssertion = core.evaluateAssertion;
     var buildAssertions = core.buildAssertions;
     var applyExtract = core.applyExtract;
+    var assertNotReservedVar = core.assertNotReservedVar;
+    var assertNoReservedVars = core.assertNoReservedVars;
     var md5 = core.md5;
     var esc = core.esc;
     var fmt = core.fmt;
@@ -91,11 +93,17 @@ export function createLegacyRuntime(options) {
                 if (type === 'all') activeCls = 'font-bold text-blue-700 bg-white border border-blue-200 rounded shadow-sm';
                 else if (type === 'pass') activeCls = 'font-bold text-emerald-700 bg-white border border-emerald-200 rounded shadow-sm';
                 else if (type === 'fail') activeCls = 'font-bold text-rose-700 bg-white border border-rose-200 rounded shadow-sm';
+                else if (type === 'skip') activeCls = 'font-bold text-slate-700 bg-white border border-slate-300 rounded shadow-sm';
                 b.className = 'filter-btn px-3 py-1 text-xs ' + (active ? activeCls : 'font-medium text-slate-600 hover:bg-white rounded');
             });
             document.querySelectorAll('#stepsList li').forEach(function (li) {
-                var status = li.dataset.passed;
-                li.style.display = (type === 'all' || (type === 'pass' && status === 'true') || (type === 'fail' && status === 'false')) ? '' : 'none';
+                var passed = li.dataset.passed === 'true';
+                var skipped = li.dataset.skipped === 'true';
+                var visible = type === 'all'
+                    || (type === 'pass' && passed && !skipped)
+                    || (type === 'fail' && !passed)
+                    || (type === 'skip' && skipped);
+                li.style.display = visible ? '' : 'none';
             });
         },
         search: function (q) {
@@ -350,9 +358,14 @@ export function createLegacyRuntime(options) {
             throw new Error('缺少场景凭据：' + missing.map(function (def) { return def.label; }).join('、') + '。请在“配置参数 → 当前场景凭据”中填写并保存。');
         }
         var identifiers = createRunIdentifiers();
+        // 保留变量 runId/runNo 由运行时自动生成，声明源冲突在使用前尽早报错
+        assertNoReservedVars(scenario.vars, '场景 vars');
+        assertNoReservedVars(cfg.vars, '配置 vars');
+        assertNoReservedVars(scenarioVars, '页面场景变量');
         var vars = Object.assign({}, scenario.vars || {}, cfg.vars || {}, scenarioVars, identifiers);
         (scenario.generatedVars || []).forEach(function (def) {
             if (!def || !def.name) return;
+            assertNotReservedVar(def.name, 'generatedVars');
             if (def.type === 'timestamp') {
                 vars[def.name] = Date.now();
                 return;
@@ -455,7 +468,7 @@ export function createLegacyRuntime(options) {
     async function executeStep(step, runtime, cfg) {
         if (step.when !== undefined) {
             var shouldRun = typeof step.when === 'object'
-                ? evaluateAssertion(step.when, { status: 0, headers: {}, body: null, bodyText: '' }, runtime).passed
+                ? evaluateAssertion(step.when, { status: 0, headers: {}, body: null, bodyText: '' }, runtime, { stepName: step.name }).passed
                 : Boolean(resolve(step.when, runtime));
             if (!shouldRun) {
                 return {
@@ -467,6 +480,7 @@ export function createLegacyRuntime(options) {
                     passed: true,
                     skipped: true,
                     error: '',
+                    warnings: [],
                     assertions: [],
                     request: null,
                     response: null
@@ -554,10 +568,14 @@ export function createLegacyRuntime(options) {
             var responseData = await sendRequest();
             var headerObj = responseData.headers;
             var body = responseData.body;
+            var stepWarnings = [];
             runtime.lastResponse = responseData;
             runtime.lastResponseBody = body;
-            applyExtract(step, responseData, runtime);
-            var assertions = buildAssertions(step, responseData, runtime);
+            var extractResult = applyExtract(step, responseData, runtime);
+            stepWarnings = extractResult.warnings;
+            var assertions = buildAssertions(step, responseData, runtime, { stepName: step.name });
+            // required: true 且路径不存在 → 当前步骤失败
+            if (extractResult.failures.length) assertions.push.apply(assertions, extractResult.failures);
             var failedAssertion = assertions.find(function (item) { return !item.passed; });
             var requestAttempts = 1;
 
@@ -574,8 +592,10 @@ export function createLegacyRuntime(options) {
                     body = responseData.body;
                     runtime.lastResponse = responseData;
                     runtime.lastResponseBody = body;
-                    applyExtract(step, responseData, runtime);
-                    assertions = buildAssertions(step, responseData, runtime);
+                    extractResult = applyExtract(step, responseData, runtime);
+                    stepWarnings = extractResult.warnings;
+                    assertions = buildAssertions(step, responseData, runtime, { stepName: step.name });
+                    if (extractResult.failures.length) assertions.push.apply(assertions, extractResult.failures);
                     failedAssertion = assertions.find(function (item) { return !item.passed; });
                     if (!failedAssertion) {
                         return {
@@ -587,6 +607,7 @@ export function createLegacyRuntime(options) {
                             attempts: requestAttempts,
                             passed: true,
                             error: '',
+                            warnings: stepWarnings,
                             request: { headers: headers, body: bodyData },
                             response: { headers: headerObj, body: body, bodyText: responseData.bodyText },
                             assertions: assertions
@@ -604,6 +625,7 @@ export function createLegacyRuntime(options) {
                 attempts: requestAttempts,
                 passed: !failedAssertion,
                 error: failedAssertion ? failedAssertion.name : '',
+                warnings: stepWarnings,
                 request: { headers: headers, body: bodyData },
                 response: { headers: headerObj, body: body, bodyText: responseData.bodyText },
                 assertions: assertions
@@ -623,6 +645,7 @@ export function createLegacyRuntime(options) {
                 cancelled: cancelled,
                 timedOut: timedOut,
                 error: errorMessage,
+                warnings: [],
                 request: { headers: headers, body: bodyData },
                 response: { headers: {}, body: null },
                 assertions: [{ name: cancelled ? '执行未取消' : (timedOut ? '请求未超时' : '请求执行成功'), passed: false, actual: errorMessage, expected: '无异常' }]
@@ -761,8 +784,10 @@ export function createLegacyRuntime(options) {
             renderReportPanel();
             return;
         }
-        var failed = state.steps.filter(function (item) { return !item.passed; }).length;
-        uiView.setRunState(failed ? 'failed' : 'success', failed ? '存在失败' : '执行成功');
+        var skipped = state.steps.filter(function (item) { return item.skipped; }).length;
+        var failed = state.steps.filter(function (item) { return !item.skipped && !item.passed; }).length;
+        var executed = state.steps.length - skipped;
+        uiView.setRunState(failed ? 'failed' : (executed === 0 ? 'skipped' : 'success'), failed ? '存在失败' : (executed === 0 ? '全部跳过' : '执行成功'));
         renderReportPanel();
     }
 

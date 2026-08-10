@@ -1,4 +1,4 @@
-/*! scenario-test v0.3.0 */
+/*! scenario-test v0.4.0 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -64780,8 +64780,13 @@ var import_node_url = require("node:url");
 // src/node.js
 var node_exports = {};
 __export(node_exports, {
+  ASSERTION_META_KEYS: () => ASSERTION_META_KEYS,
+  ASSERTION_OPERATORS: () => ASSERTION_OPERATORS,
   GLOBAL_TYPES: () => GLOBAL_TYPES,
+  RESERVED_VARS: () => RESERVED_VARS,
   applyExtract: () => applyExtract,
+  assertNoReservedVars: () => assertNoReservedVars,
+  assertNotReservedVar: () => assertNotReservedVar,
   buildAssertions: () => buildAssertions,
   buildUrl: () => buildUrl,
   clearAdapters: () => clearAdapters,
@@ -64796,6 +64801,7 @@ __export(node_exports, {
   evalExpression: () => evalExpression,
   evaluateAssertion: () => evaluateAssertion,
   executeDefinitionFile: () => executeDefinitionFile,
+  formatAssertionContext: () => formatAssertionContext,
   formatDuration: () => formatDuration,
   generateSignature: () => generateSignature,
   getAdapter: () => getAdapter,
@@ -64825,7 +64831,8 @@ __export(node_exports, {
   sanitizeSensitive: () => sanitizeSensitive,
   unregisterAdapter: () => unregisterAdapter,
   validateAdapter: () => validateAdapter,
-  validateAdapterResponse: () => validateAdapterResponse
+  validateAdapterResponse: () => validateAdapterResponse,
+  validateAssertion: () => validateAssertion
 });
 
 // src/core.js
@@ -64951,6 +64958,35 @@ function parseBody(text, contentType2) {
   }
   return value;
 }
+var ASSERTION_OPERATORS = ["exists", "equals", "includes", "matches", "oneOf", "notEquals", "gt", "gte", "lt", "lte"];
+var ASSERTION_META_KEYS = ["name", "path", "from", "target", "header", "implicit"];
+function formatAssertionContext(context) {
+  if (!context) return "";
+  if (typeof context === "string") return context;
+  const parts = [];
+  if (context.scenarioName) parts.push(`\u573A\u666F ${context.scenarioName}`);
+  if (context.stepNo !== void 0) parts.push(`\u7B2C ${context.stepNo} \u6B65`);
+  if (context.stepName) parts.push(`\u6B65\u9AA4 ${context.stepName}`);
+  if (context.assertionNo !== void 0) parts.push(`\u7B2C ${context.assertionNo} \u6761`);
+  return parts.join(" ");
+}
+function validateAssertion(definition, context) {
+  const where = formatAssertionContext(context);
+  const prefix = where ? `${where}\u65AD\u8A00\u65E0\u6548` : "\u65AD\u8A00\u65E0\u6548";
+  if (!isPlainObject(definition)) throw new TypeError(`${prefix}: \u65AD\u8A00\u5FC5\u987B\u662F\u5BF9\u8C61`);
+  const keys = Object.keys(definition);
+  const operators = keys.filter((key) => ASSERTION_OPERATORS.includes(key));
+  const unknown = keys.filter((key) => !ASSERTION_OPERATORS.includes(key) && !ASSERTION_META_KEYS.includes(key));
+  if (unknown.length) {
+    throw new TypeError(
+      `${prefix}: \u5305\u542B\u672A\u77E5\u952E ${unknown.map((key) => `"${key}"`).join(", ")}\uFF0C\u5141\u8BB8\u7684\u5143\u6570\u636E\u952E\u4E3A ${ASSERTION_META_KEYS.join("/")}\uFF0C\u64CD\u4F5C\u7B26\u4E3A ${ASSERTION_OPERATORS.join("/")}`
+    );
+  }
+  if (!operators.length) {
+    throw new TypeError(`${prefix}: \u5FC5\u987B\u81F3\u5C11\u5305\u542B\u4E00\u4E2A\u64CD\u4F5C\u7B26\uFF08${ASSERTION_OPERATORS.join("/")}\uFF09`);
+  }
+  return definition;
+}
 function assertionActual(definition, response, runtime) {
   if (definition.target === "status") return response.status;
   if (definition.header) return headerValue(response.headers, definition.header);
@@ -64959,7 +64995,8 @@ function assertionActual(definition, response, runtime) {
   if (definition.from === "bodyText") return response.bodyText;
   return definition.path ? getByPath(response.body, definition.path) : response.body;
 }
-function evaluateAssertion(definition, response, runtime) {
+function evaluateAssertion(definition, response, runtime, context) {
+  validateAssertion(definition, context);
   const actual = assertionActual(definition, response, runtime);
   let expected;
   let passed = true;
@@ -64971,6 +65008,10 @@ function evaluateAssertion(definition, response, runtime) {
   if (Object.prototype.hasOwnProperty.call(definition, "equals")) {
     expected = resolve(definition.equals, runtime);
     passed = passed && JSON.stringify(actual) === JSON.stringify(expected);
+  }
+  if (Object.prototype.hasOwnProperty.call(definition, "notEquals")) {
+    expected = resolve(definition.notEquals, runtime);
+    passed = passed && JSON.stringify(actual) !== JSON.stringify(expected);
   }
   if (Object.prototype.hasOwnProperty.call(definition, "includes")) {
     expected = resolve(definition.includes, runtime);
@@ -64990,6 +65031,19 @@ function evaluateAssertion(definition, response, runtime) {
     expected = resolve(definition.oneOf, runtime);
     passed = passed && Array.isArray(expected) && expected.some((item) => JSON.stringify(item) === JSON.stringify(actual));
   }
+  for (const op of ["gt", "gte", "lt", "lte"]) {
+    if (!Object.prototype.hasOwnProperty.call(definition, op)) continue;
+    expected = resolve(definition[op], runtime);
+    const comparable = typeof actual === "number" && Number.isFinite(actual) && typeof expected === "number" && Number.isFinite(expected);
+    if (!comparable) {
+      passed = false;
+      continue;
+    }
+    if (op === "gt") passed = passed && actual > expected;
+    else if (op === "gte") passed = passed && actual >= expected;
+    else if (op === "lt") passed = passed && actual < expected;
+    else passed = passed && actual <= expected;
+  }
   return {
     name: definition.name || definition.path || "\u65AD\u8A00",
     passed,
@@ -64997,25 +65051,52 @@ function evaluateAssertion(definition, response, runtime) {
     expected
   };
 }
-function buildAssertions(step, response, runtime) {
+function buildAssertions(step, response, runtime, context) {
   const definitions = Array.isArray(step.assertions) ? [...step.assertions] : [];
   if (step.status !== void 0 && !definitions.some((item) => item.target === "status")) {
     definitions.unshift({ name: `\u8FD4\u56DE HTTP ${step.status}`, target: "status", equals: step.status });
   } else if (step.status === void 0 && definitions.length === 0) {
     definitions.push({ name: "\u8FD4\u56DE HTTP 2xx", target: "status", matches: "^2\\d\\d$", implicit: true });
   }
-  return definitions.map((definition) => evaluateAssertion(definition, response, runtime));
+  return definitions.map((definition, index) => evaluateAssertion(definition, response, runtime, { ...context || {}, assertionNo: index + 1 }));
+}
+var RESERVED_VARS = ["runId", "runNo"];
+function assertNotReservedVar(name, label) {
+  if (RESERVED_VARS.includes(name)) {
+    throw new Error(`${label || "\u53D8\u91CF"} "${name}" \u662F\u8FD0\u884C\u65F6\u81EA\u52A8\u751F\u6210\u7684\u4FDD\u7559\u53D8\u91CF\uFF0C\u7981\u6B62\u58F0\u660E\u6216\u8986\u76D6`);
+  }
+}
+function assertNoReservedVars(source, label) {
+  for (const name of Object.keys(source || {})) {
+    assertNotReservedVar(name, label);
+  }
 }
 function applyExtract(step, response, runtime) {
+  const warnings = [];
+  const failures = [];
   for (const definition of step.extract || []) {
     if (!definition || !definition.name) continue;
+    assertNotReservedVar(definition.name, "extract \u53D8\u91CF");
     let source = response.body;
     if (definition.from === "headers") source = response.headers;
     else if (definition.from === "bodyText") source = response.bodyText;
     else if (definition.from === "response") source = response;
-    runtime.vars[definition.name] = definition.path ? getByPath(source, definition.path) : source;
+    const value = definition.path ? getByPath(source, definition.path) : source;
+    if (value === void 0) {
+      if (definition.required === true) {
+        failures.push({
+          name: `\u63D0\u53D6 ${definition.name}\uFF08\u8DEF\u5F84\u4E0D\u5B58\u5728\uFF09`,
+          passed: false,
+          actual: void 0,
+          expected: `\u8DEF\u5F84 ${definition.path || "(\u6574\u4E2A\u54CD\u5E94)"} \u5B58\u5728`
+        });
+      } else {
+        warnings.push(`\u63D0\u53D6\u53D8\u91CF ${definition.name}\uFF1A\u8DEF\u5F84 ${definition.path || "(\u6574\u4E2A\u54CD\u5E94)"} \u4E0D\u5B58\u5728\uFF0C\u53D8\u91CF\u503C\u4E3A undefined\uFF08required \u672A\u5F00\u542F\uFF0C\u4E0D\u5F71\u54CD\u6267\u884C\uFF09`);
+      }
+    }
+    runtime.vars[definition.name] = value;
   }
-  return runtime.vars;
+  return { warnings, failures };
 }
 function md5(value) {
   return (0, import_blueimp_md5.default)(String(value));
@@ -65110,16 +65191,41 @@ function defineScenario(input) {
   invariant(isPlainObject(input), "\u573A\u666F\u5FC5\u987B\u662F\u5BF9\u8C61");
   invariant(typeof input.name === "string" && input.name.trim(), "\u573A\u666F\u7F3A\u5C11 name");
   invariant(Array.isArray(input.steps), `\u573A\u666F ${input.name} \u7F3A\u5C11 steps \u6570\u7EC4`);
+  assertNoReservedVars(input.vars, `\u573A\u666F ${input.name} \u7684 vars`);
   input.steps.forEach((step, index) => {
     invariant(isPlainObject(step), `\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\u5FC5\u987B\u662F\u5BF9\u8C61`);
     invariant(nonEmptyString(step.name), `\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\u7F3A\u5C11 name`);
     if (step.method !== void 0) invariant(nonEmptyString(step.method), `\u6B65\u9AA4 ${step.name} \u7684 method \u65E0\u6548`);
+    const stepContext = { scenarioName: input.name, stepNo: index + 1, stepName: step.name };
+    if (step.assertions !== void 0) {
+      invariant(Array.isArray(step.assertions), `\u6B65\u9AA4 ${step.name} \u7684 assertions \u5FC5\u987B\u662F\u6570\u7EC4`);
+      step.assertions.forEach((definition, assertionIndex) => {
+        validateAssertion(definition, { ...stepContext, assertionNo: assertionIndex + 1 });
+      });
+    }
     if (step.retryUntil !== void 0) {
       invariant(isPlainObject(step.retryUntil), `\u6B65\u9AA4 ${step.name} \u7684 retryUntil \u5FC5\u987B\u662F\u5BF9\u8C61`);
+      if (step.retryUntil.assertions !== void 0) {
+        invariant(Array.isArray(step.retryUntil.assertions), `\u6B65\u9AA4 ${step.name} \u7684 retryUntil.assertions \u5FC5\u987B\u662F\u6570\u7EC4`);
+        step.retryUntil.assertions.forEach((definition, assertionIndex) => {
+          validateAssertion(definition, { ...stepContext, assertionNo: assertionIndex + 1 });
+        });
+      }
       const maxAttempts = Number(step.retryUntil.maxAttempts ?? 10);
       const intervalMs = Number(step.retryUntil.intervalMs ?? 2e3);
       invariant(Number.isInteger(maxAttempts) && maxAttempts >= 1, `\u6B65\u9AA4 ${step.name} \u7684 maxAttempts \u5FC5\u987B\u662F\u6B63\u6574\u6570`);
       invariant(Number.isFinite(intervalMs) && intervalMs >= 0, `\u6B65\u9AA4 ${step.name} \u7684 intervalMs \u4E0D\u80FD\u4E3A\u8D1F\u6570`);
+    }
+    if (step.when !== void 0 && isPlainObject(step.when)) {
+      if (step.when.from !== "vars") {
+        throw new TypeError(
+          `\u6B65\u9AA4 ${step.name} \u7684 when \u5BF9\u8C61\u5F62\u5F0F\u53EA\u5141\u8BB8 from: "vars"\uFF08\u5F53\u524D\u4E3A ${JSON.stringify(step.when.from)}\uFF09\uFF0C\u4E0D\u5141\u8BB8\u4ECE\u54CD\u5E94 body/status/header \u53D6\u6761\u4EF6`
+        );
+      }
+      if (step.when.target !== void 0 || step.when.header !== void 0) {
+        throw new TypeError(`\u6B65\u9AA4 ${step.name} \u7684 when \u5BF9\u8C61\u5F62\u5F0F\u4E0D\u5141\u8BB8\u4F7F\u7528 target/header \u6761\u4EF6`);
+      }
+      validateAssertion(step.when, stepContext);
     }
   });
   const failurePolicy = input.failurePolicy || "stop";
@@ -65147,6 +65253,9 @@ function defineConfig(input) {
     const id = entry.id || url || `scenario-${index + 1}`;
     invariant(nonEmptyString(id), `\u7B2C ${index + 1} \u4E2A\u573A\u666F\u7F3A\u5C11 id`);
     invariant(nonEmptyString(url), `\u573A\u666F ${id} \u7F3A\u5C11 url`);
+    if (entry.manual !== void 0) {
+      invariant(typeof entry.manual === "boolean", `\u573A\u666F ${id} \u7684 manual \u5FC5\u987B\u662F\u5E03\u5C14\u503C`);
+    }
     return { ...entry, id, name: entry.name || id, url };
   });
   assertUnique(scenarios, "id", "\u573A\u666F id");
@@ -65275,9 +65384,12 @@ function createRunIdentifiers() {
 }
 function buildGeneratedVars(scenario, baseVars, environmentVariables, options = {}) {
   const identifiers = createRunIdentifiers();
+  assertNoReservedVars(scenario.vars, "\u573A\u666F vars");
+  assertNoReservedVars(baseVars, "\u914D\u7F6E/\u9009\u9879 vars");
   const vars = { ...scenario.vars || {}, ...baseVars || {}, ...identifiers };
   const verboseErrors = options.verboseErrors || process.env.SCENARIO_VERBOSE_ERRORS === "true";
   for (const [name, environmentName] of Object.entries(scenario.envVars || {})) {
+    assertNotReservedVar(name, `\u573A\u666F envVars`);
     const value = environmentVariables?.[environmentName] ?? vars[name];
     if (value === void 0 || value === null || value === "") {
       if (verboseErrors) {
@@ -65298,6 +65410,7 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables, options = 
   }
   for (const definition of scenario.generatedVars || []) {
     if (!definition?.name) continue;
+    assertNotReservedVar(definition.name, "generatedVars");
     if (definition.type === "timestamp") vars[definition.name] = Date.now();
     else if (definition.type === "uuidHex") {
       if (!globalThis.crypto?.randomUUID) throw new Error("\u5F53\u524D\u73AF\u5883\u4E0D\u652F\u6301 crypto.randomUUID");
@@ -65485,7 +65598,7 @@ function createEngine(engineOptions = {}) {
       requestTimeoutMs: runOptions.requestTimeoutMs || engineOptions.requestTimeoutMs || 3e4
     };
     if (step.when !== void 0) {
-      const shouldRun = typeof step.when === "object" ? evaluateAssertion(step.when, { status: 0, headers: {}, body: null, bodyText: "" }, runtime).passed : Boolean(resolve(step.when, runtime));
+      const shouldRun = typeof step.when === "object" ? evaluateAssertion(step.when, { status: 0, headers: {}, body: null, bodyText: "" }, runtime, { stepName: step.name }).passed : Boolean(resolve(step.when, runtime));
       if (!shouldRun) {
         return {
           name: step.name || "\u672A\u547D\u540D\u6B65\u9AA4",
@@ -65496,6 +65609,7 @@ function createEngine(engineOptions = {}) {
           passed: true,
           skipped: true,
           error: "",
+          warnings: [],
           assertions: [],
           request: null,
           response: null
@@ -65504,6 +65618,7 @@ function createEngine(engineOptions = {}) {
     }
     let lastExecution;
     let assertions = [];
+    let stepWarnings = [];
     const retry = step.retryUntil || null;
     const totalAttempts = retry ? Number(retry.maxAttempts || 10) + 1 : 1;
     const retryStartTime = now();
@@ -65521,8 +65636,10 @@ function createEngine(engineOptions = {}) {
         lastExecution = adapter ? await executeAdapter(adapter, step, runtime, options) : await executeHttp(step, runtime, options);
         runtime.lastResponse = lastExecution.response;
         runtime.lastResponseBody = lastExecution.response.body;
-        applyExtract(step, lastExecution.response, runtime);
-        assertions = buildAssertions(step, lastExecution.response, runtime);
+        const extractResult = applyExtract(step, lastExecution.response, runtime);
+        stepWarnings = extractResult.warnings;
+        assertions = buildAssertions(step, lastExecution.response, runtime, { stepName: step.name });
+        if (extractResult.failures.length) assertions.push(...extractResult.failures);
         if (assertions.every((item) => item.passed) || attempt === totalAttempts) break;
         const intervalMs = Math.max(100, Number(retry.intervalMs || 2e3));
         await delay(intervalMs, options.signal);
@@ -65536,6 +65653,7 @@ function createEngine(engineOptions = {}) {
         duration: now() - startedAt,
         passed: !failed,
         error: failed?.name || "",
+        warnings: stepWarnings,
         assertions,
         request: lastExecution.request,
         response: lastExecution.response
@@ -65549,6 +65667,7 @@ function createEngine(engineOptions = {}) {
         duration: now() - startedAt,
         passed: false,
         error: error?.message || String(error),
+        warnings: [],
         assertions: [{ name: "\u6B65\u9AA4\u6267\u884C\u6210\u529F", passed: false, actual: error?.message || String(error), expected: "\u65E0\u5F02\u5E38" }],
         request: null,
         response: null
@@ -65572,13 +65691,20 @@ function createEngine(engineOptions = {}) {
       if (!result.passed && scenario.failurePolicy !== "continue") break;
       if (runOptions.signal?.aborted) break;
     }
-    const failed = results.filter((item) => !item.passed).length;
+    const skipped = results.filter((item) => item.skipped).length;
+    const executed = results.length - skipped;
+    const failed = results.filter((item) => !item.skipped && !item.passed).length;
+    const passedSteps = results.filter((item) => !item.skipped && item.passed).length;
+    const status = failed > 0 ? "FAILED" : executed === 0 ? "SKIPPED" : "PASSED";
     return {
       scenarioName: scenario.name,
       passed: failed === 0 && results.length === scenario.steps.length,
+      status,
       planned: scenario.steps.length,
-      executed: results.length,
+      executed,
+      passedSteps,
       failed,
+      skipped,
       results,
       vars: runtime.vars
     };
@@ -65771,6 +65897,29 @@ var legacyCore = function(globalRoot) {
     }
     return bodyText;
   }
+  var ASSERTION_OPERATORS2 = ["exists", "equals", "includes", "matches", "oneOf", "notEquals", "gt", "gte", "lt", "lte"];
+  var ASSERTION_META_KEYS2 = ["name", "path", "from", "target", "header", "implicit"];
+  function validateAssertion2(def, context) {
+    var where = context || "";
+    var prefix = where ? where + "\u65AD\u8A00\u65E0\u6548" : "\u65AD\u8A00\u65E0\u6548";
+    if (!isPlainObject2(def)) throw new TypeError(prefix + ": \u65AD\u8A00\u5FC5\u987B\u662F\u5BF9\u8C61");
+    var keys = Object.keys(def);
+    var operators = keys.filter(function(key) {
+      return ASSERTION_OPERATORS2.indexOf(key) >= 0;
+    });
+    var unknown = keys.filter(function(key) {
+      return ASSERTION_OPERATORS2.indexOf(key) < 0 && ASSERTION_META_KEYS2.indexOf(key) < 0;
+    });
+    if (unknown.length) {
+      throw new TypeError(prefix + ": \u5305\u542B\u672A\u77E5\u952E " + unknown.map(function(key) {
+        return '"' + key + '"';
+      }).join(", ") + "\uFF0C\u5141\u8BB8\u7684\u5143\u6570\u636E\u952E\u4E3A " + ASSERTION_META_KEYS2.join("/") + "\uFF0C\u64CD\u4F5C\u7B26\u4E3A " + ASSERTION_OPERATORS2.join("/"));
+    }
+    if (!operators.length) {
+      throw new TypeError(prefix + ": \u5FC5\u987B\u81F3\u5C11\u5305\u542B\u4E00\u4E2A\u64CD\u4F5C\u7B26\uFF08" + ASSERTION_OPERATORS2.join("/") + "\uFF09");
+    }
+    return def;
+  }
   function assertionActual2(def, response, runtime) {
     if (def.target === "status") return response.status;
     if (def.header) return headerValue2(response.headers, def.header);
@@ -65779,7 +65928,8 @@ var legacyCore = function(globalRoot) {
     if (def.from === "bodyText") return response.bodyText;
     return def.path ? getByPath2(response.body, def.path) : response.body;
   }
-  function evaluateAssertion2(def, response, runtime) {
+  function evaluateAssertion2(def, response, runtime, context) {
+    validateAssertion2(def, context);
     var actual = assertionActual2(def, response, runtime);
     var expected;
     var passed = true;
@@ -65790,6 +65940,10 @@ var legacyCore = function(globalRoot) {
     if (def.equals !== void 0) {
       expected = resolve2(clone2(def.equals), runtime);
       passed = passed && deepEqual(actual, expected);
+    }
+    if (def.notEquals !== void 0) {
+      expected = resolve2(clone2(def.notEquals), runtime);
+      passed = passed && !deepEqual(actual, expected);
     }
     if (def.includes !== void 0) {
       expected = resolve2(def.includes, runtime);
@@ -65807,14 +65961,27 @@ var legacyCore = function(globalRoot) {
         return deepEqual(actual, item);
       });
     }
+    ["gt", "gte", "lt", "lte"].forEach(function(op) {
+      if (!Object.prototype.hasOwnProperty.call(def, op)) return;
+      expected = resolve2(def[op], runtime);
+      var comparable = typeof actual === "number" && isFinite(actual) && typeof expected === "number" && isFinite(expected);
+      if (!comparable) {
+        passed = false;
+        return;
+      }
+      if (op === "gt") passed = passed && actual > expected;
+      else if (op === "gte") passed = passed && actual >= expected;
+      else if (op === "lt") passed = passed && actual < expected;
+      else passed = passed && actual <= expected;
+    });
     return {
-      name: def.name || "\u65AD\u8A00",
+      name: def.name || def.path || "\u65AD\u8A00",
       passed: !!passed,
       actual,
       expected
     };
   }
-  function buildAssertions2(step, response, runtime) {
+  function buildAssertions2(step, response, runtime, context) {
     var defs = Array.isArray(step.assertions) ? step.assertions.slice() : [];
     if (step.status !== void 0 && !defs.some(function(item) {
       return item && item.target === "status";
@@ -65823,23 +65990,54 @@ var legacyCore = function(globalRoot) {
     } else if (step.status === void 0 && defs.length === 0) {
       defs.push({ name: "\u8FD4\u56DE HTTP 2xx", target: "status", matches: "^2\\d\\d$", implicit: true });
     }
-    return defs.map(function(def) {
-      return evaluateAssertion2(def, response, runtime);
+    return defs.map(function(def, index) {
+      var stepContext = context || {};
+      return evaluateAssertion2(def, response, runtime, {
+        stepName: stepContext.stepName,
+        assertionNo: index + 1
+      });
+    });
+  }
+  var RESERVED_VARS2 = ["runId", "runNo"];
+  function assertNotReservedVar2(name, label) {
+    if (RESERVED_VARS2.indexOf(name) >= 0) {
+      throw new Error((label || "\u53D8\u91CF") + ' "' + name + '" \u662F\u8FD0\u884C\u65F6\u81EA\u52A8\u751F\u6210\u7684\u4FDD\u7559\u53D8\u91CF\uFF0C\u7981\u6B62\u58F0\u660E\u6216\u8986\u76D6');
+    }
+  }
+  function assertNoReservedVars2(source, label) {
+    Object.keys(source || {}).forEach(function(name) {
+      assertNotReservedVar2(name, label);
     });
   }
   function applyExtract2(step, response, runtime) {
+    var warnings = [];
+    var failures = [];
     (step.extract || []).forEach(function(item) {
       if (!item || !item.name) return;
+      assertNotReservedVar2(item.name, "extract \u53D8\u91CF");
+      var source;
       if (item.target === "status") {
-        runtime.vars[item.name] = response.status;
-        return;
+        source = response.status;
+      } else if (item.header) {
+        source = headerValue2(response.headers, item.header);
+      } else {
+        source = item.path ? getByPath2(response.body, item.path) : response.body;
       }
-      if (item.header) {
-        runtime.vars[item.name] = headerValue2(response.headers, item.header);
-        return;
+      if (source === void 0) {
+        if (item.required === true) {
+          failures.push({
+            name: "\u63D0\u53D6 " + item.name + "\uFF08\u8DEF\u5F84\u4E0D\u5B58\u5728\uFF09",
+            passed: false,
+            actual: void 0,
+            expected: "\u8DEF\u5F84 " + (item.path || "(\u6574\u4E2A\u54CD\u5E94)") + " \u5B58\u5728"
+          });
+        } else {
+          warnings.push("\u63D0\u53D6\u53D8\u91CF " + item.name + "\uFF1A\u8DEF\u5F84 " + (item.path || "(\u6574\u4E2A\u54CD\u5E94)") + " \u4E0D\u5B58\u5728\uFF0C\u53D8\u91CF\u503C\u4E3A undefined\uFF08required \u672A\u5F00\u542F\uFF0C\u4E0D\u5F71\u54CD\u6267\u884C\uFF09");
+        }
       }
-      runtime.vars[item.name] = item.path ? getByPath2(response.body, item.path) : response.body;
+      runtime.vars[item.name] = source;
     });
+    return { warnings, failures };
   }
   function md53(str) {
     var s = unescape(encodeURIComponent(String(str)));
@@ -65975,9 +66173,13 @@ var legacyCore = function(globalRoot) {
     buildUrl: buildUrl2,
     parseBody: parseBody2,
     assertionActual: assertionActual2,
+    validateAssertion: validateAssertion2,
     evaluateAssertion: evaluateAssertion2,
     buildAssertions: buildAssertions2,
     applyExtract: applyExtract2,
+    RESERVED_VARS: RESERVED_VARS2,
+    assertNotReservedVar: assertNotReservedVar2,
+    assertNoReservedVars: assertNoReservedVars2,
     esc,
     fmt,
     safeJson,
@@ -66509,16 +66711,22 @@ var legacyView = function() {
       return;
     }
     var total = steps.length;
-    var passed = steps.filter(function(s) {
-      return s.passed;
+    var skipped = steps.filter(function(s) {
+      return s.skipped;
     }).length;
-    var failed = total - passed;
-    var passRate = total ? (passed / total * 100).toFixed(2) : 0;
-    var failRate = total ? (failed / total * 100).toFixed(2) : 0;
+    var executed = total - skipped;
+    var passed = steps.filter(function(s) {
+      return !s.skipped && s.passed;
+    }).length;
+    var failed = steps.filter(function(s) {
+      return !s.skipped && !s.passed;
+    }).length;
+    var passRate = executed ? (passed / executed * 100).toFixed(2) : 0;
+    var failRate = executed ? (failed / executed * 100).toFixed(2) : 0;
     var totalMs = steps.reduce(function(a, s) {
       return a + (s.duration || 0);
     }, 0);
-    var avgMs = total ? totalMs / total : 0;
+    var avgMs = executed ? totalMs / executed : 0;
     var assertTotal = steps.reduce(function(a, s) {
       return a + (s.assertions ? s.assertions.length : 0);
     }, 0);
@@ -66528,7 +66736,7 @@ var legacyView = function() {
       }).length : 0);
     }, 0);
     var iter = iterations || { run: 1, failed: 0 };
-    var chart = '<div class="flex items-center space-x-6 w-full md:w-auto"><div class="circle-chart scale-90" style="background:conic-gradient(#10b981 0% ' + passRate + "%, #f43f5e " + passRate + '% 100%)"><div class="circle-inner"><span class="text-[10px] font-medium text-slate-400 uppercase tracking-wider">\u5DF2\u5B8C\u6210</span><span class="text-xl font-bold text-slate-800 mt-0.5">' + total + '</span></div></div><div class="flex space-x-3"><div class="flex items-center space-x-2 px-2 py-1 rounded bg-emerald-50 border border-emerald-100/50"><span class="w-2 h-2 rounded-full bg-emerald-500 shadow-sm"></span><span class="text-xs font-bold text-emerald-700">' + passed + ' <span class="text-emerald-600/70 font-medium text-[10px] ml-0.5">(' + passRate + '%)</span></span></div><div class="flex items-center space-x-2 px-2 py-1 rounded bg-rose-50 border border-rose-100/50"><span class="w-2 h-2 rounded-full bg-rose-500 shadow-sm"></span><span class="text-xs font-bold text-rose-600">' + failed + ' <span class="text-rose-500/70 font-medium text-[10px] ml-0.5">(' + failRate + "%)</span></span></div></div></div>";
+    var chart = '<div class="flex items-center space-x-6 w-full md:w-auto"><div class="circle-chart scale-90" style="background:conic-gradient(#10b981 0% ' + passRate + "%, #f43f5e " + passRate + '% 100%)"><div class="circle-inner"><span class="text-[10px] font-medium text-slate-400 uppercase tracking-wider">\u5DF2\u5B8C\u6210</span><span class="text-xl font-bold text-slate-800 mt-0.5">' + total + '</span></div></div><div class="flex space-x-3"><div class="flex items-center space-x-2 px-2 py-1 rounded bg-emerald-50 border border-emerald-100/50"><span class="w-2 h-2 rounded-full bg-emerald-500 shadow-sm"></span><span class="text-xs font-bold text-emerald-700">' + passed + ' <span class="text-emerald-600/70 font-medium text-[10px] ml-0.5">(' + passRate + '%)</span></span></div><div class="flex items-center space-x-2 px-2 py-1 rounded bg-rose-50 border border-rose-100/50"><span class="w-2 h-2 rounded-full bg-rose-500 shadow-sm"></span><span class="text-xs font-bold text-rose-600">' + failed + ' <span class="text-rose-500/70 font-medium text-[10px] ml-0.5">(' + failRate + "%)</span></span></div>" + (skipped ? '<div class="flex items-center space-x-2 px-2 py-1 rounded bg-slate-100 border border-slate-200/60"><span class="w-2 h-2 rounded-full bg-slate-400 shadow-sm"></span><span class="text-xs font-bold text-slate-600">' + skipped + ' <span class="text-slate-400/80 font-medium text-[10px] ml-0.5">\u8DF3\u8FC7</span></span></div>' : "") + "</div></div>";
     var metrics = '<div class="flex space-x-8 mt-4 md:mt-0 pl-6 border-l border-slate-100"><div class="space-y-0.5"><div class="text-[10px] font-medium text-slate-400 uppercase tracking-wider">\u8017\u65F6(\u603B/\u5747)</div><div class="text-emerald-500 font-bold text-sm tracking-tight">' + fmt(totalMs) + " / " + fmt(avgMs) + '</div></div><div class="space-y-0.5"><div class="text-[10px] font-medium text-slate-400 uppercase tracking-wider">\u5FAA\u73AF(\u6267\u884C/\u5931\u8D25)</div><div class="text-xs font-medium text-slate-700"><span class="font-bold text-slate-900">' + (iter.run || 1) + '</span> <span class="mx-1 text-slate-300">/</span> <span class="text-rose-500 font-bold">' + (iter.failed || 0) + '</span></div></div><div class="space-y-0.5"><div class="text-[10px] font-medium text-slate-400 uppercase tracking-wider">\u65AD\u8A00(\u6267\u884C/\u5931\u8D25)</div><div class="text-xs font-medium text-slate-700"><span class="font-bold text-slate-900">' + assertTotal + '</span> <span class="mx-1 text-slate-300">/</span> <span class="text-rose-500 font-bold">' + assertFailed + "</span></div></div></div>";
     statsPanel.innerHTML = chart + metrics;
   }
@@ -66541,15 +66749,21 @@ var legacyView = function() {
       return;
     }
     var total = steps.length;
-    var passed = steps.filter(function(s) {
-      return s.passed;
+    var skipped = steps.filter(function(s) {
+      return s.skipped;
     }).length;
-    var failed = total - passed;
+    var passed = steps.filter(function(s) {
+      return !s.skipped && s.passed;
+    }).length;
+    var failed = steps.filter(function(s) {
+      return !s.skipped && !s.passed;
+    }).length;
     filterBar.innerHTML = `
             <div class="flex items-center space-x-1 bg-slate-200/60 p-1 rounded-md">
                 <button data-f="all" onclick="window.__R.filter('all')" class="filter-btn px-3 py-1 text-xs font-bold text-blue-700 bg-white border border-blue-200 rounded shadow-sm">\u5168\u90E8 (${total})</button>
                 <button data-f="pass" onclick="window.__R.filter('pass')" class="filter-btn px-3 py-1 text-xs font-medium text-slate-600 hover:bg-white rounded">\u6210\u529F (${passed})</button>
                 <button data-f="fail" onclick="window.__R.filter('fail')" class="filter-btn px-3 py-1 text-xs font-medium text-slate-600 hover:bg-white rounded">\u5931\u8D25 (${failed})</button>
+                ${skipped ? `<button data-f="skip" onclick="window.__R.filter('skip')" class="filter-btn px-3 py-1 text-xs font-medium text-slate-600 hover:bg-white rounded">\u8DF3\u8FC7 (${skipped})</button>` : ""}
             </div>
             <div class="flex items-center space-x-2">
                 <input type="search" placeholder="\u641C\u7D22\u6B65\u9AA4/\u5730\u5740..." oninput="window.__R.search(this.value)" class="px-2.5 py-1 rounded border border-slate-200 text-xs bg-white focus:outline-none focus:border-emerald-500 w-44">
@@ -66610,30 +66824,40 @@ var legacyView = function() {
       var bodyColor = ok ? "text-emerald-400" : "text-rose-400";
       var detailPanelCls = ok ? "details-panel px-4 bg-slate-50/30 border-t border-slate-100 text-[13px]" : "details-panel px-4 bg-white border-t border-rose-100 text-[13px] shadow-inner";
       var stepActions = executionMode === "step" ? '<span class="step-run-actions"><button type="button" data-step-action="rewind" data-step-index="' + i + '" title="\u4EC5\u56DE\u9000\u6D4B\u8BD5\u8FD0\u884C\u65F6\u4E0E\u62A5\u544A\uFF0C\u4E0D\u64A4\u9500\u5DF2\u53D1\u51FA\u7684\u4E1A\u52A1\u8BF7\u6C42">\u56DE\u9000</button><button type="button" data-step-action="rerun" data-step-index="' + i + '" title="\u4ECE\u672C\u6B65\u9AA4\u6267\u884C\u524D\u7684\u53D8\u91CF\u5FEB\u7167\u91CD\u65B0\u6267\u884C">\u91CD\u8DD1</button></span>' : "";
-      return '<li class="' + bgCls + ' group transition-colors" data-passed="' + ok + '" data-search="' + esc((s.name + " " + s.method + " " + s.path).toLowerCase()) + '"><div class="px-4 py-2.5 flex items-center justify-between cursor-pointer" onclick="window.__R.toggle(this, event)"><div class="flex items-center space-x-3 w-[70%] lg:w-[80%]"><div class="flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 text-[11px] font-bold shadow-sm ' + seqCls + '">' + seqNum + '</div><span class="select-text text-sm ' + nameCls + ' font-semibold truncate transition-colors" title="' + esc(s.name) + '">' + esc(s.name) + '</span><div class="hidden sm:flex items-center space-x-1.5 bg-slate-50 px-2 py-0.5 rounded border border-slate-100 flex-shrink-0 max-w-[50%]"><span class="text-[10px] font-bold ' + methodColor + ' uppercase tracking-wider">' + s.method + '</span><span class="text-slate-300">|</span><span class="select-text text-[12px] text-slate-500 font-mono truncate" title="' + esc(s.path) + '">' + esc(s.path) + '</span></div></div><div class="flex items-center space-x-4 flex-shrink-0"><button type="button" data-adhoc-step="' + i + '" class="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-bold text-slate-600 hover:border-emerald-300 hover:text-emerald-700">\u8C03\u8BD5</button>' + stepActions + '<span class="text-[12px] font-bold font-mono ' + statusCls + ' px-1.5 py-0.5 rounded border">' + s.status + '</span><span class="' + timeCls + ' text-[12px] font-mono w-16 text-right">' + fmt(s.duration) + '</span><svg class="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></div></div><div class="' + detailPanelCls + '"><div class="sm:hidden mb-3 pb-3 border-b border-slate-200"><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1">\u63A5\u53E3\u5730\u5740</div><div class="flex items-center space-x-2"><span class="text-xs font-bold ' + methodColor + '">' + s.method + '</span><span class="text-xs font-mono break-all">' + esc(s.path) + "</span></div></div>" + errorHtml + '<div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-0 md:divide-x divide-slate-200 py-3"><div class="md:pr-6 space-y-3">' + (reqHeaders ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 bg-slate-300 mr-2 rounded-full"></div>\u8BF7\u6C42\u5934</div><pre class="bg-slate-800 p-2.5 rounded text-slate-300 overflow-x-auto font-mono leading-tight shadow-inner">' + reqHeaders + "</pre></div>" : "") + (reqBody ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 bg-emerald-400 mr-2 rounded-full"></div>\u8BF7\u6C42\u4F53</div><pre class="bg-slate-800 p-2.5 rounded ' + bodyColor + ' overflow-x-auto font-mono leading-tight shadow-inner">' + reqBody + "</pre></div>" : "") + '</div><div class="md:pl-6 space-y-3">' + (resHeaders ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 bg-slate-300 mr-2 rounded-full"></div>\u54CD\u5E94\u5934</div><pre class="bg-slate-800 p-2.5 rounded text-slate-300 overflow-x-auto font-mono leading-tight shadow-inner">' + resHeaders + "</pre></div>" : "") + (resBody ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 ' + (ok ? "bg-emerald-400" : "bg-rose-400") + ' mr-2 rounded-full"></div>\u54CD\u5E94\u4F53</div><pre class="bg-slate-800 p-2.5 rounded ' + bodyColor + ' overflow-x-auto font-mono leading-tight shadow-inner">' + resBody + "</pre></div>" : "") + "</div></div>" + assertHtml + "</div></li>";
+      return '<li class="' + bgCls + ' group transition-colors" data-passed="' + ok + '" data-skipped="' + skipped + '" data-search="' + esc((s.name + " " + s.method + " " + s.path).toLowerCase()) + '"><div class="px-4 py-2.5 flex items-center justify-between cursor-pointer" onclick="window.__R.toggle(this, event)"><div class="flex items-center space-x-3 w-[70%] lg:w-[80%]"><div class="flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 text-[11px] font-bold shadow-sm ' + seqCls + '">' + seqNum + '</div><span class="select-text text-sm ' + nameCls + ' font-semibold truncate transition-colors" title="' + esc(s.name) + '">' + esc(s.name) + '</span><div class="hidden sm:flex items-center space-x-1.5 bg-slate-50 px-2 py-0.5 rounded border border-slate-100 flex-shrink-0 max-w-[50%]"><span class="text-[10px] font-bold ' + methodColor + ' uppercase tracking-wider">' + s.method + '</span><span class="text-slate-300">|</span><span class="select-text text-[12px] text-slate-500 font-mono truncate" title="' + esc(s.path) + '">' + esc(s.path) + '</span></div></div><div class="flex items-center space-x-4 flex-shrink-0"><button type="button" data-adhoc-step="' + i + '" class="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-bold text-slate-600 hover:border-emerald-300 hover:text-emerald-700">\u8C03\u8BD5</button>' + stepActions + '<span class="text-[12px] font-bold font-mono ' + statusCls + ' px-1.5 py-0.5 rounded border">' + s.status + '</span><span class="' + timeCls + ' text-[12px] font-mono w-16 text-right">' + fmt(s.duration) + '</span><svg class="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></div></div><div class="' + detailPanelCls + '"><div class="sm:hidden mb-3 pb-3 border-b border-slate-200"><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1">\u63A5\u53E3\u5730\u5740</div><div class="flex items-center space-x-2"><span class="text-xs font-bold ' + methodColor + '">' + s.method + '</span><span class="text-xs font-mono break-all">' + esc(s.path) + "</span></div></div>" + errorHtml + '<div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-0 md:divide-x divide-slate-200 py-3"><div class="md:pr-6 space-y-3">' + (reqHeaders ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 bg-slate-300 mr-2 rounded-full"></div>\u8BF7\u6C42\u5934</div><pre class="bg-slate-800 p-2.5 rounded text-slate-300 overflow-x-auto font-mono leading-tight shadow-inner">' + reqHeaders + "</pre></div>" : "") + (reqBody ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 bg-emerald-400 mr-2 rounded-full"></div>\u8BF7\u6C42\u4F53</div><pre class="bg-slate-800 p-2.5 rounded ' + bodyColor + ' overflow-x-auto font-mono leading-tight shadow-inner">' + reqBody + "</pre></div>" : "") + '</div><div class="md:pl-6 space-y-3">' + (resHeaders ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 bg-slate-300 mr-2 rounded-full"></div>\u54CD\u5E94\u5934</div><pre class="bg-slate-800 p-2.5 rounded text-slate-300 overflow-x-auto font-mono leading-tight shadow-inner">' + resHeaders + "</pre></div>" : "") + (resBody ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 ' + (ok ? "bg-emerald-400" : "bg-rose-400") + ' mr-2 rounded-full"></div>\u54CD\u5E94\u4F53</div><pre class="bg-slate-800 p-2.5 rounded ' + bodyColor + ' overflow-x-auto font-mono leading-tight shadow-inner">' + resBody + "</pre></div>" : "") + "</div></div>" + assertHtml + "</div></li>";
     }).join("") + renderPendingSteps(scenarioSteps, steps.length);
   }
   function buildOverallReport(steps, scenario, scenarioFile, executionMode, environment) {
     steps = steps || [];
     var total = steps.length;
-    var passed = steps.filter(function(item) {
-      return item.passed;
+    var skipped = steps.filter(function(item) {
+      return item.skipped;
     }).length;
-    var failed = total - passed;
+    var executed = total - skipped;
+    var passed = steps.filter(function(item) {
+      return !item.skipped && item.passed;
+    }).length;
+    var failed = steps.filter(function(item) {
+      return !item.skipped && !item.passed;
+    }).length;
     var duration = steps.reduce(function(sum, item) {
       return sum + (item.duration || 0);
     }, 0);
+    var status = failed > 0 ? "FAILED" : executed === 0 ? "SKIPPED" : "PASSED";
     return {
       title: scenario && scenario.name || scenarioFile || "\u6D4B\u8BD5\u62A5\u544A",
       scenarioFile: scenarioFile || "",
       executionMode: executionMode || "full",
       environment: environment ? environment.name || environment.key : "\u9ED8\u8BA4",
+      status,
       summary: {
         totalSteps: scenario && scenario.steps && scenario.steps.length || total,
-        executedSteps: total,
+        plannedSteps: scenario && scenario.steps && scenario.steps.length || total,
+        executedSteps: executed,
         passedSteps: passed,
         failedSteps: failed,
-        passRate: total ? (passed / total * 100).toFixed(2) + "%" : "0.00%",
+        skippedSteps: skipped,
+        passRate: executed ? (passed / executed * 100).toFixed(2) + "%" : "0.00%",
         totalDurationMs: duration,
         totalDurationFmt: fmt(duration)
       },
@@ -66645,9 +66869,11 @@ var legacyView = function() {
           path: item.path,
           status: item.status,
           passed: item.passed,
+          skipped: Boolean(item.skipped),
           durationMs: item.duration,
           durationFmt: fmt(item.duration),
           error: item.error || "",
+          warnings: item.warnings || [],
           request: item.request,
           response: item.response,
           assertions: item.assertions || []
@@ -66664,18 +66890,23 @@ var legacyView = function() {
     lines.push("- **\u573A\u666F\u6587\u4EF6**: `" + (report.scenarioFile || "-") + "`");
     lines.push("- **\u6D4B\u8BD5\u73AF\u5883**: " + (report.environment || "-"));
     lines.push("- **\u6267\u884C\u6A21\u5F0F**: " + (report.executionMode || "-"));
-    lines.push("- **\u7ED3\u679C**: " + (summary.failedSteps ? "\u274C \u5B58\u5728\u5931\u8D25" : "\u2705 \u5168\u90E8\u901A\u8FC7") + " (" + summary.passedSteps + "/" + summary.executedSteps + ")");
+    var resultText = summary.failedSteps ? "\u274C \u5B58\u5728\u5931\u8D25" : summary.skippedSteps && summary.executedSteps === 0 ? "\u23ED\uFE0F \u5168\u90E8\u8DF3\u8FC7" : "\u2705 \u5168\u90E8\u901A\u8FC7";
+    lines.push("- **\u7ED3\u679C**: " + resultText + " (" + summary.passedSteps + "/" + summary.executedSteps + ")");
     lines.push("- **\u901A\u8FC7\u7387**: " + summary.passRate);
+    lines.push("- **\u7EDF\u8BA1**: \u901A\u8FC7 " + summary.passedSteps + " / \u5931\u8D25 " + summary.failedSteps + " / \u8DF3\u8FC7 " + summary.skippedSteps + " / \u6267\u884C " + summary.executedSteps + " / \u8BA1\u5212 " + summary.plannedSteps);
     lines.push("- **\u603B\u8017\u65F6**: " + summary.totalDurationFmt);
     lines.push("");
     lines.push("## \u6B65\u9AA4\u660E\u7EC6");
     lines.push("");
     (report.steps || []).forEach(function(step) {
-      var icon = step.passed ? "\u2705" : "\u274C";
+      var icon = step.skipped ? "\u23ED\uFE0F" : step.passed ? "\u2705" : "\u274C";
       lines.push("### " + icon + " \u6B65\u9AA4 " + step.stepNo + ": " + step.name);
       lines.push("- **\u8BF7\u6C42**: `" + step.method + " " + step.path + "`");
       lines.push("- **\u72B6\u6001**: " + step.status + " | **\u8017\u65F6**: " + step.durationFmt);
       if (step.error) lines.push("- **\u5931\u8D25\u539F\u56E0**: " + step.error);
+      (step.warnings || []).forEach(function(warning) {
+        lines.push("- **\u8B66\u544A**: " + warning);
+      });
       if (step.assertions && step.assertions.length) {
         lines.push("- **\u65AD\u8A00\u7ED3\u679C**:");
         step.assertions.forEach(function(a) {
@@ -66708,9 +66939,10 @@ var legacyView = function() {
     var summary = report.summary;
     var pending = summary.totalSteps - summary.executedSteps;
     var hasFailure = summary.failedSteps > 0;
+    var allSkipped = !hasFailure && summary.executedSteps === 0 && summary.skippedSteps > 0;
     var completed = pending <= 0;
-    var statusClass = hasFailure ? "report-status--failed" : completed ? "report-status--passed" : "report-status--running";
-    var statusText = hasFailure ? "\u5B58\u5728\u5931\u8D25" : completed ? "\u5168\u90E8\u901A\u8FC7" : "\u6267\u884C\u4E2D";
+    var statusClass = hasFailure ? "report-status--failed" : allSkipped ? "report-status--skipped" : completed ? "report-status--passed" : "report-status--running";
+    var statusText = hasFailure ? "\u5B58\u5728\u5931\u8D25" : allSkipped ? "\u5168\u90E8\u8DF3\u8FC7" : completed ? "\u5168\u90E8\u901A\u8FC7" : "\u6267\u884C\u4E2D";
     var modeText = report.executionMode === "step" ? "\u5355\u6B65\u6267\u884C" : "\u5168\u91CF\u6267\u884C";
     var progressText = summary.executedSteps + " / " + summary.totalSteps;
     var reportSteps = hasFailure ? report.steps.filter(function(step) {
@@ -66728,8 +66960,8 @@ var legacyView = function() {
       var responseHtml = '<details class="report-step__response"><summary>\u5B8C\u6574\u54CD\u5E94</summary><div class="report-step__response-section">\u54CD\u5E94\u5934</div><pre>' + esc(formatReportPayload(response.headers || {})) + '</pre><div class="report-step__response-section">\u54CD\u5E94\u4F53</div><pre>' + esc(formatReportPayload(responseBody)) + "</pre></details>";
       return '<div class="report-step ' + (step.passed ? "report-step--passed" : "report-step--failed") + '"><div class="report-step__marker" aria-hidden="true">' + (step.passed ? "\u2713" : "!") + '</div><div class="report-step__content"><div class="report-step__heading"><span class="report-step__number">\u6B65\u9AA4 ' + step.stepNo + '</span><span class="report-step__name" title="' + esc(step.name || "") + '">' + esc(step.name || "\u672A\u547D\u540D\u6B65\u9AA4") + '</span></div><div class="report-step__request"><span class="report-method ' + methodClass + '">' + esc(method) + '</span><span class="report-step__path" title="' + esc(step.path || "") + '">' + esc(step.path || "-") + "</span></div>" + (issue ? '<div class="report-step__issue">' + esc(issue) + "</div>" : "") + responseHtml + '</div><div class="report-step__result"><span class="report-step__code">' + esc(String(step.status || "-")) + '</span><span class="report-step__duration">' + esc(step.durationFmt || "-") + "</span></div></div>";
     }).join("");
-    var diagnosisHtml = hasFailure ? '<div class="report-steps"><div class="report-steps__title">\u5931\u8D25\u6B65\u9AA4</div>' + stepHtml + "</div>" : '<div class="report-healthy"><div class="report-healthy__title">' + (completed ? "\u6240\u6709\u6B65\u9AA4\u5747\u5DF2\u901A\u8FC7" : "\u5F53\u524D\u5DF2\u6267\u884C\u6B65\u9AA4\u5747\u901A\u8FC7") + '</div><div class="report-healthy__hint">\u8BE6\u7EC6\u8BF7\u6C42\u4E0E\u54CD\u5E94\u8BF7\u5728\u5DE6\u4FA7\u6B65\u9AA4\u5217\u8868\u67E5\u770B\uFF1B\u5B8C\u6574\u62A5\u544A\u53EF\u901A\u8FC7\u9876\u90E8\u6309\u94AE\u590D\u5236\u3002</div></div>';
-    node.innerHTML = '<div class="report-content"><div class="report-overview"><div class="report-overview__top"><div><div class="report-overview__eyebrow">\u5F53\u524D\u6267\u884C\u6982\u89C8</div><div class="report-overview__title">' + esc(report.title || "\u6D4B\u8BD5\u62A5\u544A") + '</div></div><span class="report-status ' + statusClass + '">' + statusText + '</span></div><div class="report-overview__meta"><span>' + esc(report.environment || "\u9ED8\u8BA4\u73AF\u5883") + "</span><span>" + modeText + "</span><span>\u5DF2\u6267\u884C " + progressText + '</span></div></div><div class="report-metrics"><div class="report-metric"><span class="report-metric__label">\u901A\u8FC7</span><strong class="report-metric__value report-metric__value--passed">' + summary.passedSteps + '</strong></div><div class="report-metric"><span class="report-metric__label">\u5931\u8D25</span><strong class="report-metric__value ' + (hasFailure ? "report-metric__value--failed" : "") + '">' + summary.failedSteps + '</strong></div><div class="report-metric"><span class="report-metric__label">\u603B\u8017\u65F6</span><strong class="report-metric__value report-metric__duration">' + esc(summary.totalDurationFmt) + '</strong></div></div><div class="report-progress"><div class="report-progress__labels"><span>\u6267\u884C\u8FDB\u5EA6</span><strong>' + progressText + " \xB7 " + esc(summary.passRate) + '</strong></div><div class="report-progress__track' + (hasFailure ? " report-progress__track--failed" : "") + '"><span style="width:' + (summary.totalSteps ? summary.executedSteps / summary.totalSteps * 100 : 0) + '%"></span></div></div>' + diagnosisHtml + "</div>";
+    var diagnosisHtml = hasFailure ? '<div class="report-steps"><div class="report-steps__title">\u5931\u8D25\u6B65\u9AA4</div>' + stepHtml + "</div>" : allSkipped ? '<div class="report-healthy"><div class="report-healthy__title">\u6240\u6709\u6B65\u9AA4\u5747\u56E0\u6761\u4EF6\u4E0D\u6EE1\u8DB3\u800C\u8DF3\u8FC7</div><div class="report-healthy__hint">\u672C\u6B21\u6267\u884C\u672A\u53D1\u8D77\u4EFB\u4F55\u8BF7\u6C42\uFF0C\u8BE6\u7EC6\u8DF3\u8FC7\u539F\u56E0\u8BF7\u5728\u5DE6\u4FA7\u6B65\u9AA4\u5217\u8868\u67E5\u770B\u3002</div></div>' : '<div class="report-healthy"><div class="report-healthy__title">' + (completed ? "\u6240\u6709\u6B65\u9AA4\u5747\u5DF2\u901A\u8FC7" : "\u5F53\u524D\u5DF2\u6267\u884C\u6B65\u9AA4\u5747\u901A\u8FC7") + '</div><div class="report-healthy__hint">\u8BE6\u7EC6\u8BF7\u6C42\u4E0E\u54CD\u5E94\u8BF7\u5728\u5DE6\u4FA7\u6B65\u9AA4\u5217\u8868\u67E5\u770B\uFF1B\u5B8C\u6574\u62A5\u544A\u53EF\u901A\u8FC7\u9876\u90E8\u6309\u94AE\u590D\u5236\u3002</div></div>';
+    node.innerHTML = '<div class="report-content"><div class="report-overview"><div class="report-overview__top"><div><div class="report-overview__eyebrow">\u5F53\u524D\u6267\u884C\u6982\u89C8</div><div class="report-overview__title">' + esc(report.title || "\u6D4B\u8BD5\u62A5\u544A") + '</div></div><span class="report-status ' + statusClass + '">' + statusText + '</span></div><div class="report-overview__meta"><span>' + esc(report.environment || "\u9ED8\u8BA4\u73AF\u5883") + "</span><span>" + modeText + "</span><span>\u5DF2\u6267\u884C " + progressText + '</span></div></div><div class="report-metrics"><div class="report-metric"><span class="report-metric__label">\u901A\u8FC7</span><strong class="report-metric__value report-metric__value--passed">' + summary.passedSteps + '</strong></div><div class="report-metric"><span class="report-metric__label">\u5931\u8D25</span><strong class="report-metric__value ' + (hasFailure ? "report-metric__value--failed" : "") + '">' + summary.failedSteps + "</strong></div>" + (summary.skippedSteps > 0 ? '<div class="report-metric"><span class="report-metric__label">\u8DF3\u8FC7</span><strong class="report-metric__value">' + summary.skippedSteps + "</strong></div>" : "") + '<div class="report-metric"><span class="report-metric__label">\u603B\u8017\u65F6</span><strong class="report-metric__value report-metric__duration">' + esc(summary.totalDurationFmt) + '</strong></div></div><div class="report-progress"><div class="report-progress__labels"><span>\u6267\u884C\u8FDB\u5EA6</span><strong>' + progressText + " \xB7 " + esc(summary.passRate) + '</strong></div><div class="report-progress__track' + (hasFailure ? " report-progress__track--failed" : "") + '"><span style="width:' + (summary.totalSteps ? summary.executedSteps / summary.totalSteps * 100 : 0) + '%"></span></div></div>' + diagnosisHtml + "</div>";
     return report;
   }
   return {
@@ -67062,6 +67294,8 @@ function createLegacyRuntime(options) {
   var evaluateAssertion2 = core.evaluateAssertion;
   var buildAssertions2 = core.buildAssertions;
   var applyExtract2 = core.applyExtract;
+  var assertNotReservedVar2 = core.assertNotReservedVar;
+  var assertNoReservedVars2 = core.assertNoReservedVars;
   var md53 = core.md5;
   var esc = core.esc;
   var fmt = core.fmt;
@@ -67123,11 +67357,14 @@ function createLegacyRuntime(options) {
         if (type === "all") activeCls = "font-bold text-blue-700 bg-white border border-blue-200 rounded shadow-sm";
         else if (type === "pass") activeCls = "font-bold text-emerald-700 bg-white border border-emerald-200 rounded shadow-sm";
         else if (type === "fail") activeCls = "font-bold text-rose-700 bg-white border border-rose-200 rounded shadow-sm";
+        else if (type === "skip") activeCls = "font-bold text-slate-700 bg-white border border-slate-300 rounded shadow-sm";
         b.className = "filter-btn px-3 py-1 text-xs " + (active ? activeCls : "font-medium text-slate-600 hover:bg-white rounded");
       });
       document.querySelectorAll("#stepsList li").forEach(function(li) {
-        var status = li.dataset.passed;
-        li.style.display = type === "all" || type === "pass" && status === "true" || type === "fail" && status === "false" ? "" : "none";
+        var passed = li.dataset.passed === "true";
+        var skipped = li.dataset.skipped === "true";
+        var visible = type === "all" || type === "pass" && passed && !skipped || type === "fail" && !passed || type === "skip" && skipped;
+        li.style.display = visible ? "" : "none";
       });
     },
     search: function(q) {
@@ -67367,9 +67604,13 @@ function createLegacyRuntime(options) {
       }).join("\u3001") + "\u3002\u8BF7\u5728\u201C\u914D\u7F6E\u53C2\u6570 \u2192 \u5F53\u524D\u573A\u666F\u51ED\u636E\u201D\u4E2D\u586B\u5199\u5E76\u4FDD\u5B58\u3002");
     }
     var identifiers = createRunIdentifiers2();
+    assertNoReservedVars2(scenario.vars, "\u573A\u666F vars");
+    assertNoReservedVars2(cfg.vars, "\u914D\u7F6E vars");
+    assertNoReservedVars2(scenarioVars, "\u9875\u9762\u573A\u666F\u53D8\u91CF");
     var vars = Object.assign({}, scenario.vars || {}, cfg.vars || {}, scenarioVars, identifiers);
     (scenario.generatedVars || []).forEach(function(def) {
       if (!def || !def.name) return;
+      assertNotReservedVar2(def.name, "generatedVars");
       if (def.type === "timestamp") {
         vars[def.name] = Date.now();
         return;
@@ -67460,7 +67701,7 @@ function createLegacyRuntime(options) {
   }
   async function executeStep(step, runtime, cfg) {
     if (step.when !== void 0) {
-      var shouldRun = typeof step.when === "object" ? evaluateAssertion2(step.when, { status: 0, headers: {}, body: null, bodyText: "" }, runtime).passed : Boolean(resolve2(step.when, runtime));
+      var shouldRun = typeof step.when === "object" ? evaluateAssertion2(step.when, { status: 0, headers: {}, body: null, bodyText: "" }, runtime, { stepName: step.name }).passed : Boolean(resolve2(step.when, runtime));
       if (!shouldRun) {
         return {
           name: step.name || "\u672A\u547D\u540D\u6B65\u9AA4",
@@ -67471,6 +67712,7 @@ function createLegacyRuntime(options) {
           passed: true,
           skipped: true,
           error: "",
+          warnings: [],
           assertions: [],
           request: null,
           response: null
@@ -67558,10 +67800,13 @@ function createLegacyRuntime(options) {
       var responseData = await sendRequest();
       var headerObj = responseData.headers;
       var body = responseData.body;
+      var stepWarnings = [];
       runtime.lastResponse = responseData;
       runtime.lastResponseBody = body;
-      applyExtract2(step, responseData, runtime);
-      var assertions = buildAssertions2(step, responseData, runtime);
+      var extractResult = applyExtract2(step, responseData, runtime);
+      stepWarnings = extractResult.warnings;
+      var assertions = buildAssertions2(step, responseData, runtime, { stepName: step.name });
+      if (extractResult.failures.length) assertions.push.apply(assertions, extractResult.failures);
       var failedAssertion = assertions.find(function(item) {
         return !item.passed;
       });
@@ -67579,8 +67824,10 @@ function createLegacyRuntime(options) {
           body = responseData.body;
           runtime.lastResponse = responseData;
           runtime.lastResponseBody = body;
-          applyExtract2(step, responseData, runtime);
-          assertions = buildAssertions2(step, responseData, runtime);
+          extractResult = applyExtract2(step, responseData, runtime);
+          stepWarnings = extractResult.warnings;
+          assertions = buildAssertions2(step, responseData, runtime, { stepName: step.name });
+          if (extractResult.failures.length) assertions.push.apply(assertions, extractResult.failures);
           failedAssertion = assertions.find(function(item) {
             return !item.passed;
           });
@@ -67594,6 +67841,7 @@ function createLegacyRuntime(options) {
               attempts: requestAttempts,
               passed: true,
               error: "",
+              warnings: stepWarnings,
               request: { headers, body: bodyData },
               response: { headers: headerObj, body, bodyText: responseData.bodyText },
               assertions
@@ -67610,6 +67858,7 @@ function createLegacyRuntime(options) {
         attempts: requestAttempts,
         passed: !failedAssertion,
         error: failedAssertion ? failedAssertion.name : "",
+        warnings: stepWarnings,
         request: { headers, body: bodyData },
         response: { headers: headerObj, body, bodyText: responseData.bodyText },
         assertions
@@ -67629,6 +67878,7 @@ function createLegacyRuntime(options) {
         cancelled,
         timedOut,
         error: errorMessage,
+        warnings: [],
         request: { headers, body: bodyData },
         response: { headers: {}, body: null },
         assertions: [{ name: cancelled ? "\u6267\u884C\u672A\u53D6\u6D88" : timedOut ? "\u8BF7\u6C42\u672A\u8D85\u65F6" : "\u8BF7\u6C42\u6267\u884C\u6210\u529F", passed: false, actual: errorMessage, expected: "\u65E0\u5F02\u5E38" }]
@@ -67753,10 +68003,14 @@ function createLegacyRuntime(options) {
       renderReportPanel();
       return;
     }
-    var failed = state.steps.filter(function(item) {
-      return !item.passed;
+    var skipped = state.steps.filter(function(item) {
+      return item.skipped;
     }).length;
-    uiView.setRunState(failed ? "failed" : "success", failed ? "\u5B58\u5728\u5931\u8D25" : "\u6267\u884C\u6210\u529F");
+    var failed = state.steps.filter(function(item) {
+      return !item.skipped && !item.passed;
+    }).length;
+    var executed = state.steps.length - skipped;
+    uiView.setRunState(failed ? "failed" : executed === 0 ? "skipped" : "success", failed ? "\u5B58\u5728\u5931\u8D25" : executed === 0 ? "\u5168\u90E8\u8DF3\u8FC7" : "\u6267\u884C\u6210\u529F");
     renderReportPanel();
   }
   async function runScenario2() {
@@ -68340,7 +68594,7 @@ function createLegacyRuntime(options) {
 }
 
 // src/browser/tailwind.generated.js
-var TAILWIND_CSS = '*, ::before, ::after {\n  --tw-border-spacing-x: 0;\n  --tw-border-spacing-y: 0;\n  --tw-translate-x: 0;\n  --tw-translate-y: 0;\n  --tw-rotate: 0;\n  --tw-skew-x: 0;\n  --tw-skew-y: 0;\n  --tw-scale-x: 1;\n  --tw-scale-y: 1;\n  --tw-pan-x:  ;\n  --tw-pan-y:  ;\n  --tw-pinch-zoom:  ;\n  --tw-scroll-snap-strictness: proximity;\n  --tw-gradient-from-position:  ;\n  --tw-gradient-via-position:  ;\n  --tw-gradient-to-position:  ;\n  --tw-ordinal:  ;\n  --tw-slashed-zero:  ;\n  --tw-numeric-figure:  ;\n  --tw-numeric-spacing:  ;\n  --tw-numeric-fraction:  ;\n  --tw-ring-inset:  ;\n  --tw-ring-offset-width: 0px;\n  --tw-ring-offset-color: #fff;\n  --tw-ring-color: rgb(59 130 246 / 0.5);\n  --tw-ring-offset-shadow: 0 0 #0000;\n  --tw-ring-shadow: 0 0 #0000;\n  --tw-shadow: 0 0 #0000;\n  --tw-shadow-colored: 0 0 #0000;\n  --tw-blur:  ;\n  --tw-brightness:  ;\n  --tw-contrast:  ;\n  --tw-grayscale:  ;\n  --tw-hue-rotate:  ;\n  --tw-invert:  ;\n  --tw-saturate:  ;\n  --tw-sepia:  ;\n  --tw-drop-shadow:  ;\n  --tw-backdrop-blur:  ;\n  --tw-backdrop-brightness:  ;\n  --tw-backdrop-contrast:  ;\n  --tw-backdrop-grayscale:  ;\n  --tw-backdrop-hue-rotate:  ;\n  --tw-backdrop-invert:  ;\n  --tw-backdrop-opacity:  ;\n  --tw-backdrop-saturate:  ;\n  --tw-backdrop-sepia:  ;\n  --tw-contain-size:  ;\n  --tw-contain-layout:  ;\n  --tw-contain-paint:  ;\n  --tw-contain-style:  ;\n}\n\n::backdrop {\n  --tw-border-spacing-x: 0;\n  --tw-border-spacing-y: 0;\n  --tw-translate-x: 0;\n  --tw-translate-y: 0;\n  --tw-rotate: 0;\n  --tw-skew-x: 0;\n  --tw-skew-y: 0;\n  --tw-scale-x: 1;\n  --tw-scale-y: 1;\n  --tw-pan-x:  ;\n  --tw-pan-y:  ;\n  --tw-pinch-zoom:  ;\n  --tw-scroll-snap-strictness: proximity;\n  --tw-gradient-from-position:  ;\n  --tw-gradient-via-position:  ;\n  --tw-gradient-to-position:  ;\n  --tw-ordinal:  ;\n  --tw-slashed-zero:  ;\n  --tw-numeric-figure:  ;\n  --tw-numeric-spacing:  ;\n  --tw-numeric-fraction:  ;\n  --tw-ring-inset:  ;\n  --tw-ring-offset-width: 0px;\n  --tw-ring-offset-color: #fff;\n  --tw-ring-color: rgb(59 130 246 / 0.5);\n  --tw-ring-offset-shadow: 0 0 #0000;\n  --tw-ring-shadow: 0 0 #0000;\n  --tw-shadow: 0 0 #0000;\n  --tw-shadow-colored: 0 0 #0000;\n  --tw-blur:  ;\n  --tw-brightness:  ;\n  --tw-contrast:  ;\n  --tw-grayscale:  ;\n  --tw-hue-rotate:  ;\n  --tw-invert:  ;\n  --tw-saturate:  ;\n  --tw-sepia:  ;\n  --tw-drop-shadow:  ;\n  --tw-backdrop-blur:  ;\n  --tw-backdrop-brightness:  ;\n  --tw-backdrop-contrast:  ;\n  --tw-backdrop-grayscale:  ;\n  --tw-backdrop-hue-rotate:  ;\n  --tw-backdrop-invert:  ;\n  --tw-backdrop-opacity:  ;\n  --tw-backdrop-saturate:  ;\n  --tw-backdrop-sepia:  ;\n  --tw-contain-size:  ;\n  --tw-contain-layout:  ;\n  --tw-contain-paint:  ;\n  --tw-contain-style:  ;\n}/*\n! tailwindcss v3.4.17 | MIT License | https://tailwindcss.com\n*//*\n1. Prevent padding and border from affecting element width. (https://github.com/mozdevs/cssremedy/issues/4)\n2. Allow adding a border to an element by just adding a border-width. (https://github.com/tailwindcss/tailwindcss/pull/116)\n*/\n\n*,\n::before,\n::after {\n  box-sizing: border-box; /* 1 */\n  border-width: 0; /* 2 */\n  border-style: solid; /* 2 */\n  border-color: #e5e7eb; /* 2 */\n}\n\n::before,\n::after {\n  --tw-content: \'\';\n}\n\n/*\n1. Use a consistent sensible line-height in all browsers.\n2. Prevent adjustments of font size after orientation changes in iOS.\n3. Use a more readable tab size.\n4. Use the user\'s configured `sans` font-family by default.\n5. Use the user\'s configured `sans` font-feature-settings by default.\n6. Use the user\'s configured `sans` font-variation-settings by default.\n7. Disable tap highlights on iOS\n*/\n\nhtml,\n:host {\n  line-height: 1.5; /* 1 */\n  -webkit-text-size-adjust: 100%; /* 2 */\n  -moz-tab-size: 4; /* 3 */\n  tab-size: 4; /* 3 */\n  font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"; /* 4 */\n  font-feature-settings: normal; /* 5 */\n  font-variation-settings: normal; /* 6 */\n  -webkit-tap-highlight-color: transparent; /* 7 */\n}\n\n/*\n1. Remove the margin in all browsers.\n2. Inherit line-height from `html` so users can set them as a class directly on the `html` element.\n*/\n\nbody {\n  margin: 0; /* 1 */\n  line-height: inherit; /* 2 */\n}\n\n/*\n1. Add the correct height in Firefox.\n2. Correct the inheritance of border color in Firefox. (https://bugzilla.mozilla.org/show_bug.cgi?id=190655)\n3. Ensure horizontal rules are visible by default.\n*/\n\nhr {\n  height: 0; /* 1 */\n  color: inherit; /* 2 */\n  border-top-width: 1px; /* 3 */\n}\n\n/*\nAdd the correct text decoration in Chrome, Edge, and Safari.\n*/\n\nabbr:where([title]) {\n  text-decoration: underline dotted;\n}\n\n/*\nRemove the default font size and weight for headings.\n*/\n\nh1,\nh2,\nh3,\nh4,\nh5,\nh6 {\n  font-size: inherit;\n  font-weight: inherit;\n}\n\n/*\nReset links to optimize for opt-in styling instead of opt-out.\n*/\n\na {\n  color: inherit;\n  text-decoration: inherit;\n}\n\n/*\nAdd the correct font weight in Edge and Safari.\n*/\n\nb,\nstrong {\n  font-weight: bolder;\n}\n\n/*\n1. Use the user\'s configured `mono` font-family by default.\n2. Use the user\'s configured `mono` font-feature-settings by default.\n3. Use the user\'s configured `mono` font-variation-settings by default.\n4. Correct the odd `em` font sizing in all browsers.\n*/\n\ncode,\nkbd,\nsamp,\npre {\n  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; /* 1 */\n  font-feature-settings: normal; /* 2 */\n  font-variation-settings: normal; /* 3 */\n  font-size: 1em; /* 4 */\n}\n\n/*\nAdd the correct font size in all browsers.\n*/\n\nsmall {\n  font-size: 80%;\n}\n\n/*\nPrevent `sub` and `sup` elements from affecting the line height in all browsers.\n*/\n\nsub,\nsup {\n  font-size: 75%;\n  line-height: 0;\n  position: relative;\n  vertical-align: baseline;\n}\n\nsub {\n  bottom: -0.25em;\n}\n\nsup {\n  top: -0.5em;\n}\n\n/*\n1. Remove text indentation from table contents in Chrome and Safari. (https://bugs.chromium.org/p/chromium/issues/detail?id=999088, https://bugs.webkit.org/show_bug.cgi?id=201297)\n2. Correct table border color inheritance in all Chrome and Safari. (https://bugs.chromium.org/p/chromium/issues/detail?id=935729, https://bugs.webkit.org/show_bug.cgi?id=195016)\n3. Remove gaps between table borders by default.\n*/\n\ntable {\n  text-indent: 0; /* 1 */\n  border-color: inherit; /* 2 */\n  border-collapse: collapse; /* 3 */\n}\n\n/*\n1. Change the font styles in all browsers.\n2. Remove the margin in Firefox and Safari.\n3. Remove default padding in all browsers.\n*/\n\nbutton,\ninput,\noptgroup,\nselect,\ntextarea {\n  font-family: inherit; /* 1 */\n  font-feature-settings: inherit; /* 1 */\n  font-variation-settings: inherit; /* 1 */\n  font-size: 100%; /* 1 */\n  font-weight: inherit; /* 1 */\n  line-height: inherit; /* 1 */\n  letter-spacing: inherit; /* 1 */\n  color: inherit; /* 1 */\n  margin: 0; /* 2 */\n  padding: 0; /* 3 */\n}\n\n/*\nRemove the inheritance of text transform in Edge and Firefox.\n*/\n\nbutton,\nselect {\n  text-transform: none;\n}\n\n/*\n1. Correct the inability to style clickable types in iOS and Safari.\n2. Remove default button styles.\n*/\n\nbutton,\ninput:where([type=\'button\']),\ninput:where([type=\'reset\']),\ninput:where([type=\'submit\']) {\n  -webkit-appearance: button; /* 1 */\n  background-color: transparent; /* 2 */\n  background-image: none; /* 2 */\n}\n\n/*\nUse the modern Firefox focus style for all focusable elements.\n*/\n\n:-moz-focusring {\n  outline: auto;\n}\n\n/*\nRemove the additional `:invalid` styles in Firefox. (https://github.com/mozilla/gecko-dev/blob/2f9eacd9d3d995c937b4251a5557d95d494c9be1/layout/style/res/forms.css#L728-L737)\n*/\n\n:-moz-ui-invalid {\n  box-shadow: none;\n}\n\n/*\nAdd the correct vertical alignment in Chrome and Firefox.\n*/\n\nprogress {\n  vertical-align: baseline;\n}\n\n/*\nCorrect the cursor style of increment and decrement buttons in Safari.\n*/\n\n::-webkit-inner-spin-button,\n::-webkit-outer-spin-button {\n  height: auto;\n}\n\n/*\n1. Correct the odd appearance in Chrome and Safari.\n2. Correct the outline style in Safari.\n*/\n\n[type=\'search\'] {\n  -webkit-appearance: textfield; /* 1 */\n  outline-offset: -2px; /* 2 */\n}\n\n/*\nRemove the inner padding in Chrome and Safari on macOS.\n*/\n\n::-webkit-search-decoration {\n  -webkit-appearance: none;\n}\n\n/*\n1. Correct the inability to style clickable types in iOS and Safari.\n2. Change font properties to `inherit` in Safari.\n*/\n\n::-webkit-file-upload-button {\n  -webkit-appearance: button; /* 1 */\n  font: inherit; /* 2 */\n}\n\n/*\nAdd the correct display in Chrome and Safari.\n*/\n\nsummary {\n  display: list-item;\n}\n\n/*\nRemoves the default spacing and border for appropriate elements.\n*/\n\nblockquote,\ndl,\ndd,\nh1,\nh2,\nh3,\nh4,\nh5,\nh6,\nhr,\nfigure,\np,\npre {\n  margin: 0;\n}\n\nfieldset {\n  margin: 0;\n  padding: 0;\n}\n\nlegend {\n  padding: 0;\n}\n\nol,\nul,\nmenu {\n  list-style: none;\n  margin: 0;\n  padding: 0;\n}\n\n/*\nReset default styling for dialogs.\n*/\ndialog {\n  padding: 0;\n}\n\n/*\nPrevent resizing textareas horizontally by default.\n*/\n\ntextarea {\n  resize: vertical;\n}\n\n/*\n1. Reset the default placeholder opacity in Firefox. (https://github.com/tailwindlabs/tailwindcss/issues/3300)\n2. Set the default placeholder color to the user\'s configured gray 400 color.\n*/\n\ninput::placeholder,\ntextarea::placeholder {\n  opacity: 1; /* 1 */\n  color: #9ca3af; /* 2 */\n}\n\n/*\nSet the default cursor for buttons.\n*/\n\nbutton,\n[role="button"] {\n  cursor: pointer;\n}\n\n/*\nMake sure disabled buttons don\'t get the pointer cursor.\n*/\n:disabled {\n  cursor: default;\n}\n\n/*\n1. Make replaced elements `display: block` by default. (https://github.com/mozdevs/cssremedy/issues/14)\n2. Add `vertical-align: middle` to align replaced elements more sensibly by default. (https://github.com/jensimmons/cssremedy/issues/14#issuecomment-634934210)\n   This can trigger a poorly considered lint error in some tools but is included by design.\n*/\n\nimg,\nsvg,\nvideo,\ncanvas,\naudio,\niframe,\nembed,\nobject {\n  display: block; /* 1 */\n  vertical-align: middle; /* 2 */\n}\n\n/*\nConstrain images and videos to the parent width and preserve their intrinsic aspect ratio. (https://github.com/mozdevs/cssremedy/issues/14)\n*/\n\nimg,\nvideo {\n  max-width: 100%;\n  height: auto;\n}\n\n/* Make elements with the HTML hidden attribute stay hidden by default */\n[hidden]:where(:not([hidden="until-found"])) {\n  display: none;\n} .\\!container {\n  width: 100% !important;\n} .container {\n  width: 100%;\n} @media (min-width: 640px) {\n\n  .\\!container {\n    max-width: 640px !important;\n  }\n\n  .container {\n    max-width: 640px;\n  }\n} @media (min-width: 768px) {\n\n  .\\!container {\n    max-width: 768px !important;\n  }\n\n  .container {\n    max-width: 768px;\n  }\n} @media (min-width: 1024px) {\n\n  .\\!container {\n    max-width: 1024px !important;\n  }\n\n  .container {\n    max-width: 1024px;\n  }\n} @media (min-width: 1280px) {\n\n  .\\!container {\n    max-width: 1280px !important;\n  }\n\n  .container {\n    max-width: 1280px;\n  }\n} @media (min-width: 1536px) {\n\n  .\\!container {\n    max-width: 1536px !important;\n  }\n\n  .container {\n    max-width: 1536px;\n  }\n} #scenario-test-root .sr-only {\n  position: absolute;\n  width: 1px;\n  height: 1px;\n  padding: 0;\n  margin: -1px;\n  overflow: hidden;\n  clip: rect(0, 0, 0, 0);\n  white-space: nowrap;\n  border-width: 0;\n} #scenario-test-root .visible {\n  visibility: visible;\n} #scenario-test-root .fixed {\n  position: fixed;\n} #scenario-test-root .relative {\n  position: relative;\n} #scenario-test-root .sticky {\n  position: sticky;\n} #scenario-test-root .inset-0 {\n  inset: 0px;\n} #scenario-test-root .top-0 {\n  top: 0px;\n} #scenario-test-root .z-10 {\n  z-index: 10;\n} #scenario-test-root .z-30 {\n  z-index: 30;\n} #scenario-test-root .z-40 {\n  z-index: 40;\n} #scenario-test-root .col-span-2 {\n  grid-column: span 2 / span 2;\n} #scenario-test-root .mx-1 {\n  margin-left: 0.25rem;\n  margin-right: 0.25rem;\n} #scenario-test-root .mx-auto {\n  margin-left: auto;\n  margin-right: auto;\n} #scenario-test-root .my-2 {\n  margin-top: 0.5rem;\n  margin-bottom: 0.5rem;\n} #scenario-test-root .my-8 {\n  margin-top: 2rem;\n  margin-bottom: 2rem;\n} #scenario-test-root .mb-1 {\n  margin-bottom: 0.25rem;\n} #scenario-test-root .mb-1\\.5 {\n  margin-bottom: 0.375rem;\n} #scenario-test-root .mb-2 {\n  margin-bottom: 0.5rem;\n} #scenario-test-root .mb-3 {\n  margin-bottom: 0.75rem;\n} #scenario-test-root .ml-0\\.5 {\n  margin-left: 0.125rem;\n} #scenario-test-root .ml-1 {\n  margin-left: 0.25rem;\n} #scenario-test-root .mr-1 {\n  margin-right: 0.25rem;\n} #scenario-test-root .mr-1\\.5 {\n  margin-right: 0.375rem;\n} #scenario-test-root .mr-2 {\n  margin-right: 0.5rem;\n} #scenario-test-root .mt-0\\.5 {\n  margin-top: 0.125rem;\n} #scenario-test-root .mt-1 {\n  margin-top: 0.25rem;\n} #scenario-test-root .mt-2 {\n  margin-top: 0.5rem;\n} #scenario-test-root .mt-3 {\n  margin-top: 0.75rem;\n} #scenario-test-root .mt-4 {\n  margin-top: 1rem;\n} #scenario-test-root .block {\n  display: block;\n} #scenario-test-root .inline {\n  display: inline;\n} #scenario-test-root .flex {\n  display: flex;\n} #scenario-test-root .grid {\n  display: grid;\n} #scenario-test-root .hidden {\n  display: none;\n} #scenario-test-root .h-1\\.5 {\n  height: 0.375rem;\n} #scenario-test-root .h-2 {\n  height: 0.5rem;\n} #scenario-test-root .h-28 {\n  height: 7rem;\n} #scenario-test-root .h-3 {\n  height: 0.75rem;\n} #scenario-test-root .h-3\\.5 {\n  height: 0.875rem;\n} #scenario-test-root .h-4 {\n  height: 1rem;\n} #scenario-test-root .h-40 {\n  height: 10rem;\n} #scenario-test-root .h-5 {\n  height: 1.25rem;\n} #scenario-test-root .max-h-48 {\n  max-height: 12rem;\n} #scenario-test-root .max-h-\\[85vh\\] {\n  max-height: 85vh;\n} #scenario-test-root .w-1 {\n  width: 0.25rem;\n} #scenario-test-root .w-1\\.5 {\n  width: 0.375rem;\n} #scenario-test-root .w-1\\/3 {\n  width: 33.333333%;\n} #scenario-test-root .w-16 {\n  width: 4rem;\n} #scenario-test-root .w-2 {\n  width: 0.5rem;\n} #scenario-test-root .w-3 {\n  width: 0.75rem;\n} #scenario-test-root .w-3\\.5 {\n  width: 0.875rem;\n} #scenario-test-root .w-4 {\n  width: 1rem;\n} #scenario-test-root .w-44 {\n  width: 11rem;\n} #scenario-test-root .w-5 {\n  width: 1.25rem;\n} #scenario-test-root .w-\\[70\\%\\] {\n  width: 70%;\n} #scenario-test-root .w-full {\n  width: 100%;\n} #scenario-test-root .min-w-0 {\n  min-width: 0px;\n} #scenario-test-root .max-w-3xl {\n  max-width: 48rem;\n} #scenario-test-root .max-w-\\[280px\\] {\n  max-width: 280px;\n} #scenario-test-root .max-w-\\[50\\%\\] {\n  max-width: 50%;\n} #scenario-test-root .max-w-\\[55\\%\\] {\n  max-width: 55%;\n} #scenario-test-root .max-w-full {\n  max-width: 100%;\n} #scenario-test-root .flex-1 {\n  flex: 1 1 0%;\n} #scenario-test-root .flex-shrink-0 {\n  flex-shrink: 0;\n} #scenario-test-root .rotate-180 {\n  --tw-rotate: 180deg;\n  transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));\n} #scenario-test-root .scale-90 {\n  --tw-scale-x: .9;\n  --tw-scale-y: .9;\n  transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));\n} #scenario-test-root .cursor-pointer {\n  cursor: pointer;\n} #scenario-test-root .select-none {\n  user-select: none;\n} #scenario-test-root .select-text {\n  user-select: text;\n} #scenario-test-root .appearance-none {\n  appearance: none;\n} #scenario-test-root .grid-cols-1 {\n  grid-template-columns: repeat(1, minmax(0, 1fr));\n} #scenario-test-root .flex-col {\n  flex-direction: column;\n} #scenario-test-root .flex-wrap {\n  flex-wrap: wrap;\n} #scenario-test-root .items-start {\n  align-items: flex-start;\n} #scenario-test-root .items-center {\n  align-items: center;\n} #scenario-test-root .justify-end {\n  justify-content: flex-end;\n} #scenario-test-root .justify-center {\n  justify-content: center;\n} #scenario-test-root .justify-between {\n  justify-content: space-between;\n} #scenario-test-root .gap-1 {\n  gap: 0.25rem;\n} #scenario-test-root .gap-1\\.5 {\n  gap: 0.375rem;\n} #scenario-test-root .gap-2 {\n  gap: 0.5rem;\n} #scenario-test-root .gap-3 {\n  gap: 0.75rem;\n} #scenario-test-root .gap-4 {\n  gap: 1rem;\n} #scenario-test-root :is(.space-x-1 > :not([hidden]) ~ :not([hidden])) {\n  --tw-space-x-reverse: 0;\n  margin-right: calc(0.25rem * var(--tw-space-x-reverse));\n  margin-left: calc(0.25rem * calc(1 - var(--tw-space-x-reverse)));\n} #scenario-test-root :is(.space-x-1\\.5 > :not([hidden]) ~ :not([hidden])) {\n  --tw-space-x-reverse: 0;\n  margin-right: calc(0.375rem * var(--tw-space-x-reverse));\n  margin-left: calc(0.375rem * calc(1 - var(--tw-space-x-reverse)));\n} #scenario-test-root :is(.space-x-2 > :not([hidden]) ~ :not([hidden])) {\n  --tw-space-x-reverse: 0;\n  margin-right: calc(0.5rem * var(--tw-space-x-reverse));\n  margin-left: calc(0.5rem * calc(1 - var(--tw-space-x-reverse)));\n} #scenario-test-root :is(.space-x-2\\.5 > :not([hidden]) ~ :not([hidden])) {\n  --tw-space-x-reverse: 0;\n  margin-right: calc(0.625rem * var(--tw-space-x-reverse));\n  margin-left: calc(0.625rem * calc(1 - var(--tw-space-x-reverse)));\n} #scenario-test-root :is(.space-x-3 > :not([hidden]) ~ :not([hidden])) {\n  --tw-space-x-reverse: 0;\n  margin-right: calc(0.75rem * var(--tw-space-x-reverse));\n  margin-left: calc(0.75rem * calc(1 - var(--tw-space-x-reverse)));\n} #scenario-test-root :is(.space-x-4 > :not([hidden]) ~ :not([hidden])) {\n  --tw-space-x-reverse: 0;\n  margin-right: calc(1rem * var(--tw-space-x-reverse));\n  margin-left: calc(1rem * calc(1 - var(--tw-space-x-reverse)));\n} #scenario-test-root :is(.space-x-6 > :not([hidden]) ~ :not([hidden])) {\n  --tw-space-x-reverse: 0;\n  margin-right: calc(1.5rem * var(--tw-space-x-reverse));\n  margin-left: calc(1.5rem * calc(1 - var(--tw-space-x-reverse)));\n} #scenario-test-root :is(.space-x-8 > :not([hidden]) ~ :not([hidden])) {\n  --tw-space-x-reverse: 0;\n  margin-right: calc(2rem * var(--tw-space-x-reverse));\n  margin-left: calc(2rem * calc(1 - var(--tw-space-x-reverse)));\n} #scenario-test-root :is(.space-y-0\\.5 > :not([hidden]) ~ :not([hidden])) {\n  --tw-space-y-reverse: 0;\n  margin-top: calc(0.125rem * calc(1 - var(--tw-space-y-reverse)));\n  margin-bottom: calc(0.125rem * var(--tw-space-y-reverse));\n} #scenario-test-root :is(.space-y-1 > :not([hidden]) ~ :not([hidden])) {\n  --tw-space-y-reverse: 0;\n  margin-top: calc(0.25rem * calc(1 - var(--tw-space-y-reverse)));\n  margin-bottom: calc(0.25rem * var(--tw-space-y-reverse));\n} #scenario-test-root :is(.space-y-2 > :not([hidden]) ~ :not([hidden])) {\n  --tw-space-y-reverse: 0;\n  margin-top: calc(0.5rem * calc(1 - var(--tw-space-y-reverse)));\n  margin-bottom: calc(0.5rem * var(--tw-space-y-reverse));\n} #scenario-test-root :is(.space-y-3 > :not([hidden]) ~ :not([hidden])) {\n  --tw-space-y-reverse: 0;\n  margin-top: calc(0.75rem * calc(1 - var(--tw-space-y-reverse)));\n  margin-bottom: calc(0.75rem * var(--tw-space-y-reverse));\n} #scenario-test-root :is(.space-y-4 > :not([hidden]) ~ :not([hidden])) {\n  --tw-space-y-reverse: 0;\n  margin-top: calc(1rem * calc(1 - var(--tw-space-y-reverse)));\n  margin-bottom: calc(1rem * var(--tw-space-y-reverse));\n} #scenario-test-root :is(.divide-y > :not([hidden]) ~ :not([hidden])) {\n  --tw-divide-y-reverse: 0;\n  border-top-width: calc(1px * calc(1 - var(--tw-divide-y-reverse)));\n  border-bottom-width: calc(1px * var(--tw-divide-y-reverse));\n} #scenario-test-root :is(.divide-slate-100 > :not([hidden]) ~ :not([hidden])) {\n  --tw-divide-opacity: 1;\n  border-color: rgb(241 245 249 / var(--tw-divide-opacity, 1));\n} #scenario-test-root :is(.divide-slate-200 > :not([hidden]) ~ :not([hidden])) {\n  --tw-divide-opacity: 1;\n  border-color: rgb(226 232 240 / var(--tw-divide-opacity, 1));\n} #scenario-test-root .overflow-hidden {\n  overflow: hidden;\n} #scenario-test-root .overflow-x-auto {\n  overflow-x: auto;\n} #scenario-test-root .overflow-y-auto {\n  overflow-y: auto;\n} #scenario-test-root .truncate {\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n} #scenario-test-root .whitespace-nowrap {\n  white-space: nowrap;\n} #scenario-test-root .break-all {\n  word-break: break-all;\n} #scenario-test-root .rounded {\n  border-radius: 0.25rem;\n} #scenario-test-root .rounded-full {\n  border-radius: 9999px;\n} #scenario-test-root .rounded-lg {\n  border-radius: 0.5rem;\n} #scenario-test-root .rounded-md {\n  border-radius: 0.375rem;\n} #scenario-test-root .rounded-xl {\n  border-radius: 0.75rem;\n} #scenario-test-root .border {\n  border-width: 1px;\n} #scenario-test-root .border-b {\n  border-bottom-width: 1px;\n} #scenario-test-root .border-l {\n  border-left-width: 1px;\n} #scenario-test-root .border-t {\n  border-top-width: 1px;\n} #scenario-test-root .border-blue-200 {\n  --tw-border-opacity: 1;\n  border-color: rgb(191 219 254 / var(--tw-border-opacity, 1));\n} #scenario-test-root .border-emerald-100 {\n  --tw-border-opacity: 1;\n  border-color: rgb(209 250 229 / var(--tw-border-opacity, 1));\n} #scenario-test-root .border-emerald-100\\/50 {\n  border-color: rgb(209 250 229 / 0.5);\n} #scenario-test-root .border-emerald-200 {\n  --tw-border-opacity: 1;\n  border-color: rgb(167 243 208 / var(--tw-border-opacity, 1));\n} #scenario-test-root .border-indigo-100 {\n  --tw-border-opacity: 1;\n  border-color: rgb(224 231 255 / var(--tw-border-opacity, 1));\n} #scenario-test-root .border-rose-100 {\n  --tw-border-opacity: 1;\n  border-color: rgb(255 228 230 / var(--tw-border-opacity, 1));\n} #scenario-test-root .border-rose-100\\/50 {\n  border-color: rgb(255 228 230 / 0.5);\n} #scenario-test-root .border-rose-200 {\n  --tw-border-opacity: 1;\n  border-color: rgb(254 205 211 / var(--tw-border-opacity, 1));\n} #scenario-test-root .border-slate-100 {\n  --tw-border-opacity: 1;\n  border-color: rgb(241 245 249 / var(--tw-border-opacity, 1));\n} #scenario-test-root .border-slate-100\\/80 {\n  border-color: rgb(241 245 249 / 0.8);\n} #scenario-test-root .border-slate-200 {\n  --tw-border-opacity: 1;\n  border-color: rgb(226 232 240 / var(--tw-border-opacity, 1));\n} #scenario-test-root .border-slate-200\\/50 {\n  border-color: rgb(226 232 240 / 0.5);\n} #scenario-test-root .border-slate-200\\/60 {\n  border-color: rgb(226 232 240 / 0.6);\n} #scenario-test-root .border-slate-300 {\n  --tw-border-opacity: 1;\n  border-color: rgb(203 213 225 / var(--tw-border-opacity, 1));\n} #scenario-test-root .border-slate-600 {\n  --tw-border-opacity: 1;\n  border-color: rgb(71 85 105 / var(--tw-border-opacity, 1));\n} #scenario-test-root .border-slate-700 {\n  --tw-border-opacity: 1;\n  border-color: rgb(51 65 85 / var(--tw-border-opacity, 1));\n} #scenario-test-root .border-slate-700\\/50 {\n  border-color: rgb(51 65 85 / 0.5);\n} #scenario-test-root .border-transparent {\n  border-color: transparent;\n} #scenario-test-root .border-zinc-200 {\n  --tw-border-opacity: 1;\n  border-color: rgb(228 228 231 / var(--tw-border-opacity, 1));\n} #scenario-test-root .bg-\\[\\#1e293b\\] {\n  --tw-bg-opacity: 1;\n  background-color: rgb(30 41 59 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-emerald-400 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(52 211 153 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-emerald-50 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(236 253 245 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-emerald-500 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(16 185 129 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-emerald-600 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(5 150 105 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-indigo-50 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(238 242 255 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-rose-100 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(255 228 230 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-rose-400 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(251 113 133 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-rose-50 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(255 241 242 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-rose-50\\/20 {\n  background-color: rgb(255 241 242 / 0.2);\n} #scenario-test-root .bg-rose-500 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(244 63 94 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-slate-100 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(241 245 249 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-slate-100\\/70 {\n  background-color: rgb(241 245 249 / 0.7);\n} #scenario-test-root .bg-slate-200 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(226 232 240 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-slate-200\\/60 {\n  background-color: rgb(226 232 240 / 0.6);\n} #scenario-test-root .bg-slate-300 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(203 213 225 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-slate-400 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(148 163 184 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-slate-50 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(248 250 252 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-slate-50\\/30 {\n  background-color: rgb(248 250 252 / 0.3);\n} #scenario-test-root .bg-slate-50\\/50 {\n  background-color: rgb(248 250 252 / 0.5);\n} #scenario-test-root .bg-slate-50\\/70 {\n  background-color: rgb(248 250 252 / 0.7);\n} #scenario-test-root .bg-slate-700 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(51 65 85 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-slate-800 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(30 41 59 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-slate-900 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(15 23 42 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-slate-950\\/20 {\n  background-color: rgb(2 6 23 / 0.2);\n} #scenario-test-root .bg-slate-950\\/40 {\n  background-color: rgb(2 6 23 / 0.4);\n} #scenario-test-root .bg-transparent {\n  background-color: transparent;\n} #scenario-test-root .bg-white {\n  --tw-bg-opacity: 1;\n  background-color: rgb(255 255 255 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-zinc-100 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(244 244 245 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .p-1 {\n  padding: 0.25rem;\n} #scenario-test-root .p-2 {\n  padding: 0.5rem;\n} #scenario-test-root .p-2\\.5 {\n  padding: 0.625rem;\n} #scenario-test-root .p-3 {\n  padding: 0.75rem;\n} #scenario-test-root .p-3\\.5 {\n  padding: 0.875rem;\n} #scenario-test-root .p-4 {\n  padding: 1rem;\n} #scenario-test-root .p-5 {\n  padding: 1.25rem;\n} #scenario-test-root .p-8 {\n  padding: 2rem;\n} #scenario-test-root .px-1 {\n  padding-left: 0.25rem;\n  padding-right: 0.25rem;\n} #scenario-test-root .px-1\\.5 {\n  padding-left: 0.375rem;\n  padding-right: 0.375rem;\n} #scenario-test-root .px-2 {\n  padding-left: 0.5rem;\n  padding-right: 0.5rem;\n} #scenario-test-root .px-2\\.5 {\n  padding-left: 0.625rem;\n  padding-right: 0.625rem;\n} #scenario-test-root .px-3 {\n  padding-left: 0.75rem;\n  padding-right: 0.75rem;\n} #scenario-test-root .px-4 {\n  padding-left: 1rem;\n  padding-right: 1rem;\n} #scenario-test-root .px-5 {\n  padding-left: 1.25rem;\n  padding-right: 1.25rem;\n} #scenario-test-root .py-0\\.5 {\n  padding-top: 0.125rem;\n  padding-bottom: 0.125rem;\n} #scenario-test-root .py-1 {\n  padding-top: 0.25rem;\n  padding-bottom: 0.25rem;\n} #scenario-test-root .py-1\\.5 {\n  padding-top: 0.375rem;\n  padding-bottom: 0.375rem;\n} #scenario-test-root .py-2 {\n  padding-top: 0.5rem;\n  padding-bottom: 0.5rem;\n} #scenario-test-root .py-2\\.5 {\n  padding-top: 0.625rem;\n  padding-bottom: 0.625rem;\n} #scenario-test-root .py-3 {\n  padding-top: 0.75rem;\n  padding-bottom: 0.75rem;\n} #scenario-test-root .py-4 {\n  padding-top: 1rem;\n  padding-bottom: 1rem;\n} #scenario-test-root .pb-3 {\n  padding-bottom: 0.75rem;\n} #scenario-test-root .pl-2 {\n  padding-left: 0.5rem;\n} #scenario-test-root .pl-6 {\n  padding-left: 1.5rem;\n} #scenario-test-root .pr-4 {\n  padding-right: 1rem;\n} #scenario-test-root .pr-5 {\n  padding-right: 1.25rem;\n} #scenario-test-root .pt-4 {\n  padding-top: 1rem;\n} #scenario-test-root .text-left {\n  text-align: left;\n} #scenario-test-root .text-center {\n  text-align: center;\n} #scenario-test-root .text-right {\n  text-align: right;\n} #scenario-test-root .font-mono {\n  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;\n} #scenario-test-root .text-\\[10px\\] {\n  font-size: 10px;\n} #scenario-test-root .text-\\[11px\\] {\n  font-size: 11px;\n} #scenario-test-root .text-\\[12px\\] {\n  font-size: 12px;\n} #scenario-test-root .text-\\[13px\\] {\n  font-size: 13px;\n} #scenario-test-root .text-sm {\n  font-size: 0.875rem;\n  line-height: 1.25rem;\n} #scenario-test-root .text-xl {\n  font-size: 1.25rem;\n  line-height: 1.75rem;\n} #scenario-test-root .text-xs {\n  font-size: 0.75rem;\n  line-height: 1rem;\n} #scenario-test-root .font-bold {\n  font-weight: 700;\n} #scenario-test-root .font-extrabold {\n  font-weight: 800;\n} #scenario-test-root .font-medium {\n  font-weight: 500;\n} #scenario-test-root .font-normal {\n  font-weight: 400;\n} #scenario-test-root .font-semibold {\n  font-weight: 600;\n} #scenario-test-root .uppercase {\n  text-transform: uppercase;\n} #scenario-test-root .normal-case {\n  text-transform: none;\n} #scenario-test-root .leading-relaxed {\n  line-height: 1.625;\n} #scenario-test-root .leading-tight {\n  line-height: 1.25;\n} #scenario-test-root .tracking-tight {\n  letter-spacing: -0.025em;\n} #scenario-test-root .tracking-wider {\n  letter-spacing: 0.05em;\n} #scenario-test-root .text-amber-400 {\n  --tw-text-opacity: 1;\n  color: rgb(251 191 36 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-amber-600 {\n  --tw-text-opacity: 1;\n  color: rgb(217 119 6 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-blue-700 {\n  --tw-text-opacity: 1;\n  color: rgb(29 78 216 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-emerald-400 {\n  --tw-text-opacity: 1;\n  color: rgb(52 211 153 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-emerald-500 {\n  --tw-text-opacity: 1;\n  color: rgb(16 185 129 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-emerald-600 {\n  --tw-text-opacity: 1;\n  color: rgb(5 150 105 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-emerald-600\\/70 {\n  color: rgb(5 150 105 / 0.7);\n} #scenario-test-root .text-emerald-700 {\n  --tw-text-opacity: 1;\n  color: rgb(4 120 87 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-indigo-500 {\n  --tw-text-opacity: 1;\n  color: rgb(99 102 241 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-indigo-700 {\n  --tw-text-opacity: 1;\n  color: rgb(67 56 202 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-orange-500 {\n  --tw-text-opacity: 1;\n  color: rgb(249 115 22 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-purple-600 {\n  --tw-text-opacity: 1;\n  color: rgb(147 51 234 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-rose-400 {\n  --tw-text-opacity: 1;\n  color: rgb(251 113 133 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-rose-500 {\n  --tw-text-opacity: 1;\n  color: rgb(244 63 94 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-rose-500\\/70 {\n  color: rgb(244 63 94 / 0.7);\n} #scenario-test-root .text-rose-600 {\n  --tw-text-opacity: 1;\n  color: rgb(225 29 72 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-rose-700 {\n  --tw-text-opacity: 1;\n  color: rgb(190 18 60 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-rose-800 {\n  --tw-text-opacity: 1;\n  color: rgb(159 18 57 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-slate-200 {\n  --tw-text-opacity: 1;\n  color: rgb(226 232 240 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-slate-300 {\n  --tw-text-opacity: 1;\n  color: rgb(203 213 225 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-slate-400 {\n  --tw-text-opacity: 1;\n  color: rgb(148 163 184 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-slate-500 {\n  --tw-text-opacity: 1;\n  color: rgb(100 116 139 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-slate-600 {\n  --tw-text-opacity: 1;\n  color: rgb(71 85 105 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-slate-700 {\n  --tw-text-opacity: 1;\n  color: rgb(51 65 85 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-slate-800 {\n  --tw-text-opacity: 1;\n  color: rgb(30 41 59 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-slate-900 {\n  --tw-text-opacity: 1;\n  color: rgb(15 23 42 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-white {\n  --tw-text-opacity: 1;\n  color: rgb(255 255 255 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-zinc-700 {\n  --tw-text-opacity: 1;\n  color: rgb(63 63 70 / var(--tw-text-opacity, 1));\n} #scenario-test-root .placeholder-slate-400::placeholder {\n  --tw-placeholder-opacity: 1;\n  color: rgb(148 163 184 / var(--tw-placeholder-opacity, 1));\n} #scenario-test-root .placeholder-slate-500::placeholder {\n  --tw-placeholder-opacity: 1;\n  color: rgb(100 116 139 / var(--tw-placeholder-opacity, 1));\n} #scenario-test-root .shadow-inner {\n  --tw-shadow: inset 0 2px 4px 0 rgb(0 0 0 / 0.05);\n  --tw-shadow-colored: inset 0 2px 4px 0 var(--tw-shadow-color);\n  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);\n} #scenario-test-root .shadow-sm {\n  --tw-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);\n  --tw-shadow-colored: 0 1px 2px 0 var(--tw-shadow-color);\n  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);\n} #scenario-test-root .shadow-xl {\n  --tw-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);\n  --tw-shadow-colored: 0 20px 25px -5px var(--tw-shadow-color), 0 8px 10px -6px var(--tw-shadow-color);\n  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);\n} #scenario-test-root .outline-none {\n  outline: 2px solid transparent;\n  outline-offset: 2px;\n} #scenario-test-root .filter {\n  filter: var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow);\n} #scenario-test-root .transition-all {\n  transition-property: all;\n  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);\n  transition-duration: 150ms;\n} #scenario-test-root .transition-colors {\n  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;\n  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);\n  transition-duration: 150ms;\n} #scenario-test-root .transition-transform {\n  transition-property: transform;\n  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);\n  transition-duration: 150ms;\n} #scenario-test-root .duration-150 {\n  transition-duration: 150ms;\n} #scenario-test-root .duration-200 {\n  transition-duration: 200ms;\n} #scenario-test-root .placeholder\\:text-slate-300::placeholder {\n  --tw-text-opacity: 1;\n  color: rgb(203 213 225 / var(--tw-text-opacity, 1));\n} #scenario-test-root .hover\\:border-emerald-300:hover {\n  --tw-border-opacity: 1;\n  border-color: rgb(110 231 183 / var(--tw-border-opacity, 1));\n} #scenario-test-root .hover\\:border-slate-200:hover {\n  --tw-border-opacity: 1;\n  border-color: rgb(226 232 240 / var(--tw-border-opacity, 1));\n} #scenario-test-root .hover\\:bg-emerald-600:hover {\n  --tw-bg-opacity: 1;\n  background-color: rgb(5 150 105 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .hover\\:bg-emerald-700:hover {\n  --tw-bg-opacity: 1;\n  background-color: rgb(4 120 87 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .hover\\:bg-indigo-100:hover {\n  --tw-bg-opacity: 1;\n  background-color: rgb(224 231 255 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .hover\\:bg-slate-100:hover {\n  --tw-bg-opacity: 1;\n  background-color: rgb(241 245 249 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .hover\\:bg-slate-50:hover {\n  --tw-bg-opacity: 1;\n  background-color: rgb(248 250 252 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .hover\\:bg-slate-50\\/50:hover {\n  background-color: rgb(248 250 252 / 0.5);\n} #scenario-test-root .hover\\:bg-slate-50\\/60:hover {\n  background-color: rgb(248 250 252 / 0.6);\n} #scenario-test-root .hover\\:bg-slate-600:hover {\n  --tw-bg-opacity: 1;\n  background-color: rgb(71 85 105 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .hover\\:bg-slate-700:hover {\n  --tw-bg-opacity: 1;\n  background-color: rgb(51 65 85 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .hover\\:bg-white:hover {\n  --tw-bg-opacity: 1;\n  background-color: rgb(255 255 255 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .hover\\:text-emerald-700:hover {\n  --tw-text-opacity: 1;\n  color: rgb(4 120 87 / var(--tw-text-opacity, 1));\n} #scenario-test-root .hover\\:text-rose-600:hover {\n  --tw-text-opacity: 1;\n  color: rgb(225 29 72 / var(--tw-text-opacity, 1));\n} #scenario-test-root .hover\\:text-slate-700:hover {\n  --tw-text-opacity: 1;\n  color: rgb(51 65 85 / var(--tw-text-opacity, 1));\n} #scenario-test-root .hover\\:text-slate-900:hover {\n  --tw-text-opacity: 1;\n  color: rgb(15 23 42 / var(--tw-text-opacity, 1));\n} #scenario-test-root .hover\\:text-white:hover {\n  --tw-text-opacity: 1;\n  color: rgb(255 255 255 / var(--tw-text-opacity, 1));\n} #scenario-test-root .focus\\:border-emerald-500:focus {\n  --tw-border-opacity: 1;\n  border-color: rgb(16 185 129 / var(--tw-border-opacity, 1));\n} #scenario-test-root .focus\\:outline-none:focus {\n  outline: 2px solid transparent;\n  outline-offset: 2px;\n} #scenario-test-root .focus\\:ring-1:focus {\n  --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);\n  --tw-ring-shadow: var(--tw-ring-inset) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color);\n  box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000);\n} #scenario-test-root .focus\\:ring-emerald-500:focus {\n  --tw-ring-opacity: 1;\n  --tw-ring-color: rgb(16 185 129 / var(--tw-ring-opacity, 1));\n} #scenario-test-root :is(.group:hover .group-hover\\:text-emerald-700) {\n  --tw-text-opacity: 1;\n  color: rgb(4 120 87 / var(--tw-text-opacity, 1));\n} #scenario-test-root :is(.group:hover .group-hover\\:text-slate-500) {\n  --tw-text-opacity: 1;\n  color: rgb(100 116 139 / var(--tw-text-opacity, 1));\n} #scenario-test-root :is(.group:hover .group-hover\\:text-slate-600) {\n  --tw-text-opacity: 1;\n  color: rgb(71 85 105 / var(--tw-text-opacity, 1));\n} #scenario-test-root :is(.group:hover .group-hover\\:text-slate-950) {\n  --tw-text-opacity: 1;\n  color: rgb(2 6 23 / var(--tw-text-opacity, 1));\n} @media (min-width: 640px) {\n\n  #scenario-test-root .sm\\:mt-0 {\n    margin-top: 0px;\n  }\n\n  #scenario-test-root .sm\\:flex {\n    display: flex;\n  }\n\n  #scenario-test-root .sm\\:hidden {\n    display: none;\n  }\n\n  #scenario-test-root .sm\\:max-w-xl {\n    max-width: 36rem;\n  }\n\n  #scenario-test-root .sm\\:grid-cols-\\[120px_1fr\\] {\n    grid-template-columns: 120px 1fr;\n  }\n} @media (min-width: 768px) {\n\n  #scenario-test-root .md\\:mt-0 {\n    margin-top: 0px;\n  }\n\n  #scenario-test-root .md\\:w-auto {\n    width: auto;\n  }\n\n  #scenario-test-root .md\\:grid-cols-2 {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n  }\n\n  #scenario-test-root .md\\:gap-0 {\n    gap: 0px;\n  }\n\n  #scenario-test-root :is(.md\\:divide-x > :not([hidden]) ~ :not([hidden])) {\n    --tw-divide-x-reverse: 0;\n    border-right-width: calc(1px * var(--tw-divide-x-reverse));\n    border-left-width: calc(1px * calc(1 - var(--tw-divide-x-reverse)));\n  }\n\n  #scenario-test-root .md\\:pl-6 {\n    padding-left: 1.5rem;\n  }\n\n  #scenario-test-root .md\\:pr-6 {\n    padding-right: 1.5rem;\n  }\n} @media (min-width: 1024px) {\n\n  #scenario-test-root .lg\\:w-\\[80\\%\\] {\n    width: 80%;\n  }\n} @media (min-width: 1280px) {\n\n  #scenario-test-root .xl\\:max-h-\\[calc\\(100vh-52px\\)\\] {\n    max-height: calc(100vh - 52px);\n  }\n\n  #scenario-test-root .xl\\:grid-cols-\\[minmax\\(164px\\2c 1fr\\)_minmax\\(500px\\2c 3\\.18fr\\)_minmax\\(280px\\2c 1\\.75fr\\)\\] {\n    grid-template-columns: minmax(164px,1fr) minmax(500px,3.18fr) minmax(280px,1.75fr);\n  }\n}';
+var TAILWIND_CSS = '*, ::before, ::after {\n  --tw-border-spacing-x: 0;\n  --tw-border-spacing-y: 0;\n  --tw-translate-x: 0;\n  --tw-translate-y: 0;\n  --tw-rotate: 0;\n  --tw-skew-x: 0;\n  --tw-skew-y: 0;\n  --tw-scale-x: 1;\n  --tw-scale-y: 1;\n  --tw-pan-x:  ;\n  --tw-pan-y:  ;\n  --tw-pinch-zoom:  ;\n  --tw-scroll-snap-strictness: proximity;\n  --tw-gradient-from-position:  ;\n  --tw-gradient-via-position:  ;\n  --tw-gradient-to-position:  ;\n  --tw-ordinal:  ;\n  --tw-slashed-zero:  ;\n  --tw-numeric-figure:  ;\n  --tw-numeric-spacing:  ;\n  --tw-numeric-fraction:  ;\n  --tw-ring-inset:  ;\n  --tw-ring-offset-width: 0px;\n  --tw-ring-offset-color: #fff;\n  --tw-ring-color: rgb(59 130 246 / 0.5);\n  --tw-ring-offset-shadow: 0 0 #0000;\n  --tw-ring-shadow: 0 0 #0000;\n  --tw-shadow: 0 0 #0000;\n  --tw-shadow-colored: 0 0 #0000;\n  --tw-blur:  ;\n  --tw-brightness:  ;\n  --tw-contrast:  ;\n  --tw-grayscale:  ;\n  --tw-hue-rotate:  ;\n  --tw-invert:  ;\n  --tw-saturate:  ;\n  --tw-sepia:  ;\n  --tw-drop-shadow:  ;\n  --tw-backdrop-blur:  ;\n  --tw-backdrop-brightness:  ;\n  --tw-backdrop-contrast:  ;\n  --tw-backdrop-grayscale:  ;\n  --tw-backdrop-hue-rotate:  ;\n  --tw-backdrop-invert:  ;\n  --tw-backdrop-opacity:  ;\n  --tw-backdrop-saturate:  ;\n  --tw-backdrop-sepia:  ;\n  --tw-contain-size:  ;\n  --tw-contain-layout:  ;\n  --tw-contain-paint:  ;\n  --tw-contain-style:  ;\n}\n\n::backdrop {\n  --tw-border-spacing-x: 0;\n  --tw-border-spacing-y: 0;\n  --tw-translate-x: 0;\n  --tw-translate-y: 0;\n  --tw-rotate: 0;\n  --tw-skew-x: 0;\n  --tw-skew-y: 0;\n  --tw-scale-x: 1;\n  --tw-scale-y: 1;\n  --tw-pan-x:  ;\n  --tw-pan-y:  ;\n  --tw-pinch-zoom:  ;\n  --tw-scroll-snap-strictness: proximity;\n  --tw-gradient-from-position:  ;\n  --tw-gradient-via-position:  ;\n  --tw-gradient-to-position:  ;\n  --tw-ordinal:  ;\n  --tw-slashed-zero:  ;\n  --tw-numeric-figure:  ;\n  --tw-numeric-spacing:  ;\n  --tw-numeric-fraction:  ;\n  --tw-ring-inset:  ;\n  --tw-ring-offset-width: 0px;\n  --tw-ring-offset-color: #fff;\n  --tw-ring-color: rgb(59 130 246 / 0.5);\n  --tw-ring-offset-shadow: 0 0 #0000;\n  --tw-ring-shadow: 0 0 #0000;\n  --tw-shadow: 0 0 #0000;\n  --tw-shadow-colored: 0 0 #0000;\n  --tw-blur:  ;\n  --tw-brightness:  ;\n  --tw-contrast:  ;\n  --tw-grayscale:  ;\n  --tw-hue-rotate:  ;\n  --tw-invert:  ;\n  --tw-saturate:  ;\n  --tw-sepia:  ;\n  --tw-drop-shadow:  ;\n  --tw-backdrop-blur:  ;\n  --tw-backdrop-brightness:  ;\n  --tw-backdrop-contrast:  ;\n  --tw-backdrop-grayscale:  ;\n  --tw-backdrop-hue-rotate:  ;\n  --tw-backdrop-invert:  ;\n  --tw-backdrop-opacity:  ;\n  --tw-backdrop-saturate:  ;\n  --tw-backdrop-sepia:  ;\n  --tw-contain-size:  ;\n  --tw-contain-layout:  ;\n  --tw-contain-paint:  ;\n  --tw-contain-style:  ;\n}/*\n! tailwindcss v3.4.17 | MIT License | https://tailwindcss.com\n*//*\n1. Prevent padding and border from affecting element width. (https://github.com/mozdevs/cssremedy/issues/4)\n2. Allow adding a border to an element by just adding a border-width. (https://github.com/tailwindcss/tailwindcss/pull/116)\n*/\n\n*,\n::before,\n::after {\n  box-sizing: border-box; /* 1 */\n  border-width: 0; /* 2 */\n  border-style: solid; /* 2 */\n  border-color: #e5e7eb; /* 2 */\n}\n\n::before,\n::after {\n  --tw-content: \'\';\n}\n\n/*\n1. Use a consistent sensible line-height in all browsers.\n2. Prevent adjustments of font size after orientation changes in iOS.\n3. Use a more readable tab size.\n4. Use the user\'s configured `sans` font-family by default.\n5. Use the user\'s configured `sans` font-feature-settings by default.\n6. Use the user\'s configured `sans` font-variation-settings by default.\n7. Disable tap highlights on iOS\n*/\n\nhtml,\n:host {\n  line-height: 1.5; /* 1 */\n  -webkit-text-size-adjust: 100%; /* 2 */\n  -moz-tab-size: 4; /* 3 */\n  tab-size: 4; /* 3 */\n  font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"; /* 4 */\n  font-feature-settings: normal; /* 5 */\n  font-variation-settings: normal; /* 6 */\n  -webkit-tap-highlight-color: transparent; /* 7 */\n}\n\n/*\n1. Remove the margin in all browsers.\n2. Inherit line-height from `html` so users can set them as a class directly on the `html` element.\n*/\n\nbody {\n  margin: 0; /* 1 */\n  line-height: inherit; /* 2 */\n}\n\n/*\n1. Add the correct height in Firefox.\n2. Correct the inheritance of border color in Firefox. (https://bugzilla.mozilla.org/show_bug.cgi?id=190655)\n3. Ensure horizontal rules are visible by default.\n*/\n\nhr {\n  height: 0; /* 1 */\n  color: inherit; /* 2 */\n  border-top-width: 1px; /* 3 */\n}\n\n/*\nAdd the correct text decoration in Chrome, Edge, and Safari.\n*/\n\nabbr:where([title]) {\n  text-decoration: underline dotted;\n}\n\n/*\nRemove the default font size and weight for headings.\n*/\n\nh1,\nh2,\nh3,\nh4,\nh5,\nh6 {\n  font-size: inherit;\n  font-weight: inherit;\n}\n\n/*\nReset links to optimize for opt-in styling instead of opt-out.\n*/\n\na {\n  color: inherit;\n  text-decoration: inherit;\n}\n\n/*\nAdd the correct font weight in Edge and Safari.\n*/\n\nb,\nstrong {\n  font-weight: bolder;\n}\n\n/*\n1. Use the user\'s configured `mono` font-family by default.\n2. Use the user\'s configured `mono` font-feature-settings by default.\n3. Use the user\'s configured `mono` font-variation-settings by default.\n4. Correct the odd `em` font sizing in all browsers.\n*/\n\ncode,\nkbd,\nsamp,\npre {\n  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; /* 1 */\n  font-feature-settings: normal; /* 2 */\n  font-variation-settings: normal; /* 3 */\n  font-size: 1em; /* 4 */\n}\n\n/*\nAdd the correct font size in all browsers.\n*/\n\nsmall {\n  font-size: 80%;\n}\n\n/*\nPrevent `sub` and `sup` elements from affecting the line height in all browsers.\n*/\n\nsub,\nsup {\n  font-size: 75%;\n  line-height: 0;\n  position: relative;\n  vertical-align: baseline;\n}\n\nsub {\n  bottom: -0.25em;\n}\n\nsup {\n  top: -0.5em;\n}\n\n/*\n1. Remove text indentation from table contents in Chrome and Safari. (https://bugs.chromium.org/p/chromium/issues/detail?id=999088, https://bugs.webkit.org/show_bug.cgi?id=201297)\n2. Correct table border color inheritance in all Chrome and Safari. (https://bugs.chromium.org/p/chromium/issues/detail?id=935729, https://bugs.webkit.org/show_bug.cgi?id=195016)\n3. Remove gaps between table borders by default.\n*/\n\ntable {\n  text-indent: 0; /* 1 */\n  border-color: inherit; /* 2 */\n  border-collapse: collapse; /* 3 */\n}\n\n/*\n1. Change the font styles in all browsers.\n2. Remove the margin in Firefox and Safari.\n3. Remove default padding in all browsers.\n*/\n\nbutton,\ninput,\noptgroup,\nselect,\ntextarea {\n  font-family: inherit; /* 1 */\n  font-feature-settings: inherit; /* 1 */\n  font-variation-settings: inherit; /* 1 */\n  font-size: 100%; /* 1 */\n  font-weight: inherit; /* 1 */\n  line-height: inherit; /* 1 */\n  letter-spacing: inherit; /* 1 */\n  color: inherit; /* 1 */\n  margin: 0; /* 2 */\n  padding: 0; /* 3 */\n}\n\n/*\nRemove the inheritance of text transform in Edge and Firefox.\n*/\n\nbutton,\nselect {\n  text-transform: none;\n}\n\n/*\n1. Correct the inability to style clickable types in iOS and Safari.\n2. Remove default button styles.\n*/\n\nbutton,\ninput:where([type=\'button\']),\ninput:where([type=\'reset\']),\ninput:where([type=\'submit\']) {\n  -webkit-appearance: button; /* 1 */\n  background-color: transparent; /* 2 */\n  background-image: none; /* 2 */\n}\n\n/*\nUse the modern Firefox focus style for all focusable elements.\n*/\n\n:-moz-focusring {\n  outline: auto;\n}\n\n/*\nRemove the additional `:invalid` styles in Firefox. (https://github.com/mozilla/gecko-dev/blob/2f9eacd9d3d995c937b4251a5557d95d494c9be1/layout/style/res/forms.css#L728-L737)\n*/\n\n:-moz-ui-invalid {\n  box-shadow: none;\n}\n\n/*\nAdd the correct vertical alignment in Chrome and Firefox.\n*/\n\nprogress {\n  vertical-align: baseline;\n}\n\n/*\nCorrect the cursor style of increment and decrement buttons in Safari.\n*/\n\n::-webkit-inner-spin-button,\n::-webkit-outer-spin-button {\n  height: auto;\n}\n\n/*\n1. Correct the odd appearance in Chrome and Safari.\n2. Correct the outline style in Safari.\n*/\n\n[type=\'search\'] {\n  -webkit-appearance: textfield; /* 1 */\n  outline-offset: -2px; /* 2 */\n}\n\n/*\nRemove the inner padding in Chrome and Safari on macOS.\n*/\n\n::-webkit-search-decoration {\n  -webkit-appearance: none;\n}\n\n/*\n1. Correct the inability to style clickable types in iOS and Safari.\n2. Change font properties to `inherit` in Safari.\n*/\n\n::-webkit-file-upload-button {\n  -webkit-appearance: button; /* 1 */\n  font: inherit; /* 2 */\n}\n\n/*\nAdd the correct display in Chrome and Safari.\n*/\n\nsummary {\n  display: list-item;\n}\n\n/*\nRemoves the default spacing and border for appropriate elements.\n*/\n\nblockquote,\ndl,\ndd,\nh1,\nh2,\nh3,\nh4,\nh5,\nh6,\nhr,\nfigure,\np,\npre {\n  margin: 0;\n}\n\nfieldset {\n  margin: 0;\n  padding: 0;\n}\n\nlegend {\n  padding: 0;\n}\n\nol,\nul,\nmenu {\n  list-style: none;\n  margin: 0;\n  padding: 0;\n}\n\n/*\nReset default styling for dialogs.\n*/\ndialog {\n  padding: 0;\n}\n\n/*\nPrevent resizing textareas horizontally by default.\n*/\n\ntextarea {\n  resize: vertical;\n}\n\n/*\n1. Reset the default placeholder opacity in Firefox. (https://github.com/tailwindlabs/tailwindcss/issues/3300)\n2. Set the default placeholder color to the user\'s configured gray 400 color.\n*/\n\ninput::placeholder,\ntextarea::placeholder {\n  opacity: 1; /* 1 */\n  color: #9ca3af; /* 2 */\n}\n\n/*\nSet the default cursor for buttons.\n*/\n\nbutton,\n[role="button"] {\n  cursor: pointer;\n}\n\n/*\nMake sure disabled buttons don\'t get the pointer cursor.\n*/\n:disabled {\n  cursor: default;\n}\n\n/*\n1. Make replaced elements `display: block` by default. (https://github.com/mozdevs/cssremedy/issues/14)\n2. Add `vertical-align: middle` to align replaced elements more sensibly by default. (https://github.com/jensimmons/cssremedy/issues/14#issuecomment-634934210)\n   This can trigger a poorly considered lint error in some tools but is included by design.\n*/\n\nimg,\nsvg,\nvideo,\ncanvas,\naudio,\niframe,\nembed,\nobject {\n  display: block; /* 1 */\n  vertical-align: middle; /* 2 */\n}\n\n/*\nConstrain images and videos to the parent width and preserve their intrinsic aspect ratio. (https://github.com/mozdevs/cssremedy/issues/14)\n*/\n\nimg,\nvideo {\n  max-width: 100%;\n  height: auto;\n}\n\n/* Make elements with the HTML hidden attribute stay hidden by default */\n[hidden]:where(:not([hidden="until-found"])) {\n  display: none;\n} .\\!container {\n  width: 100% !important;\n} .container {\n  width: 100%;\n} @media (min-width: 640px) {\n\n  .\\!container {\n    max-width: 640px !important;\n  }\n\n  .container {\n    max-width: 640px;\n  }\n} @media (min-width: 768px) {\n\n  .\\!container {\n    max-width: 768px !important;\n  }\n\n  .container {\n    max-width: 768px;\n  }\n} @media (min-width: 1024px) {\n\n  .\\!container {\n    max-width: 1024px !important;\n  }\n\n  .container {\n    max-width: 1024px;\n  }\n} @media (min-width: 1280px) {\n\n  .\\!container {\n    max-width: 1280px !important;\n  }\n\n  .container {\n    max-width: 1280px;\n  }\n} @media (min-width: 1536px) {\n\n  .\\!container {\n    max-width: 1536px !important;\n  }\n\n  .container {\n    max-width: 1536px;\n  }\n} #scenario-test-root .sr-only {\n  position: absolute;\n  width: 1px;\n  height: 1px;\n  padding: 0;\n  margin: -1px;\n  overflow: hidden;\n  clip: rect(0, 0, 0, 0);\n  white-space: nowrap;\n  border-width: 0;\n} #scenario-test-root .visible {\n  visibility: visible;\n} #scenario-test-root .fixed {\n  position: fixed;\n} #scenario-test-root .relative {\n  position: relative;\n} #scenario-test-root .sticky {\n  position: sticky;\n} #scenario-test-root .inset-0 {\n  inset: 0px;\n} #scenario-test-root .top-0 {\n  top: 0px;\n} #scenario-test-root .z-10 {\n  z-index: 10;\n} #scenario-test-root .z-30 {\n  z-index: 30;\n} #scenario-test-root .z-40 {\n  z-index: 40;\n} #scenario-test-root .col-span-2 {\n  grid-column: span 2 / span 2;\n} #scenario-test-root .mx-1 {\n  margin-left: 0.25rem;\n  margin-right: 0.25rem;\n} #scenario-test-root .mx-auto {\n  margin-left: auto;\n  margin-right: auto;\n} #scenario-test-root .my-2 {\n  margin-top: 0.5rem;\n  margin-bottom: 0.5rem;\n} #scenario-test-root .my-8 {\n  margin-top: 2rem;\n  margin-bottom: 2rem;\n} #scenario-test-root .mb-1 {\n  margin-bottom: 0.25rem;\n} #scenario-test-root .mb-1\\.5 {\n  margin-bottom: 0.375rem;\n} #scenario-test-root .mb-2 {\n  margin-bottom: 0.5rem;\n} #scenario-test-root .mb-3 {\n  margin-bottom: 0.75rem;\n} #scenario-test-root .ml-0\\.5 {\n  margin-left: 0.125rem;\n} #scenario-test-root .ml-1 {\n  margin-left: 0.25rem;\n} #scenario-test-root .mr-1 {\n  margin-right: 0.25rem;\n} #scenario-test-root .mr-1\\.5 {\n  margin-right: 0.375rem;\n} #scenario-test-root .mr-2 {\n  margin-right: 0.5rem;\n} #scenario-test-root .mt-0\\.5 {\n  margin-top: 0.125rem;\n} #scenario-test-root .mt-1 {\n  margin-top: 0.25rem;\n} #scenario-test-root .mt-2 {\n  margin-top: 0.5rem;\n} #scenario-test-root .mt-3 {\n  margin-top: 0.75rem;\n} #scenario-test-root .mt-4 {\n  margin-top: 1rem;\n} #scenario-test-root .block {\n  display: block;\n} #scenario-test-root .inline {\n  display: inline;\n} #scenario-test-root .flex {\n  display: flex;\n} #scenario-test-root .grid {\n  display: grid;\n} #scenario-test-root .hidden {\n  display: none;\n} #scenario-test-root .h-1\\.5 {\n  height: 0.375rem;\n} #scenario-test-root .h-2 {\n  height: 0.5rem;\n} #scenario-test-root .h-28 {\n  height: 7rem;\n} #scenario-test-root .h-3 {\n  height: 0.75rem;\n} #scenario-test-root .h-3\\.5 {\n  height: 0.875rem;\n} #scenario-test-root .h-4 {\n  height: 1rem;\n} #scenario-test-root .h-40 {\n  height: 10rem;\n} #scenario-test-root .h-5 {\n  height: 1.25rem;\n} #scenario-test-root .max-h-48 {\n  max-height: 12rem;\n} #scenario-test-root .max-h-\\[85vh\\] {\n  max-height: 85vh;\n} #scenario-test-root .w-1 {\n  width: 0.25rem;\n} #scenario-test-root .w-1\\.5 {\n  width: 0.375rem;\n} #scenario-test-root .w-1\\/3 {\n  width: 33.333333%;\n} #scenario-test-root .w-16 {\n  width: 4rem;\n} #scenario-test-root .w-2 {\n  width: 0.5rem;\n} #scenario-test-root .w-3 {\n  width: 0.75rem;\n} #scenario-test-root .w-3\\.5 {\n  width: 0.875rem;\n} #scenario-test-root .w-4 {\n  width: 1rem;\n} #scenario-test-root .w-44 {\n  width: 11rem;\n} #scenario-test-root .w-5 {\n  width: 1.25rem;\n} #scenario-test-root .w-\\[70\\%\\] {\n  width: 70%;\n} #scenario-test-root .w-full {\n  width: 100%;\n} #scenario-test-root .min-w-0 {\n  min-width: 0px;\n} #scenario-test-root .max-w-3xl {\n  max-width: 48rem;\n} #scenario-test-root .max-w-\\[280px\\] {\n  max-width: 280px;\n} #scenario-test-root .max-w-\\[50\\%\\] {\n  max-width: 50%;\n} #scenario-test-root .max-w-\\[55\\%\\] {\n  max-width: 55%;\n} #scenario-test-root .max-w-full {\n  max-width: 100%;\n} #scenario-test-root .flex-1 {\n  flex: 1 1 0%;\n} #scenario-test-root .flex-shrink-0 {\n  flex-shrink: 0;\n} #scenario-test-root .rotate-180 {\n  --tw-rotate: 180deg;\n  transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));\n} #scenario-test-root .scale-90 {\n  --tw-scale-x: .9;\n  --tw-scale-y: .9;\n  transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));\n} #scenario-test-root .cursor-pointer {\n  cursor: pointer;\n} #scenario-test-root .select-none {\n  user-select: none;\n} #scenario-test-root .select-text {\n  user-select: text;\n} #scenario-test-root .appearance-none {\n  appearance: none;\n} #scenario-test-root .grid-cols-1 {\n  grid-template-columns: repeat(1, minmax(0, 1fr));\n} #scenario-test-root .flex-col {\n  flex-direction: column;\n} #scenario-test-root .flex-wrap {\n  flex-wrap: wrap;\n} #scenario-test-root .items-start {\n  align-items: flex-start;\n} #scenario-test-root .items-center {\n  align-items: center;\n} #scenario-test-root .justify-end {\n  justify-content: flex-end;\n} #scenario-test-root .justify-center {\n  justify-content: center;\n} #scenario-test-root .justify-between {\n  justify-content: space-between;\n} #scenario-test-root .gap-1 {\n  gap: 0.25rem;\n} #scenario-test-root .gap-1\\.5 {\n  gap: 0.375rem;\n} #scenario-test-root .gap-2 {\n  gap: 0.5rem;\n} #scenario-test-root .gap-3 {\n  gap: 0.75rem;\n} #scenario-test-root .gap-4 {\n  gap: 1rem;\n} #scenario-test-root :is(.space-x-1 > :not([hidden]) ~ :not([hidden])) {\n  --tw-space-x-reverse: 0;\n  margin-right: calc(0.25rem * var(--tw-space-x-reverse));\n  margin-left: calc(0.25rem * calc(1 - var(--tw-space-x-reverse)));\n} #scenario-test-root :is(.space-x-1\\.5 > :not([hidden]) ~ :not([hidden])) {\n  --tw-space-x-reverse: 0;\n  margin-right: calc(0.375rem * var(--tw-space-x-reverse));\n  margin-left: calc(0.375rem * calc(1 - var(--tw-space-x-reverse)));\n} #scenario-test-root :is(.space-x-2 > :not([hidden]) ~ :not([hidden])) {\n  --tw-space-x-reverse: 0;\n  margin-right: calc(0.5rem * var(--tw-space-x-reverse));\n  margin-left: calc(0.5rem * calc(1 - var(--tw-space-x-reverse)));\n} #scenario-test-root :is(.space-x-2\\.5 > :not([hidden]) ~ :not([hidden])) {\n  --tw-space-x-reverse: 0;\n  margin-right: calc(0.625rem * var(--tw-space-x-reverse));\n  margin-left: calc(0.625rem * calc(1 - var(--tw-space-x-reverse)));\n} #scenario-test-root :is(.space-x-3 > :not([hidden]) ~ :not([hidden])) {\n  --tw-space-x-reverse: 0;\n  margin-right: calc(0.75rem * var(--tw-space-x-reverse));\n  margin-left: calc(0.75rem * calc(1 - var(--tw-space-x-reverse)));\n} #scenario-test-root :is(.space-x-4 > :not([hidden]) ~ :not([hidden])) {\n  --tw-space-x-reverse: 0;\n  margin-right: calc(1rem * var(--tw-space-x-reverse));\n  margin-left: calc(1rem * calc(1 - var(--tw-space-x-reverse)));\n} #scenario-test-root :is(.space-x-6 > :not([hidden]) ~ :not([hidden])) {\n  --tw-space-x-reverse: 0;\n  margin-right: calc(1.5rem * var(--tw-space-x-reverse));\n  margin-left: calc(1.5rem * calc(1 - var(--tw-space-x-reverse)));\n} #scenario-test-root :is(.space-x-8 > :not([hidden]) ~ :not([hidden])) {\n  --tw-space-x-reverse: 0;\n  margin-right: calc(2rem * var(--tw-space-x-reverse));\n  margin-left: calc(2rem * calc(1 - var(--tw-space-x-reverse)));\n} #scenario-test-root :is(.space-y-0\\.5 > :not([hidden]) ~ :not([hidden])) {\n  --tw-space-y-reverse: 0;\n  margin-top: calc(0.125rem * calc(1 - var(--tw-space-y-reverse)));\n  margin-bottom: calc(0.125rem * var(--tw-space-y-reverse));\n} #scenario-test-root :is(.space-y-1 > :not([hidden]) ~ :not([hidden])) {\n  --tw-space-y-reverse: 0;\n  margin-top: calc(0.25rem * calc(1 - var(--tw-space-y-reverse)));\n  margin-bottom: calc(0.25rem * var(--tw-space-y-reverse));\n} #scenario-test-root :is(.space-y-2 > :not([hidden]) ~ :not([hidden])) {\n  --tw-space-y-reverse: 0;\n  margin-top: calc(0.5rem * calc(1 - var(--tw-space-y-reverse)));\n  margin-bottom: calc(0.5rem * var(--tw-space-y-reverse));\n} #scenario-test-root :is(.space-y-3 > :not([hidden]) ~ :not([hidden])) {\n  --tw-space-y-reverse: 0;\n  margin-top: calc(0.75rem * calc(1 - var(--tw-space-y-reverse)));\n  margin-bottom: calc(0.75rem * var(--tw-space-y-reverse));\n} #scenario-test-root :is(.space-y-4 > :not([hidden]) ~ :not([hidden])) {\n  --tw-space-y-reverse: 0;\n  margin-top: calc(1rem * calc(1 - var(--tw-space-y-reverse)));\n  margin-bottom: calc(1rem * var(--tw-space-y-reverse));\n} #scenario-test-root :is(.divide-y > :not([hidden]) ~ :not([hidden])) {\n  --tw-divide-y-reverse: 0;\n  border-top-width: calc(1px * calc(1 - var(--tw-divide-y-reverse)));\n  border-bottom-width: calc(1px * var(--tw-divide-y-reverse));\n} #scenario-test-root :is(.divide-slate-100 > :not([hidden]) ~ :not([hidden])) {\n  --tw-divide-opacity: 1;\n  border-color: rgb(241 245 249 / var(--tw-divide-opacity, 1));\n} #scenario-test-root :is(.divide-slate-200 > :not([hidden]) ~ :not([hidden])) {\n  --tw-divide-opacity: 1;\n  border-color: rgb(226 232 240 / var(--tw-divide-opacity, 1));\n} #scenario-test-root .overflow-hidden {\n  overflow: hidden;\n} #scenario-test-root .overflow-x-auto {\n  overflow-x: auto;\n} #scenario-test-root .overflow-y-auto {\n  overflow-y: auto;\n} #scenario-test-root .truncate {\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n} #scenario-test-root .whitespace-nowrap {\n  white-space: nowrap;\n} #scenario-test-root .break-all {\n  word-break: break-all;\n} #scenario-test-root .rounded {\n  border-radius: 0.25rem;\n} #scenario-test-root .rounded-full {\n  border-radius: 9999px;\n} #scenario-test-root .rounded-lg {\n  border-radius: 0.5rem;\n} #scenario-test-root .rounded-md {\n  border-radius: 0.375rem;\n} #scenario-test-root .rounded-xl {\n  border-radius: 0.75rem;\n} #scenario-test-root .border {\n  border-width: 1px;\n} #scenario-test-root .border-b {\n  border-bottom-width: 1px;\n} #scenario-test-root .border-l {\n  border-left-width: 1px;\n} #scenario-test-root .border-t {\n  border-top-width: 1px;\n} #scenario-test-root .border-blue-200 {\n  --tw-border-opacity: 1;\n  border-color: rgb(191 219 254 / var(--tw-border-opacity, 1));\n} #scenario-test-root .border-emerald-100 {\n  --tw-border-opacity: 1;\n  border-color: rgb(209 250 229 / var(--tw-border-opacity, 1));\n} #scenario-test-root .border-emerald-100\\/50 {\n  border-color: rgb(209 250 229 / 0.5);\n} #scenario-test-root .border-emerald-200 {\n  --tw-border-opacity: 1;\n  border-color: rgb(167 243 208 / var(--tw-border-opacity, 1));\n} #scenario-test-root .border-indigo-100 {\n  --tw-border-opacity: 1;\n  border-color: rgb(224 231 255 / var(--tw-border-opacity, 1));\n} #scenario-test-root .border-rose-100 {\n  --tw-border-opacity: 1;\n  border-color: rgb(255 228 230 / var(--tw-border-opacity, 1));\n} #scenario-test-root .border-rose-100\\/50 {\n  border-color: rgb(255 228 230 / 0.5);\n} #scenario-test-root .border-rose-200 {\n  --tw-border-opacity: 1;\n  border-color: rgb(254 205 211 / var(--tw-border-opacity, 1));\n} #scenario-test-root .border-slate-100 {\n  --tw-border-opacity: 1;\n  border-color: rgb(241 245 249 / var(--tw-border-opacity, 1));\n} #scenario-test-root .border-slate-100\\/80 {\n  border-color: rgb(241 245 249 / 0.8);\n} #scenario-test-root .border-slate-200 {\n  --tw-border-opacity: 1;\n  border-color: rgb(226 232 240 / var(--tw-border-opacity, 1));\n} #scenario-test-root .border-slate-200\\/50 {\n  border-color: rgb(226 232 240 / 0.5);\n} #scenario-test-root .border-slate-200\\/60 {\n  border-color: rgb(226 232 240 / 0.6);\n} #scenario-test-root .border-slate-300 {\n  --tw-border-opacity: 1;\n  border-color: rgb(203 213 225 / var(--tw-border-opacity, 1));\n} #scenario-test-root .border-slate-600 {\n  --tw-border-opacity: 1;\n  border-color: rgb(71 85 105 / var(--tw-border-opacity, 1));\n} #scenario-test-root .border-slate-700 {\n  --tw-border-opacity: 1;\n  border-color: rgb(51 65 85 / var(--tw-border-opacity, 1));\n} #scenario-test-root .border-slate-700\\/50 {\n  border-color: rgb(51 65 85 / 0.5);\n} #scenario-test-root .border-transparent {\n  border-color: transparent;\n} #scenario-test-root .border-zinc-200 {\n  --tw-border-opacity: 1;\n  border-color: rgb(228 228 231 / var(--tw-border-opacity, 1));\n} #scenario-test-root .bg-\\[\\#1e293b\\] {\n  --tw-bg-opacity: 1;\n  background-color: rgb(30 41 59 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-emerald-400 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(52 211 153 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-emerald-50 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(236 253 245 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-emerald-500 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(16 185 129 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-emerald-600 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(5 150 105 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-indigo-50 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(238 242 255 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-rose-100 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(255 228 230 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-rose-400 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(251 113 133 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-rose-50 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(255 241 242 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-rose-50\\/20 {\n  background-color: rgb(255 241 242 / 0.2);\n} #scenario-test-root .bg-rose-500 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(244 63 94 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-slate-100 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(241 245 249 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-slate-100\\/70 {\n  background-color: rgb(241 245 249 / 0.7);\n} #scenario-test-root .bg-slate-200 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(226 232 240 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-slate-200\\/60 {\n  background-color: rgb(226 232 240 / 0.6);\n} #scenario-test-root .bg-slate-300 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(203 213 225 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-slate-400 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(148 163 184 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-slate-50 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(248 250 252 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-slate-50\\/30 {\n  background-color: rgb(248 250 252 / 0.3);\n} #scenario-test-root .bg-slate-50\\/50 {\n  background-color: rgb(248 250 252 / 0.5);\n} #scenario-test-root .bg-slate-50\\/70 {\n  background-color: rgb(248 250 252 / 0.7);\n} #scenario-test-root .bg-slate-700 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(51 65 85 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-slate-800 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(30 41 59 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-slate-900 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(15 23 42 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-slate-950\\/20 {\n  background-color: rgb(2 6 23 / 0.2);\n} #scenario-test-root .bg-slate-950\\/40 {\n  background-color: rgb(2 6 23 / 0.4);\n} #scenario-test-root .bg-transparent {\n  background-color: transparent;\n} #scenario-test-root .bg-white {\n  --tw-bg-opacity: 1;\n  background-color: rgb(255 255 255 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .bg-zinc-100 {\n  --tw-bg-opacity: 1;\n  background-color: rgb(244 244 245 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .p-1 {\n  padding: 0.25rem;\n} #scenario-test-root .p-2 {\n  padding: 0.5rem;\n} #scenario-test-root .p-2\\.5 {\n  padding: 0.625rem;\n} #scenario-test-root .p-3 {\n  padding: 0.75rem;\n} #scenario-test-root .p-3\\.5 {\n  padding: 0.875rem;\n} #scenario-test-root .p-4 {\n  padding: 1rem;\n} #scenario-test-root .p-5 {\n  padding: 1.25rem;\n} #scenario-test-root .p-8 {\n  padding: 2rem;\n} #scenario-test-root .px-1 {\n  padding-left: 0.25rem;\n  padding-right: 0.25rem;\n} #scenario-test-root .px-1\\.5 {\n  padding-left: 0.375rem;\n  padding-right: 0.375rem;\n} #scenario-test-root .px-2 {\n  padding-left: 0.5rem;\n  padding-right: 0.5rem;\n} #scenario-test-root .px-2\\.5 {\n  padding-left: 0.625rem;\n  padding-right: 0.625rem;\n} #scenario-test-root .px-3 {\n  padding-left: 0.75rem;\n  padding-right: 0.75rem;\n} #scenario-test-root .px-4 {\n  padding-left: 1rem;\n  padding-right: 1rem;\n} #scenario-test-root .px-5 {\n  padding-left: 1.25rem;\n  padding-right: 1.25rem;\n} #scenario-test-root .py-0\\.5 {\n  padding-top: 0.125rem;\n  padding-bottom: 0.125rem;\n} #scenario-test-root .py-1 {\n  padding-top: 0.25rem;\n  padding-bottom: 0.25rem;\n} #scenario-test-root .py-1\\.5 {\n  padding-top: 0.375rem;\n  padding-bottom: 0.375rem;\n} #scenario-test-root .py-2 {\n  padding-top: 0.5rem;\n  padding-bottom: 0.5rem;\n} #scenario-test-root .py-2\\.5 {\n  padding-top: 0.625rem;\n  padding-bottom: 0.625rem;\n} #scenario-test-root .py-3 {\n  padding-top: 0.75rem;\n  padding-bottom: 0.75rem;\n} #scenario-test-root .py-4 {\n  padding-top: 1rem;\n  padding-bottom: 1rem;\n} #scenario-test-root .pb-3 {\n  padding-bottom: 0.75rem;\n} #scenario-test-root .pl-2 {\n  padding-left: 0.5rem;\n} #scenario-test-root .pl-6 {\n  padding-left: 1.5rem;\n} #scenario-test-root .pr-4 {\n  padding-right: 1rem;\n} #scenario-test-root .pr-5 {\n  padding-right: 1.25rem;\n} #scenario-test-root .pt-4 {\n  padding-top: 1rem;\n} #scenario-test-root .text-left {\n  text-align: left;\n} #scenario-test-root .text-center {\n  text-align: center;\n} #scenario-test-root .text-right {\n  text-align: right;\n} #scenario-test-root .font-mono {\n  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;\n} #scenario-test-root .text-\\[10px\\] {\n  font-size: 10px;\n} #scenario-test-root .text-\\[11px\\] {\n  font-size: 11px;\n} #scenario-test-root .text-\\[12px\\] {\n  font-size: 12px;\n} #scenario-test-root .text-\\[13px\\] {\n  font-size: 13px;\n} #scenario-test-root .text-sm {\n  font-size: 0.875rem;\n  line-height: 1.25rem;\n} #scenario-test-root .text-xl {\n  font-size: 1.25rem;\n  line-height: 1.75rem;\n} #scenario-test-root .text-xs {\n  font-size: 0.75rem;\n  line-height: 1rem;\n} #scenario-test-root .font-bold {\n  font-weight: 700;\n} #scenario-test-root .font-extrabold {\n  font-weight: 800;\n} #scenario-test-root .font-medium {\n  font-weight: 500;\n} #scenario-test-root .font-normal {\n  font-weight: 400;\n} #scenario-test-root .font-semibold {\n  font-weight: 600;\n} #scenario-test-root .uppercase {\n  text-transform: uppercase;\n} #scenario-test-root .normal-case {\n  text-transform: none;\n} #scenario-test-root .leading-relaxed {\n  line-height: 1.625;\n} #scenario-test-root .leading-tight {\n  line-height: 1.25;\n} #scenario-test-root .tracking-tight {\n  letter-spacing: -0.025em;\n} #scenario-test-root .tracking-wider {\n  letter-spacing: 0.05em;\n} #scenario-test-root .text-amber-400 {\n  --tw-text-opacity: 1;\n  color: rgb(251 191 36 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-amber-600 {\n  --tw-text-opacity: 1;\n  color: rgb(217 119 6 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-blue-700 {\n  --tw-text-opacity: 1;\n  color: rgb(29 78 216 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-emerald-400 {\n  --tw-text-opacity: 1;\n  color: rgb(52 211 153 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-emerald-500 {\n  --tw-text-opacity: 1;\n  color: rgb(16 185 129 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-emerald-600 {\n  --tw-text-opacity: 1;\n  color: rgb(5 150 105 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-emerald-600\\/70 {\n  color: rgb(5 150 105 / 0.7);\n} #scenario-test-root .text-emerald-700 {\n  --tw-text-opacity: 1;\n  color: rgb(4 120 87 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-indigo-500 {\n  --tw-text-opacity: 1;\n  color: rgb(99 102 241 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-indigo-700 {\n  --tw-text-opacity: 1;\n  color: rgb(67 56 202 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-orange-500 {\n  --tw-text-opacity: 1;\n  color: rgb(249 115 22 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-purple-600 {\n  --tw-text-opacity: 1;\n  color: rgb(147 51 234 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-rose-400 {\n  --tw-text-opacity: 1;\n  color: rgb(251 113 133 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-rose-500 {\n  --tw-text-opacity: 1;\n  color: rgb(244 63 94 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-rose-500\\/70 {\n  color: rgb(244 63 94 / 0.7);\n} #scenario-test-root .text-rose-600 {\n  --tw-text-opacity: 1;\n  color: rgb(225 29 72 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-rose-700 {\n  --tw-text-opacity: 1;\n  color: rgb(190 18 60 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-rose-800 {\n  --tw-text-opacity: 1;\n  color: rgb(159 18 57 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-slate-200 {\n  --tw-text-opacity: 1;\n  color: rgb(226 232 240 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-slate-300 {\n  --tw-text-opacity: 1;\n  color: rgb(203 213 225 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-slate-400 {\n  --tw-text-opacity: 1;\n  color: rgb(148 163 184 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-slate-400\\/80 {\n  color: rgb(148 163 184 / 0.8);\n} #scenario-test-root .text-slate-500 {\n  --tw-text-opacity: 1;\n  color: rgb(100 116 139 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-slate-600 {\n  --tw-text-opacity: 1;\n  color: rgb(71 85 105 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-slate-700 {\n  --tw-text-opacity: 1;\n  color: rgb(51 65 85 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-slate-800 {\n  --tw-text-opacity: 1;\n  color: rgb(30 41 59 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-slate-900 {\n  --tw-text-opacity: 1;\n  color: rgb(15 23 42 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-white {\n  --tw-text-opacity: 1;\n  color: rgb(255 255 255 / var(--tw-text-opacity, 1));\n} #scenario-test-root .text-zinc-700 {\n  --tw-text-opacity: 1;\n  color: rgb(63 63 70 / var(--tw-text-opacity, 1));\n} #scenario-test-root .placeholder-slate-400::placeholder {\n  --tw-placeholder-opacity: 1;\n  color: rgb(148 163 184 / var(--tw-placeholder-opacity, 1));\n} #scenario-test-root .placeholder-slate-500::placeholder {\n  --tw-placeholder-opacity: 1;\n  color: rgb(100 116 139 / var(--tw-placeholder-opacity, 1));\n} #scenario-test-root .shadow-inner {\n  --tw-shadow: inset 0 2px 4px 0 rgb(0 0 0 / 0.05);\n  --tw-shadow-colored: inset 0 2px 4px 0 var(--tw-shadow-color);\n  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);\n} #scenario-test-root .shadow-sm {\n  --tw-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);\n  --tw-shadow-colored: 0 1px 2px 0 var(--tw-shadow-color);\n  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);\n} #scenario-test-root .shadow-xl {\n  --tw-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);\n  --tw-shadow-colored: 0 20px 25px -5px var(--tw-shadow-color), 0 8px 10px -6px var(--tw-shadow-color);\n  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);\n} #scenario-test-root .outline-none {\n  outline: 2px solid transparent;\n  outline-offset: 2px;\n} #scenario-test-root .filter {\n  filter: var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow);\n} #scenario-test-root .transition-all {\n  transition-property: all;\n  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);\n  transition-duration: 150ms;\n} #scenario-test-root .transition-colors {\n  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;\n  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);\n  transition-duration: 150ms;\n} #scenario-test-root .transition-transform {\n  transition-property: transform;\n  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);\n  transition-duration: 150ms;\n} #scenario-test-root .duration-150 {\n  transition-duration: 150ms;\n} #scenario-test-root .duration-200 {\n  transition-duration: 200ms;\n} #scenario-test-root .placeholder\\:text-slate-300::placeholder {\n  --tw-text-opacity: 1;\n  color: rgb(203 213 225 / var(--tw-text-opacity, 1));\n} #scenario-test-root .hover\\:border-emerald-300:hover {\n  --tw-border-opacity: 1;\n  border-color: rgb(110 231 183 / var(--tw-border-opacity, 1));\n} #scenario-test-root .hover\\:border-slate-200:hover {\n  --tw-border-opacity: 1;\n  border-color: rgb(226 232 240 / var(--tw-border-opacity, 1));\n} #scenario-test-root .hover\\:bg-emerald-600:hover {\n  --tw-bg-opacity: 1;\n  background-color: rgb(5 150 105 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .hover\\:bg-emerald-700:hover {\n  --tw-bg-opacity: 1;\n  background-color: rgb(4 120 87 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .hover\\:bg-indigo-100:hover {\n  --tw-bg-opacity: 1;\n  background-color: rgb(224 231 255 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .hover\\:bg-slate-100:hover {\n  --tw-bg-opacity: 1;\n  background-color: rgb(241 245 249 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .hover\\:bg-slate-50:hover {\n  --tw-bg-opacity: 1;\n  background-color: rgb(248 250 252 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .hover\\:bg-slate-50\\/50:hover {\n  background-color: rgb(248 250 252 / 0.5);\n} #scenario-test-root .hover\\:bg-slate-50\\/60:hover {\n  background-color: rgb(248 250 252 / 0.6);\n} #scenario-test-root .hover\\:bg-slate-600:hover {\n  --tw-bg-opacity: 1;\n  background-color: rgb(71 85 105 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .hover\\:bg-slate-700:hover {\n  --tw-bg-opacity: 1;\n  background-color: rgb(51 65 85 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .hover\\:bg-white:hover {\n  --tw-bg-opacity: 1;\n  background-color: rgb(255 255 255 / var(--tw-bg-opacity, 1));\n} #scenario-test-root .hover\\:text-emerald-700:hover {\n  --tw-text-opacity: 1;\n  color: rgb(4 120 87 / var(--tw-text-opacity, 1));\n} #scenario-test-root .hover\\:text-rose-600:hover {\n  --tw-text-opacity: 1;\n  color: rgb(225 29 72 / var(--tw-text-opacity, 1));\n} #scenario-test-root .hover\\:text-slate-700:hover {\n  --tw-text-opacity: 1;\n  color: rgb(51 65 85 / var(--tw-text-opacity, 1));\n} #scenario-test-root .hover\\:text-slate-900:hover {\n  --tw-text-opacity: 1;\n  color: rgb(15 23 42 / var(--tw-text-opacity, 1));\n} #scenario-test-root .hover\\:text-white:hover {\n  --tw-text-opacity: 1;\n  color: rgb(255 255 255 / var(--tw-text-opacity, 1));\n} #scenario-test-root .focus\\:border-emerald-500:focus {\n  --tw-border-opacity: 1;\n  border-color: rgb(16 185 129 / var(--tw-border-opacity, 1));\n} #scenario-test-root .focus\\:outline-none:focus {\n  outline: 2px solid transparent;\n  outline-offset: 2px;\n} #scenario-test-root .focus\\:ring-1:focus {\n  --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);\n  --tw-ring-shadow: var(--tw-ring-inset) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color);\n  box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000);\n} #scenario-test-root .focus\\:ring-emerald-500:focus {\n  --tw-ring-opacity: 1;\n  --tw-ring-color: rgb(16 185 129 / var(--tw-ring-opacity, 1));\n} #scenario-test-root :is(.group:hover .group-hover\\:text-emerald-700) {\n  --tw-text-opacity: 1;\n  color: rgb(4 120 87 / var(--tw-text-opacity, 1));\n} #scenario-test-root :is(.group:hover .group-hover\\:text-slate-500) {\n  --tw-text-opacity: 1;\n  color: rgb(100 116 139 / var(--tw-text-opacity, 1));\n} #scenario-test-root :is(.group:hover .group-hover\\:text-slate-600) {\n  --tw-text-opacity: 1;\n  color: rgb(71 85 105 / var(--tw-text-opacity, 1));\n} #scenario-test-root :is(.group:hover .group-hover\\:text-slate-950) {\n  --tw-text-opacity: 1;\n  color: rgb(2 6 23 / var(--tw-text-opacity, 1));\n} @media (min-width: 640px) {\n\n  #scenario-test-root .sm\\:mt-0 {\n    margin-top: 0px;\n  }\n\n  #scenario-test-root .sm\\:flex {\n    display: flex;\n  }\n\n  #scenario-test-root .sm\\:hidden {\n    display: none;\n  }\n\n  #scenario-test-root .sm\\:max-w-xl {\n    max-width: 36rem;\n  }\n\n  #scenario-test-root .sm\\:grid-cols-\\[120px_1fr\\] {\n    grid-template-columns: 120px 1fr;\n  }\n} @media (min-width: 768px) {\n\n  #scenario-test-root .md\\:mt-0 {\n    margin-top: 0px;\n  }\n\n  #scenario-test-root .md\\:w-auto {\n    width: auto;\n  }\n\n  #scenario-test-root .md\\:grid-cols-2 {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n  }\n\n  #scenario-test-root .md\\:gap-0 {\n    gap: 0px;\n  }\n\n  #scenario-test-root :is(.md\\:divide-x > :not([hidden]) ~ :not([hidden])) {\n    --tw-divide-x-reverse: 0;\n    border-right-width: calc(1px * var(--tw-divide-x-reverse));\n    border-left-width: calc(1px * calc(1 - var(--tw-divide-x-reverse)));\n  }\n\n  #scenario-test-root .md\\:pl-6 {\n    padding-left: 1.5rem;\n  }\n\n  #scenario-test-root .md\\:pr-6 {\n    padding-right: 1.5rem;\n  }\n} @media (min-width: 1024px) {\n\n  #scenario-test-root .lg\\:w-\\[80\\%\\] {\n    width: 80%;\n  }\n} @media (min-width: 1280px) {\n\n  #scenario-test-root .xl\\:max-h-\\[calc\\(100vh-52px\\)\\] {\n    max-height: calc(100vh - 52px);\n  }\n\n  #scenario-test-root .xl\\:grid-cols-\\[minmax\\(164px\\2c 1fr\\)_minmax\\(500px\\2c 3\\.18fr\\)_minmax\\(280px\\2c 1\\.75fr\\)\\] {\n    grid-template-columns: minmax(164px,1fr) minmax(500px,3.18fr) minmax(280px,1.75fr);\n  }\n}';
 
 // src/browser/app.js
 function resolveMount(mount) {
@@ -68607,7 +68861,7 @@ async function readWorkbookRows(filePath, options = {}) {
 }
 
 // src/version.generated.js
-var VERSION = "0.3.0";
+var VERSION = "0.4.0";
 
 // src/init-templates.js
 var DEFAULT_LIBRARY_URL = `https://github.com/youzhikeji/scenario-test/releases/download/v${VERSION}/scenario-test.umd.js`;
@@ -68623,9 +68877,9 @@ var AUTHORING_PROMPT = `# AI \u573A\u666F\u751F\u6210 Prompt
 2. \u4E00\u6761\u573A\u666F\u5BF9\u5E94\u4E00\u6761\u5B8C\u6574\u4E1A\u52A1\u6D41\uFF0C\u800C\u4E0D\u662F\u4E00\u4E2A\u63A5\u53E3\u6587\u4EF6\u3002\u7EAF\u67E5\u8BE2\u63A5\u53E3\u53EF\u4EE5\u7EC4\u6210\u72EC\u7ACB\u53EA\u8BFB\u573A\u666F\u3002
 3. \u5728 \`scenario.config.js\` \u7EF4\u62A4 \`envs\`\u3001\`vars\`\u3001\`variables\` \u548C \`scenarios\`\u3002\u79C1\u6709\u9879\u76EE\u53EF\u5728 \`vars\` \u4FDD\u5B58\u8054\u8C03\u51ED\u636E\uFF1B\`variables\` \u53EA\u58F0\u660E\u6807\u7B7E\u3001\`required\` \u4E0E\u53EF\u9009 \`env\` \u6620\u5C04\u3002\u6E90\u7801\u80FD\u786E\u8BA4\u8BF7\u6C42\u5B57\u6BB5\u4F46\u4E0D\u80FD\u786E\u8BA4\u5FC5\u586B\u53D6\u503C\u65F6\uFF0C\u5728\u914D\u7F6E \`vars\` \u4E2D\u7559\u7A7A\uFF0C\u5E76\u5728 \`variables\` \u4E2D\u58F0\u660E\u4E3A \`required: true\`\uFF1B\u573A\u666F\u53EA\u5F15\u7528\u8BE5\u53D8\u91CF\uFF0C\u7981\u6B62\u586B\u5165\u731C\u6D4B\u503C\u6216\u6D4B\u8BD5\u6807\u8BB0\u3002
 4. \u5148\u53C2\u7167 \`SCENARIO_PATTERNS.md\` \u7684\u5B8C\u6574\u6A21\u5F0F\uFF0C\u518D\u6309\u672C\u9879\u76EE\u8BC1\u636E\u66FF\u6362\u8DEF\u5F84\u3001\u5B57\u6BB5\u548C\u54CD\u5E94\u65AD\u8A00\uFF1B\u6A21\u5F0F\u4E2D\u7684\u5C16\u62EC\u53F7\u5360\u4F4D\u5185\u5BB9\u4E0D\u5F97\u76F4\u63A5\u5199\u5165\u573A\u666F\u3002\u573A\u666F\u5FC5\u987B\u4F7F\u7528 \`ScenarioTest.registerScenario(id, ScenarioTest.defineScenario({...}))\`\uFF0C\u914D\u7F6E\u4E2D\u7684\u573A\u666F id\u3001\u6587\u4EF6\u6CE8\u518C id \u5FC5\u987B\u4E00\u81F4\u3002
-5. \u6BCF\u4E00\u6B65\u5199 \`name\`\u3001\`method\`\u3001\`path\`\u3001\`status\`\uFF0C\u5E76\u4E3A\u5173\u952E\u4E1A\u52A1\u7ED3\u679C\u5199 \`assertions\`\u3002Query \u53C2\u6570\u53EA\u80FD\u5199\u5728\u6B65\u9AA4\u9876\u5C42 \`params\`\uFF0C\u4E0D\u80FD\u5199\u6210 \`request.params\`\u3002\u7528 \`extract\` \u4FDD\u5B58\u54CD\u5E94 ID\u3001Token \u6216\u72B6\u6001\uFF0C\u518D\u7528 \`{{vars.name}}\` \u4E32\u8054\u540E\u7EED\u6B65\u9AA4\u3002
+5. \u6BCF\u4E00\u6B65\u5199 \`name\`\u3001\`method\`\u3001\`path\`\u3001\`status\`\uFF0C\u5E76\u4E3A\u5173\u952E\u4E1A\u52A1\u7ED3\u679C\u5199 \`assertions\`\u3002Query \u53C2\u6570\u53EA\u80FD\u5199\u5728\u6B65\u9AA4\u9876\u5C42 \`params\`\uFF0C\u4E0D\u80FD\u5199\u6210 \`request.params\`\u3002\u7528 \`extract\` \u4FDD\u5B58\u54CD\u5E94 ID\u3001Token \u6216\u72B6\u6001\uFF0C\u518D\u7528 \`{{vars.name}}\` \u4E32\u8054\u540E\u7EED\u6B65\u9AA4\u3002\u65AD\u8A00\u64CD\u4F5C\u7B26\uFF1A\`exists\`\u3001\`equals\`\u3001\`notEquals\`\u3001\`includes\`\u3001\`matches\`\u3001\`oneOf\`\u3001\`gt\`\u3001\`gte\`\u3001\`lt\`\u3001\`lte\`\uFF1B\u6570\u503C\u6BD4\u8F83\uFF08\u5982\u6761\u6570\u4E0D\u5C11\u4E8E 5\uFF09\u7528 \`gte: 5\`\uFF08\u4EC5\u6570\u5B57\u4E0D\u505A\u5B57\u7B26\u4E32\u8F6C\u6362\uFF09\uFF0C"\u975E\u8D1F\u6574\u6570"\u8FD9\u7C7B\u683C\u5F0F\u6821\u9A8C\u7528 \`matches: "^\\\\d+$"\`\u3002\`extract\` \u9879\u53EF\u52A0 \`required: true\`\uFF0C\u8DEF\u5F84\u4E0D\u5B58\u5728\u65F6\u8BE5\u6B65\u9AA4\u5931\u8D25\u3002\`when\` \u5BF9\u8C61\u5F62\u5F0F\u53EA\u5141\u8BB8 \`{ from: "vars", ... }\`\uFF0C\u4E0D\u80FD\u57FA\u4E8E\u54CD\u5E94\u4F53\u5224\u65AD\u6761\u4EF6\u3002
 6. \u8BA4\u8BC1\u662F\u666E\u901A\u9879\u76EE\u6B65\u9AA4\uFF1A\u786E\u8BA4\u767B\u5F55\u63A5\u53E3\u65F6\u5148\u767B\u5F55\u5E76\u63D0\u53D6 Token\uFF1B\u65E0\u6CD5\u786E\u8BA4\u65F6\u4EC5\u58F0\u660E\u53D8\u91CF\u5E76\u5728\u5177\u4F53 Header\u3001Query \u6216 Body \u4E2D\u5F15\u7528\uFF0C\u4E0D\u865A\u6784\u6846\u67B6\u7EA7\u8BA4\u8BC1\u3002\u6D4F\u89C8\u5668 Cookie \u4F1A\u8BDD\u5FC5\u987B\u6709\u9879\u76EE\u8BC1\u636E\u5E76\u663E\u5F0F\u8BBE\u7F6E request.credentials \u4E3A include\uFF1BNode CLI \u5F53\u524D\u4E0D\u63D0\u4F9B\u81EA\u52A8 Cookie Jar\u3002
-7. \`runId\` \u548C \`runNo\` \u662F\u6BCF\u6B21\u6267\u884C\u81EA\u52A8\u751F\u6210\u7684\u5185\u7F6E\u53D8\u91CF\uFF0C\u4E0D\u8981\u5728\u914D\u7F6E\u6216\u573A\u666F\u4E2D\u91CD\u65B0\u5B9A\u4E49\u3002\u5199\u5165\u573A\u666F\u4F7F\u7528 \`scenario-{{vars.runNo}}\` \u7B49\u6D4B\u8BD5\u6807\u8BB0\u3002\u6E05\u7406\u53EA\u80FD\u6309\u521A\u63D0\u53D6\u7684 ID \u6216\u6D4B\u8BD5\u6807\u8BB0\u7CBE\u786E\u5B9A\u4F4D\uFF0C\u5E76\u7528 \`when\` \u9632\u6B62\u7A7A\u503C\u5220\u9664\uFF1B\u65E0\u6CD5\u786E\u8BA4\u5B89\u5168\u6E05\u7406\u6761\u4EF6\u65F6\u4E0D\u751F\u6210\u5220\u9664\u6B65\u9AA4\u3002
+7. \`runId\` \u548C \`runNo\` \u662F\u6BCF\u6B21\u6267\u884C\u81EA\u52A8\u751F\u6210\u7684\u5185\u7F6E\u53D8\u91CF\uFF0C\u7981\u6B62\u5728\u914D\u7F6E vars\u3001\u573A\u666F vars\u3001envVars\u3001generatedVars \u6216 extract \u4E2D\u91CD\u65B0\u5B9A\u4E49\u6216\u8986\u76D6\u3002\u5199\u5165\u573A\u666F\u4F7F\u7528 \`scenario-{{vars.runNo}}\` \u7B49\u6D4B\u8BD5\u6807\u8BB0\u3002\u6E05\u7406\u53EA\u80FD\u6309\u521A\u63D0\u53D6\u7684 ID \u6216\u6D4B\u8BD5\u6807\u8BB0\u7CBE\u786E\u5B9A\u4F4D\uFF0C\u5E76\u7528 \`when\` \u9632\u6B62\u7A7A\u503C\u5220\u9664\uFF1B\u65E0\u6CD5\u786E\u8BA4\u5B89\u5168\u6E05\u7406\u6761\u4EF6\u65F6\u4E0D\u751F\u6210\u5220\u9664\u6B65\u9AA4\u3002
 8. \u9ED8\u8BA4\u4FDD\u6301 \`failurePolicy: "stop"\`\u3002\u53EA\u6709\u5728\u5B8C\u6210\u72B6\u6001\u5B57\u6BB5\u548C\u7EC8\u6001\u503C\u90FD\u6709\u8BC1\u636E\u65F6\u624D\u4F7F\u7528 \`retryUntil\`\uFF0C\u4E14 assertions \u5FC5\u987B\u65AD\u8A00\u8BE5\u7EC8\u6001\u503C\uFF1B\u53EA\u65AD\u8A00\u5B57\u6BB5\u5B58\u5728\u4F1A\u7ACB\u5373\u901A\u8FC7\uFF0C\u7981\u6B62\u914D\u5408 \`retryUntil\`\u3002\u5B8C\u6210\u72B6\u6001\u672A\u77E5\u65F6\u6700\u591A\u751F\u6210\u4E00\u6B21\u72B6\u6001\u67E5\u8BE2\u3002\u4E0D\u8981\u5199\u56FA\u5B9A sleep\u3002
 9. \u9519\u8BEF\u54CD\u5E94\u4F53\u6CA1\u6709\u4EE3\u7801\u3001\u6587\u6863\u6216\u65E2\u6709\u6D4B\u8BD5\u4F9D\u636E\u65F6\uFF0C\u53EA\u65AD\u8A00\u5DF2\u786E\u8BA4\u7684 HTTP status\uFF0C\u4E0D\u80FD\u731C\u6D4B\u6216\u65AD\u8A00 code\u3001message\u3001error \u7B49\u5B57\u6BB5\u5B58\u5728\u3002
 10. \u4E0D\u4FEE\u6539\u4E1A\u52A1\u4EE3\u7801\u3001\u6784\u5EFA\u914D\u7F6E\u6216\u516C\u5171\u8FD0\u884C\u65F6\uFF1B\u4E0D\u5199\u5165\u751F\u4EA7\u5730\u5740\u3001\u4E2A\u4EBA\u6570\u636E\u3001\u56FA\u5B9A Token \u6216\u975E\u6D4B\u8BD5\u51ED\u636E\u3002
@@ -68643,8 +68897,9 @@ var SCENARIO_PATTERNS = [
   "2. \u5728 scenario.config.js \u589E\u52A0\u7A33\u5B9A\u7684\u573A\u666F id\u3001\u540D\u79F0\u548C\u6587\u4EF6\u5730\u5740\uFF1B\u573A\u666F\u6587\u4EF6\u6CE8\u518C\u7684 id \u5FC5\u987B\u4E00\u81F4\u3002",
   "3. \u6BCF\u6761\u573A\u666F\u72EC\u7ACB\u8FD0\u884C\uFF1A\u81EA\u5DF1\u83B7\u53D6\u8BA4\u8BC1\u53D8\u91CF\u6216\u8BFB\u53D6\u914D\u7F6E\u53D8\u91CF\uFF0C\u81EA\u5DF1\u63D0\u53D6 ID\uFF0C\u4E0D\u80FD\u4F9D\u8D56\u4E0A\u6B21\u8FD0\u884C\u7559\u4E0B\u7684\u6570\u636E\u3002",
   "4. \u6BCF\u4E00\u6B65\u90FD\u5199 name\u3001method\u3001path\u3001status\uFF1B\u5173\u952E\u4E1A\u52A1\u7ED3\u679C\u5199 assertions\uFF1B\u8DE8\u6B65\u9AA4\u6570\u636E\u901A\u8FC7 extract \u4FDD\u5B58\u3002Query \u53C2\u6570\u5199\u5728\u6B65\u9AA4\u9876\u5C42 params\uFF0C\u4E0D\u5199 request.params\u3002",
-  "5. runId \u548C runNo \u7531\u8FD0\u884C\u65F6\u81EA\u52A8\u751F\u6210\uFF0C\u4E0D\u8981\u5728 vars \u6216 variables \u4E2D\u5B9A\u4E49\u3002\u6A21\u5F0F\u4E2D\u7684\u72B6\u6001\u3001\u683C\u5F0F\u3001\u9519\u8BEF\u7801\u548C\u54CD\u5E94\u5B57\u6BB5\u90FD\u662F\u7ED3\u6784\u5360\u4F4D\uFF0C\u5FC5\u987B\u6709\u9879\u76EE\u8BC1\u636E\u624D\u80FD\u91C7\u7528\u3002",
+  "5. runId \u548C runNo \u7531\u8FD0\u884C\u65F6\u81EA\u52A8\u751F\u6210\uFF0C\u4E0D\u8981\u5728 vars\u3001variables\u3001envVars\u3001generatedVars \u6216 extract \u4E2D\u5B9A\u4E49\u3002\u6A21\u5F0F\u4E2D\u7684\u72B6\u6001\u3001\u683C\u5F0F\u3001\u9519\u8BEF\u7801\u548C\u54CD\u5E94\u5B57\u6BB5\u90FD\u662F\u7ED3\u6784\u5360\u4F4D\uFF0C\u5FC5\u987B\u6709\u9879\u76EE\u8BC1\u636E\u624D\u80FD\u91C7\u7528\u3002",
   "6. \u65E0\u6CD5\u786E\u8BA4\u7684\u5FC5\u586B\u8BF7\u6C42\u503C\u653E\u5165\u914D\u7F6E vars \u7559\u7A7A\uFF0C\u5E76\u5728 variables \u58F0\u660E required: true\uFF1B\u4E0D\u5F97\u7528 PDF\u3001pdf\u3001SUCCESS \u6216 scenario-{{vars.runNo}} \u5145\u5F53\u672A\u77E5\u679A\u4E3E\u3002",
+  "7. \u65AD\u8A00\u64CD\u4F5C\u7B26\uFF1Aexists\u3001equals\u3001notEquals\u3001includes\u3001matches\u3001oneOf\u3001gt\u3001gte\u3001lt\u3001lte\uFF1B\u6570\u503C\u6BD4\u8F83\uFF08\u6761\u6570\u4E0D\u5C11\u4E8E N\uFF09\u7528 gte: N\uFF0C\u683C\u5F0F\u6821\u9A8C\uFF08\u975E\u8D1F\u6574\u6570\uFF09\u7528 matches: '^\\\\d+$'\u3002when \u5BF9\u8C61\u5F62\u5F0F\u53EA\u5141\u8BB8 from: 'vars'\u3002extract \u53EF\u52A0 required: true \u5F3A\u5236\u8DEF\u5F84\u5B58\u5728\u3002",
   "",
   "## \u6A21\u5F0F\u4E00\uFF1A\u767B\u5F55\u3001\u63D0\u53D6 Token\u3001\u540E\u7EED\u8BF7\u6C42\u5F15\u7528",
   "",
@@ -68795,7 +69050,7 @@ function createProjectFiles(directory = "scenario-test", options = {}) {
 - \`globals\`\uFF1A\u5168\u5C40\u53C2\u6570\uFF0C\u8FFD\u52A0\u5230\u6BCF\u4E2A\u8BF7\u6C42\u3002\u652F\u6301 \`header\` / \`cookie\` / \`query\` \u4E09\u79CD\u7C7B\u578B\uFF0C\u53EF\u914D\u7F6E\u5728\u9876\u5C42\uFF08\u6240\u6709\u73AF\u5883\u751F\u6548\uFF09\u6216\u5355\u4E2A\u73AF\u5883\u5185\u3002\u503C\u652F\u6301 \`{{vars.xxx}}\` \u6A21\u677F\uFF1B\u6B65\u9AA4\u663E\u5F0F\u58F0\u660E\u7684\u540C\u540D\u53C2\u6570\u4F18\u5148\u4E8E\u5168\u5C40\u53C2\u6570\u3002CLI \u53EF\u7528 \`SCENARIO_GLOBALS\` \u73AF\u5883\u53D8\u91CF\uFF08JSON \u6570\u7EC4\uFF09\u8986\u76D6\uFF0C\u5982 \`[{"type":"header","name":"Authorization","value":"Bearer x"}]\`\u3002
 - \`vars\`\uFF1A\u672C\u9879\u76EE\u542F\u52A8\u65F6\u4F7F\u7528\u7684\u9ED8\u8BA4\u53D8\u91CF\u3002\u79C1\u6709\u9879\u76EE\u53EF\u5728\u8FD9\u91CC\u4FDD\u5B58\u56E2\u961F\u8054\u8C03 Key\u3001Secret\u3001Token\u3001\u6D4B\u8BD5\u8D26\u53F7\u7B49\u3002
 - \`variables\`\uFF1A\u9875\u9762\u4E0A\u9700\u8981\u5C55\u793A\u6216\u5141\u8BB8\u8986\u76D6\u7684\u53D8\u91CF\u5143\u6570\u636E\uFF0C\u5305\u62EC\u6807\u7B7E\u3001\u662F\u5426\u5FC5\u586B\uFF0C\u4EE5\u53CA\u53EF\u9009\u7684 CLI \u73AF\u5883\u53D8\u91CF\u540D\u3002\u5B9E\u9645\u9ED8\u8BA4\u503C\u4F18\u5148\u5199\u5728 \`vars\`\uFF0C\u4E0D\u8981\u91CD\u590D\u7EF4\u62A4\u3002
-- \`scenarios\`\uFF1A\u573A\u666F id\u3001\u540D\u79F0\u548C\u5BF9\u5E94 JS \u6587\u4EF6\u5730\u5740\u3002
+- \`scenarios\`\uFF1A\u573A\u666F id\u3001\u540D\u79F0\u548C\u5BF9\u5E94 JS \u6587\u4EF6\u5730\u5740\u3002\u9700\u8981\u4EBA\u5DE5\u524D\u7F6E\u6761\u4EF6\u6216\u5199\u6570\u636E\u7684\u573A\u666F\u53EF\u52A0 \`manual: true\`\uFF1A\`--all\` \u9ED8\u8BA4\u6392\u9664\uFF0C\`--scenario <id>\` \u53EF\u663E\u5F0F\u6267\u884C\u3002
 
 \u6700\u5C0F\u914D\u7F6E\u793A\u4F8B\uFF1A
 
@@ -68866,12 +69121,15 @@ ScenarioTest.registerScenario("create-order", ScenarioTest.defineScenario({
 \u5E38\u7528\u80FD\u529B\uFF1A
 
 - \u7528 \`{{vars.name}}\` \u5728 path\u3001Query\u3001Header\u3001Body \u4E2D\u5F15\u7528\u53D8\u91CF\u3002
-- \u7528 \`extract\` \u4ECE\u54CD\u5E94\u63D0\u53D6 ID\u3001Token \u6216\u72B6\u6001\uFF0C\u518D\u4F9B\u540E\u7EED\u6B65\u9AA4\u4F7F\u7528\u3002
+- \u7528 \`extract\` \u4ECE\u54CD\u5E94\u63D0\u53D6 ID\u3001Token \u6216\u72B6\u6001\uFF0C\u518D\u4F9B\u540E\u7EED\u6B65\u9AA4\u4F7F\u7528\uFF1B\u8DEF\u5F84\u5FC5\u586B\u65F6\u52A0 \`required: true\`\uFF0C\u7F3A\u5931\u4F1A\u5931\u8D25\uFF0C\u9ED8\u8BA4\u7F3A\u5931\u53EA\u4EA7\u751F warning\u3002
+- \u65AD\u8A00\u64CD\u4F5C\u7B26\uFF1A\`exists\`\u3001\`equals\`\u3001\`notEquals\`\u3001\`includes\`\u3001\`matches\`\u3001\`oneOf\`\u3001\`gt\`\u3001\`gte\`\u3001\`lt\`\u3001\`lte\`\uFF1B\u6570\u503C\u6BD4\u8F83\u7528 \`gte: 5\`\uFF0C\u975E\u8D1F\u6574\u6570\u7B49\u683C\u5F0F\u6821\u9A8C\u7528 \`matches: "^\\\\d+$"\`\u3002
 - \u767B\u5F55\u3001\u6362 Token\u3001\u7B7E\u540D\u90FD\u6309\u666E\u901A\u6B65\u9AA4\u548C\u53D8\u91CF\u5B9E\u73B0\uFF1B\u6D4F\u89C8\u5668 Cookie \u4F1A\u8BDD\u663E\u5F0F\u4F7F\u7528 \`request.credentials: "include"\`\uFF0CNode CLI \u5F53\u524D\u4E0D\u63D0\u4F9B\u81EA\u52A8 Cookie Jar\u3002
 - \u6BCF\u4E00\u6B65\u81F3\u5C11\u5199 \`name\`\u3001\`method\`\u3001\`path\`\u3001\`status\`\uFF1B\u5173\u952E\u7ED3\u679C\u8865\u5145 \`assertions\`\u3002
 - \u672A\u5199 \`status\` \u548C \`assertions\` \u65F6\u8FD0\u884C\u65F6\u9ED8\u8BA4\u8981\u6C42 HTTP 2xx\uFF0C\u4E0D\u80FD\u628A\u5F02\u5E38\u54CD\u5E94\u5F53\u6210\u529F\u3002
-- \u6700\u7EC8\u4E00\u81F4\u6027\u4F7F\u7528 \`retryUntil\`\uFF0C\u907F\u514D\u56FA\u5B9A\u7B49\u5F85\uFF1B\u524D\u7F6E\u53D8\u91CF\u53EF\u80FD\u4E3A\u7A7A\u7684\u5220\u9664\u64CD\u4F5C\u4F7F\u7528 \`when\` \u4FDD\u62A4\u3002
+- \u6700\u7EC8\u4E00\u81F4\u6027\u4F7F\u7528 \`retryUntil\`\uFF0C\u907F\u514D\u56FA\u5B9A\u7B49\u5F85\uFF1B\u524D\u7F6E\u53D8\u91CF\u53EF\u80FD\u4E3A\u7A7A\u7684\u5220\u9664\u64CD\u4F5C\u4F7F\u7528 \`when\` \u4FDD\u62A4\uFF08\`when\` \u5BF9\u8C61\u5F62\u5F0F\u53EA\u5141\u8BB8 \`from: "vars"\`\uFF09\u3002
+- \`runId\` / \`runNo\` \u662F\u8FD0\u884C\u65F6\u4FDD\u7559\u53D8\u91CF\uFF0C\u7981\u6B62\u5728\u914D\u7F6E\u6216\u573A\u666F\u4E2D\u58F0\u660E\u6216\u8986\u76D6\u3002
 - \u9ED8\u8BA4\u5931\u8D25\u5373\u505C\u6B62\uFF1B\u53EA\u6709\u9700\u8981\u6536\u96C6\u591A\u4E2A\u5931\u8D25\u65F6\u624D\u5728\u573A\u666F\u4E0A\u8BBE \`failurePolicy: "continue"\`\u3002
+- SKIP \u6B65\u9AA4\u4E0D\u8BA1\u5165\u901A\u8FC7/\u6267\u884C\u7EDF\u8BA1\uFF0C\u5168\u8DF3\u8FC7\u65F6\u573A\u666F\u72B6\u6001\u4E3A SKIPPED\uFF1B\u5199\u6570\u636E\u7C7B\u573A\u666F\u5728\u914D\u7F6E\u6E05\u5355\u4E2D\u52A0 \`manual: true\`\uFF0C\`--all\` \u4F1A\u9ED8\u8BA4\u6392\u9664\uFF0C\u9700\u7528 \`--scenario <id>\` \u663E\u5F0F\u6267\u884C\u3002
 
 \u5B8C\u6574 DSL \u4E0E\u793A\u4F8B\u89C1\u516C\u5171\u5E93 README\uFF1B\u9879\u76EE\u5185\u65B0\u589E\u7528\u4F8B\u4F18\u5148\u9075\u5FAA \`AI_SCENARIO_PROMPT.md\` \u548C \`SCENARIO_PATTERNS.md\`\u3002
 
@@ -68943,7 +69201,7 @@ function argumentValue(argv, index, option) {
   return value;
 }
 function parseArgs(argv) {
-  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", port: 4300, project: "", dir: "", libraryUrl: "", force: false, allowExternalPlugins: false };
+  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", port: 4300, project: "", dir: "", libraryUrl: "", force: false, allowExternalPlugins: false, failOnSkip: false };
   let start = 0;
   if (["run", "serve", "init"].includes(argv[0])) {
     args.command = argv[0];
@@ -68965,6 +69223,7 @@ function parseArgs(argv) {
     else if (item === "--library-url") args.libraryUrl = argumentValue(argv, index++, item);
     else if (item === "--force") args.force = true;
     else if (item === "--all") args.all = true;
+    else if (item === "--fail-on-skip") args.failOnSkip = true;
     else if (item === "--allow-external-plugins") args.allowExternalPlugins = true;
     else if (["--help", "-h"].includes(item)) args.help = true;
     else if (item.startsWith("-")) throw new Error(`\u672A\u77E5\u53C2\u6570: ${item}`);
@@ -69017,8 +69276,9 @@ Options:
   --config <file>       \u573A\u666F\u914D\u7F6E\u6587\u4EF6
   --env <key>           \u914D\u7F6E\u4E2D\u7684\u73AF\u5883 key
   --base-url <url>      \u4E34\u65F6\u8986\u76D6 Base URL
-  --scenario <id>       \u6267\u884C\u6307\u5B9A\u573A\u666F
-  --all                 \u6267\u884C\u914D\u7F6E\u4E2D\u7684\u5168\u90E8\u573A\u666F
+  --scenario <id>       \u6267\u884C\u6307\u5B9A\u573A\u666F\uFF08\u53EF\u6267\u884C manual:true \u573A\u666F\uFF09
+  --all                 \u6267\u884C\u914D\u7F6E\u4E2D\u7684\u5168\u90E8\u81EA\u52A8\u573A\u666F\uFF08\u9ED8\u8BA4\u6392\u9664 manual:true\uFF09
+  --fail-on-skip        \u5B58\u5728\u4EFB\u4F55 SKIP \u6B65\u9AA4\u65F6\u6700\u7EC8\u9000\u51FA\u7801\u4E3A 1\uFF08\u9ED8\u8BA4 false\uFF09
   --port <number>       \u6D4F\u89C8\u5668\u670D\u52A1\u7AEF\u53E3\uFF0C\u9ED8\u8BA4 4300
   --allow-external-plugins  \u5141\u8BB8\u52A0\u8F7D\u5916\u90E8\u63D2\u4EF6\uFF08\u6709\u5B89\u5168\u98CE\u9669\uFF09
 
@@ -69087,7 +69347,7 @@ async function copyRuntimeBrowser(projectRoot, directory, libraryUrl, force) {
     import_node_fs4.default.copyFileSync(source, target);
     return true;
   }
-  if (`/*! scenario-test v0.3.0 */
+  if (`/*! scenario-test v0.4.0 */
 var ScenarioTest = (() => {
   var __create = Object.create;
   var __defProp = Object.defineProperty;
@@ -69332,8 +69592,13 @@ var ScenarioTest = (() => {
   // src/index.js
   var index_exports = {};
   __export(index_exports, {
+    ASSERTION_META_KEYS: () => ASSERTION_META_KEYS,
+    ASSERTION_OPERATORS: () => ASSERTION_OPERATORS,
     GLOBAL_TYPES: () => GLOBAL_TYPES,
+    RESERVED_VARS: () => RESERVED_VARS,
     applyExtract: () => applyExtract,
+    assertNoReservedVars: () => assertNoReservedVars,
+    assertNotReservedVar: () => assertNotReservedVar,
     buildAssertions: () => buildAssertions,
     buildUrl: () => buildUrl,
     clearAdapters: () => clearAdapters,
@@ -69346,6 +69611,7 @@ var ScenarioTest = (() => {
     defineScenario: () => defineScenario,
     evalExpression: () => evalExpression,
     evaluateAssertion: () => evaluateAssertion,
+    formatAssertionContext: () => formatAssertionContext,
     formatDuration: () => formatDuration,
     generateSignature: () => generateSignature,
     getAdapter: () => getAdapter,
@@ -69373,7 +69639,8 @@ var ScenarioTest = (() => {
     sanitizeSensitive: () => sanitizeSensitive,
     unregisterAdapter: () => unregisterAdapter,
     validateAdapter: () => validateAdapter,
-    validateAdapterResponse: () => validateAdapterResponse
+    validateAdapterResponse: () => validateAdapterResponse,
+    validateAssertion: () => validateAssertion
   });
 
   // src/core.js
@@ -69499,6 +69766,35 @@ var ScenarioTest = (() => {
     }
     return value;
   }
+  var ASSERTION_OPERATORS = ["exists", "equals", "includes", "matches", "oneOf", "notEquals", "gt", "gte", "lt", "lte"];
+  var ASSERTION_META_KEYS = ["name", "path", "from", "target", "header", "implicit"];
+  function formatAssertionContext(context) {
+    if (!context) return "";
+    if (typeof context === "string") return context;
+    const parts = [];
+    if (context.scenarioName) parts.push(\`\\u573A\\u666F \${context.scenarioName}\`);
+    if (context.stepNo !== void 0) parts.push(\`\\u7B2C \${context.stepNo} \\u6B65\`);
+    if (context.stepName) parts.push(\`\\u6B65\\u9AA4 \${context.stepName}\`);
+    if (context.assertionNo !== void 0) parts.push(\`\\u7B2C \${context.assertionNo} \\u6761\`);
+    return parts.join(" ");
+  }
+  function validateAssertion(definition, context) {
+    const where = formatAssertionContext(context);
+    const prefix = where ? \`\${where}\\u65AD\\u8A00\\u65E0\\u6548\` : "\\u65AD\\u8A00\\u65E0\\u6548";
+    if (!isPlainObject(definition)) throw new TypeError(\`\${prefix}: \\u65AD\\u8A00\\u5FC5\\u987B\\u662F\\u5BF9\\u8C61\`);
+    const keys = Object.keys(definition);
+    const operators = keys.filter((key) => ASSERTION_OPERATORS.includes(key));
+    const unknown = keys.filter((key) => !ASSERTION_OPERATORS.includes(key) && !ASSERTION_META_KEYS.includes(key));
+    if (unknown.length) {
+      throw new TypeError(
+        \`\${prefix}: \\u5305\\u542B\\u672A\\u77E5\\u952E \${unknown.map((key) => \`"\${key}"\`).join(", ")}\\uFF0C\\u5141\\u8BB8\\u7684\\u5143\\u6570\\u636E\\u952E\\u4E3A \${ASSERTION_META_KEYS.join("/")}\\uFF0C\\u64CD\\u4F5C\\u7B26\\u4E3A \${ASSERTION_OPERATORS.join("/")}\`
+      );
+    }
+    if (!operators.length) {
+      throw new TypeError(\`\${prefix}: \\u5FC5\\u987B\\u81F3\\u5C11\\u5305\\u542B\\u4E00\\u4E2A\\u64CD\\u4F5C\\u7B26\\uFF08\${ASSERTION_OPERATORS.join("/")}\\uFF09\`);
+    }
+    return definition;
+  }
   function assertionActual(definition, response, runtime) {
     if (definition.target === "status") return response.status;
     if (definition.header) return headerValue(response.headers, definition.header);
@@ -69507,7 +69803,8 @@ var ScenarioTest = (() => {
     if (definition.from === "bodyText") return response.bodyText;
     return definition.path ? getByPath(response.body, definition.path) : response.body;
   }
-  function evaluateAssertion(definition, response, runtime) {
+  function evaluateAssertion(definition, response, runtime, context) {
+    validateAssertion(definition, context);
     const actual = assertionActual(definition, response, runtime);
     let expected;
     let passed = true;
@@ -69519,6 +69816,10 @@ var ScenarioTest = (() => {
     if (Object.prototype.hasOwnProperty.call(definition, "equals")) {
       expected = resolve(definition.equals, runtime);
       passed = passed && JSON.stringify(actual) === JSON.stringify(expected);
+    }
+    if (Object.prototype.hasOwnProperty.call(definition, "notEquals")) {
+      expected = resolve(definition.notEquals, runtime);
+      passed = passed && JSON.stringify(actual) !== JSON.stringify(expected);
     }
     if (Object.prototype.hasOwnProperty.call(definition, "includes")) {
       expected = resolve(definition.includes, runtime);
@@ -69538,6 +69839,19 @@ var ScenarioTest = (() => {
       expected = resolve(definition.oneOf, runtime);
       passed = passed && Array.isArray(expected) && expected.some((item) => JSON.stringify(item) === JSON.stringify(actual));
     }
+    for (const op of ["gt", "gte", "lt", "lte"]) {
+      if (!Object.prototype.hasOwnProperty.call(definition, op)) continue;
+      expected = resolve(definition[op], runtime);
+      const comparable = typeof actual === "number" && Number.isFinite(actual) && typeof expected === "number" && Number.isFinite(expected);
+      if (!comparable) {
+        passed = false;
+        continue;
+      }
+      if (op === "gt") passed = passed && actual > expected;
+      else if (op === "gte") passed = passed && actual >= expected;
+      else if (op === "lt") passed = passed && actual < expected;
+      else passed = passed && actual <= expected;
+    }
     return {
       name: definition.name || definition.path || "\\u65AD\\u8A00",
       passed,
@@ -69545,25 +69859,52 @@ var ScenarioTest = (() => {
       expected
     };
   }
-  function buildAssertions(step, response, runtime) {
+  function buildAssertions(step, response, runtime, context) {
     const definitions = Array.isArray(step.assertions) ? [...step.assertions] : [];
     if (step.status !== void 0 && !definitions.some((item) => item.target === "status")) {
       definitions.unshift({ name: \`\\u8FD4\\u56DE HTTP \${step.status}\`, target: "status", equals: step.status });
     } else if (step.status === void 0 && definitions.length === 0) {
       definitions.push({ name: "\\u8FD4\\u56DE HTTP 2xx", target: "status", matches: "^2\\\\d\\\\d$", implicit: true });
     }
-    return definitions.map((definition) => evaluateAssertion(definition, response, runtime));
+    return definitions.map((definition, index) => evaluateAssertion(definition, response, runtime, { ...context || {}, assertionNo: index + 1 }));
+  }
+  var RESERVED_VARS = ["runId", "runNo"];
+  function assertNotReservedVar(name, label) {
+    if (RESERVED_VARS.includes(name)) {
+      throw new Error(\`\${label || "\\u53D8\\u91CF"} "\${name}" \\u662F\\u8FD0\\u884C\\u65F6\\u81EA\\u52A8\\u751F\\u6210\\u7684\\u4FDD\\u7559\\u53D8\\u91CF\\uFF0C\\u7981\\u6B62\\u58F0\\u660E\\u6216\\u8986\\u76D6\`);
+    }
+  }
+  function assertNoReservedVars(source, label) {
+    for (const name of Object.keys(source || {})) {
+      assertNotReservedVar(name, label);
+    }
   }
   function applyExtract(step, response, runtime) {
+    const warnings = [];
+    const failures = [];
     for (const definition of step.extract || []) {
       if (!definition || !definition.name) continue;
+      assertNotReservedVar(definition.name, "extract \\u53D8\\u91CF");
       let source = response.body;
       if (definition.from === "headers") source = response.headers;
       else if (definition.from === "bodyText") source = response.bodyText;
       else if (definition.from === "response") source = response;
-      runtime.vars[definition.name] = definition.path ? getByPath(source, definition.path) : source;
+      const value = definition.path ? getByPath(source, definition.path) : source;
+      if (value === void 0) {
+        if (definition.required === true) {
+          failures.push({
+            name: \`\\u63D0\\u53D6 \${definition.name}\\uFF08\\u8DEF\\u5F84\\u4E0D\\u5B58\\u5728\\uFF09\`,
+            passed: false,
+            actual: void 0,
+            expected: \`\\u8DEF\\u5F84 \${definition.path || "(\\u6574\\u4E2A\\u54CD\\u5E94)"} \\u5B58\\u5728\`
+          });
+        } else {
+          warnings.push(\`\\u63D0\\u53D6\\u53D8\\u91CF \${definition.name}\\uFF1A\\u8DEF\\u5F84 \${definition.path || "(\\u6574\\u4E2A\\u54CD\\u5E94)"} \\u4E0D\\u5B58\\u5728\\uFF0C\\u53D8\\u91CF\\u503C\\u4E3A undefined\\uFF08required \\u672A\\u5F00\\u542F\\uFF0C\\u4E0D\\u5F71\\u54CD\\u6267\\u884C\\uFF09\`);
+        }
+      }
+      runtime.vars[definition.name] = value;
     }
-    return runtime.vars;
+    return { warnings, failures };
   }
   function md5(value) {
     return (0, import_blueimp_md5.default)(String(value));
@@ -69658,16 +69999,41 @@ var ScenarioTest = (() => {
     invariant(isPlainObject(input), "\\u573A\\u666F\\u5FC5\\u987B\\u662F\\u5BF9\\u8C61");
     invariant(typeof input.name === "string" && input.name.trim(), "\\u573A\\u666F\\u7F3A\\u5C11 name");
     invariant(Array.isArray(input.steps), \`\\u573A\\u666F \${input.name} \\u7F3A\\u5C11 steps \\u6570\\u7EC4\`);
+    assertNoReservedVars(input.vars, \`\\u573A\\u666F \${input.name} \\u7684 vars\`);
     input.steps.forEach((step, index) => {
       invariant(isPlainObject(step), \`\\u573A\\u666F \${input.name} \\u7B2C \${index + 1} \\u6B65\\u5FC5\\u987B\\u662F\\u5BF9\\u8C61\`);
       invariant(nonEmptyString(step.name), \`\\u573A\\u666F \${input.name} \\u7B2C \${index + 1} \\u6B65\\u7F3A\\u5C11 name\`);
       if (step.method !== void 0) invariant(nonEmptyString(step.method), \`\\u6B65\\u9AA4 \${step.name} \\u7684 method \\u65E0\\u6548\`);
+      const stepContext = { scenarioName: input.name, stepNo: index + 1, stepName: step.name };
+      if (step.assertions !== void 0) {
+        invariant(Array.isArray(step.assertions), \`\\u6B65\\u9AA4 \${step.name} \\u7684 assertions \\u5FC5\\u987B\\u662F\\u6570\\u7EC4\`);
+        step.assertions.forEach((definition, assertionIndex) => {
+          validateAssertion(definition, { ...stepContext, assertionNo: assertionIndex + 1 });
+        });
+      }
       if (step.retryUntil !== void 0) {
         invariant(isPlainObject(step.retryUntil), \`\\u6B65\\u9AA4 \${step.name} \\u7684 retryUntil \\u5FC5\\u987B\\u662F\\u5BF9\\u8C61\`);
+        if (step.retryUntil.assertions !== void 0) {
+          invariant(Array.isArray(step.retryUntil.assertions), \`\\u6B65\\u9AA4 \${step.name} \\u7684 retryUntil.assertions \\u5FC5\\u987B\\u662F\\u6570\\u7EC4\`);
+          step.retryUntil.assertions.forEach((definition, assertionIndex) => {
+            validateAssertion(definition, { ...stepContext, assertionNo: assertionIndex + 1 });
+          });
+        }
         const maxAttempts = Number(step.retryUntil.maxAttempts ?? 10);
         const intervalMs = Number(step.retryUntil.intervalMs ?? 2e3);
         invariant(Number.isInteger(maxAttempts) && maxAttempts >= 1, \`\\u6B65\\u9AA4 \${step.name} \\u7684 maxAttempts \\u5FC5\\u987B\\u662F\\u6B63\\u6574\\u6570\`);
         invariant(Number.isFinite(intervalMs) && intervalMs >= 0, \`\\u6B65\\u9AA4 \${step.name} \\u7684 intervalMs \\u4E0D\\u80FD\\u4E3A\\u8D1F\\u6570\`);
+      }
+      if (step.when !== void 0 && isPlainObject(step.when)) {
+        if (step.when.from !== "vars") {
+          throw new TypeError(
+            \`\\u6B65\\u9AA4 \${step.name} \\u7684 when \\u5BF9\\u8C61\\u5F62\\u5F0F\\u53EA\\u5141\\u8BB8 from: "vars"\\uFF08\\u5F53\\u524D\\u4E3A \${JSON.stringify(step.when.from)}\\uFF09\\uFF0C\\u4E0D\\u5141\\u8BB8\\u4ECE\\u54CD\\u5E94 body/status/header \\u53D6\\u6761\\u4EF6\`
+          );
+        }
+        if (step.when.target !== void 0 || step.when.header !== void 0) {
+          throw new TypeError(\`\\u6B65\\u9AA4 \${step.name} \\u7684 when \\u5BF9\\u8C61\\u5F62\\u5F0F\\u4E0D\\u5141\\u8BB8\\u4F7F\\u7528 target/header \\u6761\\u4EF6\`);
+        }
+        validateAssertion(step.when, stepContext);
       }
     });
     const failurePolicy = input.failurePolicy || "stop";
@@ -69695,6 +70061,9 @@ var ScenarioTest = (() => {
       const id = entry.id || url || \`scenario-\${index + 1}\`;
       invariant(nonEmptyString(id), \`\\u7B2C \${index + 1} \\u4E2A\\u573A\\u666F\\u7F3A\\u5C11 id\`);
       invariant(nonEmptyString(url), \`\\u573A\\u666F \${id} \\u7F3A\\u5C11 url\`);
+      if (entry.manual !== void 0) {
+        invariant(typeof entry.manual === "boolean", \`\\u573A\\u666F \${id} \\u7684 manual \\u5FC5\\u987B\\u662F\\u5E03\\u5C14\\u503C\`);
+      }
       return { ...entry, id, name: entry.name || id, url };
     });
     assertUnique(scenarios, "id", "\\u573A\\u666F id");
@@ -69823,9 +70192,12 @@ var ScenarioTest = (() => {
   }
   function buildGeneratedVars(scenario, baseVars, environmentVariables, options = {}) {
     const identifiers = createRunIdentifiers();
+    assertNoReservedVars(scenario.vars, "\\u573A\\u666F vars");
+    assertNoReservedVars(baseVars, "\\u914D\\u7F6E/\\u9009\\u9879 vars");
     const vars = { ...scenario.vars || {}, ...baseVars || {}, ...identifiers };
     const verboseErrors = options.verboseErrors || process.env.SCENARIO_VERBOSE_ERRORS === "true";
     for (const [name, environmentName] of Object.entries(scenario.envVars || {})) {
+      assertNotReservedVar(name, \`\\u573A\\u666F envVars\`);
       const value = environmentVariables?.[environmentName] ?? vars[name];
       if (value === void 0 || value === null || value === "") {
         if (verboseErrors) {
@@ -69846,6 +70218,7 @@ var ScenarioTest = (() => {
     }
     for (const definition of scenario.generatedVars || []) {
       if (!definition?.name) continue;
+      assertNotReservedVar(definition.name, "generatedVars");
       if (definition.type === "timestamp") vars[definition.name] = Date.now();
       else if (definition.type === "uuidHex") {
         if (!globalThis.crypto?.randomUUID) throw new Error("\\u5F53\\u524D\\u73AF\\u5883\\u4E0D\\u652F\\u6301 crypto.randomUUID");
@@ -70033,7 +70406,7 @@ var ScenarioTest = (() => {
         requestTimeoutMs: runOptions.requestTimeoutMs || engineOptions.requestTimeoutMs || 3e4
       };
       if (step.when !== void 0) {
-        const shouldRun = typeof step.when === "object" ? evaluateAssertion(step.when, { status: 0, headers: {}, body: null, bodyText: "" }, runtime).passed : Boolean(resolve(step.when, runtime));
+        const shouldRun = typeof step.when === "object" ? evaluateAssertion(step.when, { status: 0, headers: {}, body: null, bodyText: "" }, runtime, { stepName: step.name }).passed : Boolean(resolve(step.when, runtime));
         if (!shouldRun) {
           return {
             name: step.name || "\\u672A\\u547D\\u540D\\u6B65\\u9AA4",
@@ -70044,6 +70417,7 @@ var ScenarioTest = (() => {
             passed: true,
             skipped: true,
             error: "",
+            warnings: [],
             assertions: [],
             request: null,
             response: null
@@ -70052,6 +70426,7 @@ var ScenarioTest = (() => {
       }
       let lastExecution;
       let assertions = [];
+      let stepWarnings = [];
       const retry = step.retryUntil || null;
       const totalAttempts = retry ? Number(retry.maxAttempts || 10) + 1 : 1;
       const retryStartTime = now();
@@ -70069,8 +70444,10 @@ var ScenarioTest = (() => {
           lastExecution = adapter ? await executeAdapter(adapter, step, runtime, options) : await executeHttp(step, runtime, options);
           runtime.lastResponse = lastExecution.response;
           runtime.lastResponseBody = lastExecution.response.body;
-          applyExtract(step, lastExecution.response, runtime);
-          assertions = buildAssertions(step, lastExecution.response, runtime);
+          const extractResult = applyExtract(step, lastExecution.response, runtime);
+          stepWarnings = extractResult.warnings;
+          assertions = buildAssertions(step, lastExecution.response, runtime, { stepName: step.name });
+          if (extractResult.failures.length) assertions.push(...extractResult.failures);
           if (assertions.every((item) => item.passed) || attempt === totalAttempts) break;
           const intervalMs = Math.max(100, Number(retry.intervalMs || 2e3));
           await delay(intervalMs, options.signal);
@@ -70084,6 +70461,7 @@ var ScenarioTest = (() => {
           duration: now() - startedAt,
           passed: !failed,
           error: failed?.name || "",
+          warnings: stepWarnings,
           assertions,
           request: lastExecution.request,
           response: lastExecution.response
@@ -70097,6 +70475,7 @@ var ScenarioTest = (() => {
           duration: now() - startedAt,
           passed: false,
           error: error?.message || String(error),
+          warnings: [],
           assertions: [{ name: "\\u6B65\\u9AA4\\u6267\\u884C\\u6210\\u529F", passed: false, actual: error?.message || String(error), expected: "\\u65E0\\u5F02\\u5E38" }],
           request: null,
           response: null
@@ -70120,13 +70499,20 @@ var ScenarioTest = (() => {
         if (!result.passed && scenario.failurePolicy !== "continue") break;
         if (runOptions.signal?.aborted) break;
       }
-      const failed = results.filter((item) => !item.passed).length;
+      const skipped = results.filter((item) => item.skipped).length;
+      const executed = results.length - skipped;
+      const failed = results.filter((item) => !item.skipped && !item.passed).length;
+      const passedSteps = results.filter((item) => !item.skipped && item.passed).length;
+      const status = failed > 0 ? "FAILED" : executed === 0 ? "SKIPPED" : "PASSED";
       return {
         scenarioName: scenario.name,
         passed: failed === 0 && results.length === scenario.steps.length,
+        status,
         planned: scenario.steps.length,
-        executed: results.length,
+        executed,
+        passedSteps,
         failed,
+        skipped,
         results,
         vars: runtime.vars
       };
@@ -70319,6 +70705,29 @@ var ScenarioTest = (() => {
       }
       return bodyText;
     }
+    var ASSERTION_OPERATORS2 = ["exists", "equals", "includes", "matches", "oneOf", "notEquals", "gt", "gte", "lt", "lte"];
+    var ASSERTION_META_KEYS2 = ["name", "path", "from", "target", "header", "implicit"];
+    function validateAssertion2(def, context) {
+      var where = context || "";
+      var prefix = where ? where + "\\u65AD\\u8A00\\u65E0\\u6548" : "\\u65AD\\u8A00\\u65E0\\u6548";
+      if (!isPlainObject2(def)) throw new TypeError(prefix + ": \\u65AD\\u8A00\\u5FC5\\u987B\\u662F\\u5BF9\\u8C61");
+      var keys = Object.keys(def);
+      var operators = keys.filter(function(key) {
+        return ASSERTION_OPERATORS2.indexOf(key) >= 0;
+      });
+      var unknown = keys.filter(function(key) {
+        return ASSERTION_OPERATORS2.indexOf(key) < 0 && ASSERTION_META_KEYS2.indexOf(key) < 0;
+      });
+      if (unknown.length) {
+        throw new TypeError(prefix + ": \\u5305\\u542B\\u672A\\u77E5\\u952E " + unknown.map(function(key) {
+          return '"' + key + '"';
+        }).join(", ") + "\\uFF0C\\u5141\\u8BB8\\u7684\\u5143\\u6570\\u636E\\u952E\\u4E3A " + ASSERTION_META_KEYS2.join("/") + "\\uFF0C\\u64CD\\u4F5C\\u7B26\\u4E3A " + ASSERTION_OPERATORS2.join("/"));
+      }
+      if (!operators.length) {
+        throw new TypeError(prefix + ": \\u5FC5\\u987B\\u81F3\\u5C11\\u5305\\u542B\\u4E00\\u4E2A\\u64CD\\u4F5C\\u7B26\\uFF08" + ASSERTION_OPERATORS2.join("/") + "\\uFF09");
+      }
+      return def;
+    }
     function assertionActual2(def, response, runtime) {
       if (def.target === "status") return response.status;
       if (def.header) return headerValue2(response.headers, def.header);
@@ -70327,7 +70736,8 @@ var ScenarioTest = (() => {
       if (def.from === "bodyText") return response.bodyText;
       return def.path ? getByPath2(response.body, def.path) : response.body;
     }
-    function evaluateAssertion2(def, response, runtime) {
+    function evaluateAssertion2(def, response, runtime, context) {
+      validateAssertion2(def, context);
       var actual = assertionActual2(def, response, runtime);
       var expected;
       var passed = true;
@@ -70338,6 +70748,10 @@ var ScenarioTest = (() => {
       if (def.equals !== void 0) {
         expected = resolve2(clone2(def.equals), runtime);
         passed = passed && deepEqual(actual, expected);
+      }
+      if (def.notEquals !== void 0) {
+        expected = resolve2(clone2(def.notEquals), runtime);
+        passed = passed && !deepEqual(actual, expected);
       }
       if (def.includes !== void 0) {
         expected = resolve2(def.includes, runtime);
@@ -70355,14 +70769,27 @@ var ScenarioTest = (() => {
           return deepEqual(actual, item);
         });
       }
+      ["gt", "gte", "lt", "lte"].forEach(function(op) {
+        if (!Object.prototype.hasOwnProperty.call(def, op)) return;
+        expected = resolve2(def[op], runtime);
+        var comparable = typeof actual === "number" && isFinite(actual) && typeof expected === "number" && isFinite(expected);
+        if (!comparable) {
+          passed = false;
+          return;
+        }
+        if (op === "gt") passed = passed && actual > expected;
+        else if (op === "gte") passed = passed && actual >= expected;
+        else if (op === "lt") passed = passed && actual < expected;
+        else passed = passed && actual <= expected;
+      });
       return {
-        name: def.name || "\\u65AD\\u8A00",
+        name: def.name || def.path || "\\u65AD\\u8A00",
         passed: !!passed,
         actual,
         expected
       };
     }
-    function buildAssertions2(step, response, runtime) {
+    function buildAssertions2(step, response, runtime, context) {
       var defs = Array.isArray(step.assertions) ? step.assertions.slice() : [];
       if (step.status !== void 0 && !defs.some(function(item) {
         return item && item.target === "status";
@@ -70371,23 +70798,54 @@ var ScenarioTest = (() => {
       } else if (step.status === void 0 && defs.length === 0) {
         defs.push({ name: "\\u8FD4\\u56DE HTTP 2xx", target: "status", matches: "^2\\\\d\\\\d$", implicit: true });
       }
-      return defs.map(function(def) {
-        return evaluateAssertion2(def, response, runtime);
+      return defs.map(function(def, index) {
+        var stepContext = context || {};
+        return evaluateAssertion2(def, response, runtime, {
+          stepName: stepContext.stepName,
+          assertionNo: index + 1
+        });
+      });
+    }
+    var RESERVED_VARS2 = ["runId", "runNo"];
+    function assertNotReservedVar2(name, label) {
+      if (RESERVED_VARS2.indexOf(name) >= 0) {
+        throw new Error((label || "\\u53D8\\u91CF") + ' "' + name + '" \\u662F\\u8FD0\\u884C\\u65F6\\u81EA\\u52A8\\u751F\\u6210\\u7684\\u4FDD\\u7559\\u53D8\\u91CF\\uFF0C\\u7981\\u6B62\\u58F0\\u660E\\u6216\\u8986\\u76D6');
+      }
+    }
+    function assertNoReservedVars2(source, label) {
+      Object.keys(source || {}).forEach(function(name) {
+        assertNotReservedVar2(name, label);
       });
     }
     function applyExtract2(step, response, runtime) {
+      var warnings = [];
+      var failures = [];
       (step.extract || []).forEach(function(item) {
         if (!item || !item.name) return;
+        assertNotReservedVar2(item.name, "extract \\u53D8\\u91CF");
+        var source;
         if (item.target === "status") {
-          runtime.vars[item.name] = response.status;
-          return;
+          source = response.status;
+        } else if (item.header) {
+          source = headerValue2(response.headers, item.header);
+        } else {
+          source = item.path ? getByPath2(response.body, item.path) : response.body;
         }
-        if (item.header) {
-          runtime.vars[item.name] = headerValue2(response.headers, item.header);
-          return;
+        if (source === void 0) {
+          if (item.required === true) {
+            failures.push({
+              name: "\\u63D0\\u53D6 " + item.name + "\\uFF08\\u8DEF\\u5F84\\u4E0D\\u5B58\\u5728\\uFF09",
+              passed: false,
+              actual: void 0,
+              expected: "\\u8DEF\\u5F84 " + (item.path || "(\\u6574\\u4E2A\\u54CD\\u5E94)") + " \\u5B58\\u5728"
+            });
+          } else {
+            warnings.push("\\u63D0\\u53D6\\u53D8\\u91CF " + item.name + "\\uFF1A\\u8DEF\\u5F84 " + (item.path || "(\\u6574\\u4E2A\\u54CD\\u5E94)") + " \\u4E0D\\u5B58\\u5728\\uFF0C\\u53D8\\u91CF\\u503C\\u4E3A undefined\\uFF08required \\u672A\\u5F00\\u542F\\uFF0C\\u4E0D\\u5F71\\u54CD\\u6267\\u884C\\uFF09");
+          }
         }
-        runtime.vars[item.name] = item.path ? getByPath2(response.body, item.path) : response.body;
+        runtime.vars[item.name] = source;
       });
+      return { warnings, failures };
     }
     function md52(str) {
       var s = unescape(encodeURIComponent(String(str)));
@@ -70523,9 +70981,13 @@ var ScenarioTest = (() => {
       buildUrl: buildUrl2,
       parseBody: parseBody2,
       assertionActual: assertionActual2,
+      validateAssertion: validateAssertion2,
       evaluateAssertion: evaluateAssertion2,
       buildAssertions: buildAssertions2,
       applyExtract: applyExtract2,
+      RESERVED_VARS: RESERVED_VARS2,
+      assertNotReservedVar: assertNotReservedVar2,
+      assertNoReservedVars: assertNoReservedVars2,
       esc,
       fmt,
       safeJson,
@@ -71057,16 +71519,22 @@ var ScenarioTest = (() => {
         return;
       }
       var total = steps.length;
-      var passed = steps.filter(function(s) {
-        return s.passed;
+      var skipped = steps.filter(function(s) {
+        return s.skipped;
       }).length;
-      var failed = total - passed;
-      var passRate = total ? (passed / total * 100).toFixed(2) : 0;
-      var failRate = total ? (failed / total * 100).toFixed(2) : 0;
+      var executed = total - skipped;
+      var passed = steps.filter(function(s) {
+        return !s.skipped && s.passed;
+      }).length;
+      var failed = steps.filter(function(s) {
+        return !s.skipped && !s.passed;
+      }).length;
+      var passRate = executed ? (passed / executed * 100).toFixed(2) : 0;
+      var failRate = executed ? (failed / executed * 100).toFixed(2) : 0;
       var totalMs = steps.reduce(function(a, s) {
         return a + (s.duration || 0);
       }, 0);
-      var avgMs = total ? totalMs / total : 0;
+      var avgMs = executed ? totalMs / executed : 0;
       var assertTotal = steps.reduce(function(a, s) {
         return a + (s.assertions ? s.assertions.length : 0);
       }, 0);
@@ -71076,7 +71544,7 @@ var ScenarioTest = (() => {
         }).length : 0);
       }, 0);
       var iter = iterations || { run: 1, failed: 0 };
-      var chart = '<div class="flex items-center space-x-6 w-full md:w-auto"><div class="circle-chart scale-90" style="background:conic-gradient(#10b981 0% ' + passRate + "%, #f43f5e " + passRate + '% 100%)"><div class="circle-inner"><span class="text-[10px] font-medium text-slate-400 uppercase tracking-wider">\\u5DF2\\u5B8C\\u6210</span><span class="text-xl font-bold text-slate-800 mt-0.5">' + total + '</span></div></div><div class="flex space-x-3"><div class="flex items-center space-x-2 px-2 py-1 rounded bg-emerald-50 border border-emerald-100/50"><span class="w-2 h-2 rounded-full bg-emerald-500 shadow-sm"></span><span class="text-xs font-bold text-emerald-700">' + passed + ' <span class="text-emerald-600/70 font-medium text-[10px] ml-0.5">(' + passRate + '%)</span></span></div><div class="flex items-center space-x-2 px-2 py-1 rounded bg-rose-50 border border-rose-100/50"><span class="w-2 h-2 rounded-full bg-rose-500 shadow-sm"></span><span class="text-xs font-bold text-rose-600">' + failed + ' <span class="text-rose-500/70 font-medium text-[10px] ml-0.5">(' + failRate + "%)</span></span></div></div></div>";
+      var chart = '<div class="flex items-center space-x-6 w-full md:w-auto"><div class="circle-chart scale-90" style="background:conic-gradient(#10b981 0% ' + passRate + "%, #f43f5e " + passRate + '% 100%)"><div class="circle-inner"><span class="text-[10px] font-medium text-slate-400 uppercase tracking-wider">\\u5DF2\\u5B8C\\u6210</span><span class="text-xl font-bold text-slate-800 mt-0.5">' + total + '</span></div></div><div class="flex space-x-3"><div class="flex items-center space-x-2 px-2 py-1 rounded bg-emerald-50 border border-emerald-100/50"><span class="w-2 h-2 rounded-full bg-emerald-500 shadow-sm"></span><span class="text-xs font-bold text-emerald-700">' + passed + ' <span class="text-emerald-600/70 font-medium text-[10px] ml-0.5">(' + passRate + '%)</span></span></div><div class="flex items-center space-x-2 px-2 py-1 rounded bg-rose-50 border border-rose-100/50"><span class="w-2 h-2 rounded-full bg-rose-500 shadow-sm"></span><span class="text-xs font-bold text-rose-600">' + failed + ' <span class="text-rose-500/70 font-medium text-[10px] ml-0.5">(' + failRate + "%)</span></span></div>" + (skipped ? '<div class="flex items-center space-x-2 px-2 py-1 rounded bg-slate-100 border border-slate-200/60"><span class="w-2 h-2 rounded-full bg-slate-400 shadow-sm"></span><span class="text-xs font-bold text-slate-600">' + skipped + ' <span class="text-slate-400/80 font-medium text-[10px] ml-0.5">\\u8DF3\\u8FC7</span></span></div>' : "") + "</div></div>";
       var metrics = '<div class="flex space-x-8 mt-4 md:mt-0 pl-6 border-l border-slate-100"><div class="space-y-0.5"><div class="text-[10px] font-medium text-slate-400 uppercase tracking-wider">\\u8017\\u65F6(\\u603B/\\u5747)</div><div class="text-emerald-500 font-bold text-sm tracking-tight">' + fmt(totalMs) + " / " + fmt(avgMs) + '</div></div><div class="space-y-0.5"><div class="text-[10px] font-medium text-slate-400 uppercase tracking-wider">\\u5FAA\\u73AF(\\u6267\\u884C/\\u5931\\u8D25)</div><div class="text-xs font-medium text-slate-700"><span class="font-bold text-slate-900">' + (iter.run || 1) + '</span> <span class="mx-1 text-slate-300">/</span> <span class="text-rose-500 font-bold">' + (iter.failed || 0) + '</span></div></div><div class="space-y-0.5"><div class="text-[10px] font-medium text-slate-400 uppercase tracking-wider">\\u65AD\\u8A00(\\u6267\\u884C/\\u5931\\u8D25)</div><div class="text-xs font-medium text-slate-700"><span class="font-bold text-slate-900">' + assertTotal + '</span> <span class="mx-1 text-slate-300">/</span> <span class="text-rose-500 font-bold">' + assertFailed + "</span></div></div></div>";
       statsPanel.innerHTML = chart + metrics;
     }
@@ -71089,15 +71557,21 @@ var ScenarioTest = (() => {
         return;
       }
       var total = steps.length;
-      var passed = steps.filter(function(s) {
-        return s.passed;
+      var skipped = steps.filter(function(s) {
+        return s.skipped;
       }).length;
-      var failed = total - passed;
+      var passed = steps.filter(function(s) {
+        return !s.skipped && s.passed;
+      }).length;
+      var failed = steps.filter(function(s) {
+        return !s.skipped && !s.passed;
+      }).length;
       filterBar.innerHTML = \`
             <div class="flex items-center space-x-1 bg-slate-200/60 p-1 rounded-md">
                 <button data-f="all" onclick="window.__R.filter('all')" class="filter-btn px-3 py-1 text-xs font-bold text-blue-700 bg-white border border-blue-200 rounded shadow-sm">\\u5168\\u90E8 (\${total})</button>
                 <button data-f="pass" onclick="window.__R.filter('pass')" class="filter-btn px-3 py-1 text-xs font-medium text-slate-600 hover:bg-white rounded">\\u6210\\u529F (\${passed})</button>
                 <button data-f="fail" onclick="window.__R.filter('fail')" class="filter-btn px-3 py-1 text-xs font-medium text-slate-600 hover:bg-white rounded">\\u5931\\u8D25 (\${failed})</button>
+                \${skipped ? \`<button data-f="skip" onclick="window.__R.filter('skip')" class="filter-btn px-3 py-1 text-xs font-medium text-slate-600 hover:bg-white rounded">\\u8DF3\\u8FC7 (\${skipped})</button>\` : ""}
             </div>
             <div class="flex items-center space-x-2">
                 <input type="search" placeholder="\\u641C\\u7D22\\u6B65\\u9AA4/\\u5730\\u5740..." oninput="window.__R.search(this.value)" class="px-2.5 py-1 rounded border border-slate-200 text-xs bg-white focus:outline-none focus:border-emerald-500 w-44">
@@ -71158,30 +71632,40 @@ var ScenarioTest = (() => {
         var bodyColor = ok ? "text-emerald-400" : "text-rose-400";
         var detailPanelCls = ok ? "details-panel px-4 bg-slate-50/30 border-t border-slate-100 text-[13px]" : "details-panel px-4 bg-white border-t border-rose-100 text-[13px] shadow-inner";
         var stepActions = executionMode === "step" ? '<span class="step-run-actions"><button type="button" data-step-action="rewind" data-step-index="' + i + '" title="\\u4EC5\\u56DE\\u9000\\u6D4B\\u8BD5\\u8FD0\\u884C\\u65F6\\u4E0E\\u62A5\\u544A\\uFF0C\\u4E0D\\u64A4\\u9500\\u5DF2\\u53D1\\u51FA\\u7684\\u4E1A\\u52A1\\u8BF7\\u6C42">\\u56DE\\u9000</button><button type="button" data-step-action="rerun" data-step-index="' + i + '" title="\\u4ECE\\u672C\\u6B65\\u9AA4\\u6267\\u884C\\u524D\\u7684\\u53D8\\u91CF\\u5FEB\\u7167\\u91CD\\u65B0\\u6267\\u884C">\\u91CD\\u8DD1</button></span>' : "";
-        return '<li class="' + bgCls + ' group transition-colors" data-passed="' + ok + '" data-search="' + esc((s.name + " " + s.method + " " + s.path).toLowerCase()) + '"><div class="px-4 py-2.5 flex items-center justify-between cursor-pointer" onclick="window.__R.toggle(this, event)"><div class="flex items-center space-x-3 w-[70%] lg:w-[80%]"><div class="flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 text-[11px] font-bold shadow-sm ' + seqCls + '">' + seqNum + '</div><span class="select-text text-sm ' + nameCls + ' font-semibold truncate transition-colors" title="' + esc(s.name) + '">' + esc(s.name) + '</span><div class="hidden sm:flex items-center space-x-1.5 bg-slate-50 px-2 py-0.5 rounded border border-slate-100 flex-shrink-0 max-w-[50%]"><span class="text-[10px] font-bold ' + methodColor + ' uppercase tracking-wider">' + s.method + '</span><span class="text-slate-300">|</span><span class="select-text text-[12px] text-slate-500 font-mono truncate" title="' + esc(s.path) + '">' + esc(s.path) + '</span></div></div><div class="flex items-center space-x-4 flex-shrink-0"><button type="button" data-adhoc-step="' + i + '" class="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-bold text-slate-600 hover:border-emerald-300 hover:text-emerald-700">\\u8C03\\u8BD5</button>' + stepActions + '<span class="text-[12px] font-bold font-mono ' + statusCls + ' px-1.5 py-0.5 rounded border">' + s.status + '</span><span class="' + timeCls + ' text-[12px] font-mono w-16 text-right">' + fmt(s.duration) + '</span><svg class="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></div></div><div class="' + detailPanelCls + '"><div class="sm:hidden mb-3 pb-3 border-b border-slate-200"><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1">\\u63A5\\u53E3\\u5730\\u5740</div><div class="flex items-center space-x-2"><span class="text-xs font-bold ' + methodColor + '">' + s.method + '</span><span class="text-xs font-mono break-all">' + esc(s.path) + "</span></div></div>" + errorHtml + '<div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-0 md:divide-x divide-slate-200 py-3"><div class="md:pr-6 space-y-3">' + (reqHeaders ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 bg-slate-300 mr-2 rounded-full"></div>\\u8BF7\\u6C42\\u5934</div><pre class="bg-slate-800 p-2.5 rounded text-slate-300 overflow-x-auto font-mono leading-tight shadow-inner">' + reqHeaders + "</pre></div>" : "") + (reqBody ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 bg-emerald-400 mr-2 rounded-full"></div>\\u8BF7\\u6C42\\u4F53</div><pre class="bg-slate-800 p-2.5 rounded ' + bodyColor + ' overflow-x-auto font-mono leading-tight shadow-inner">' + reqBody + "</pre></div>" : "") + '</div><div class="md:pl-6 space-y-3">' + (resHeaders ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 bg-slate-300 mr-2 rounded-full"></div>\\u54CD\\u5E94\\u5934</div><pre class="bg-slate-800 p-2.5 rounded text-slate-300 overflow-x-auto font-mono leading-tight shadow-inner">' + resHeaders + "</pre></div>" : "") + (resBody ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 ' + (ok ? "bg-emerald-400" : "bg-rose-400") + ' mr-2 rounded-full"></div>\\u54CD\\u5E94\\u4F53</div><pre class="bg-slate-800 p-2.5 rounded ' + bodyColor + ' overflow-x-auto font-mono leading-tight shadow-inner">' + resBody + "</pre></div>" : "") + "</div></div>" + assertHtml + "</div></li>";
+        return '<li class="' + bgCls + ' group transition-colors" data-passed="' + ok + '" data-skipped="' + skipped + '" data-search="' + esc((s.name + " " + s.method + " " + s.path).toLowerCase()) + '"><div class="px-4 py-2.5 flex items-center justify-between cursor-pointer" onclick="window.__R.toggle(this, event)"><div class="flex items-center space-x-3 w-[70%] lg:w-[80%]"><div class="flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 text-[11px] font-bold shadow-sm ' + seqCls + '">' + seqNum + '</div><span class="select-text text-sm ' + nameCls + ' font-semibold truncate transition-colors" title="' + esc(s.name) + '">' + esc(s.name) + '</span><div class="hidden sm:flex items-center space-x-1.5 bg-slate-50 px-2 py-0.5 rounded border border-slate-100 flex-shrink-0 max-w-[50%]"><span class="text-[10px] font-bold ' + methodColor + ' uppercase tracking-wider">' + s.method + '</span><span class="text-slate-300">|</span><span class="select-text text-[12px] text-slate-500 font-mono truncate" title="' + esc(s.path) + '">' + esc(s.path) + '</span></div></div><div class="flex items-center space-x-4 flex-shrink-0"><button type="button" data-adhoc-step="' + i + '" class="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-bold text-slate-600 hover:border-emerald-300 hover:text-emerald-700">\\u8C03\\u8BD5</button>' + stepActions + '<span class="text-[12px] font-bold font-mono ' + statusCls + ' px-1.5 py-0.5 rounded border">' + s.status + '</span><span class="' + timeCls + ' text-[12px] font-mono w-16 text-right">' + fmt(s.duration) + '</span><svg class="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></div></div><div class="' + detailPanelCls + '"><div class="sm:hidden mb-3 pb-3 border-b border-slate-200"><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1">\\u63A5\\u53E3\\u5730\\u5740</div><div class="flex items-center space-x-2"><span class="text-xs font-bold ' + methodColor + '">' + s.method + '</span><span class="text-xs font-mono break-all">' + esc(s.path) + "</span></div></div>" + errorHtml + '<div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-0 md:divide-x divide-slate-200 py-3"><div class="md:pr-6 space-y-3">' + (reqHeaders ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 bg-slate-300 mr-2 rounded-full"></div>\\u8BF7\\u6C42\\u5934</div><pre class="bg-slate-800 p-2.5 rounded text-slate-300 overflow-x-auto font-mono leading-tight shadow-inner">' + reqHeaders + "</pre></div>" : "") + (reqBody ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 bg-emerald-400 mr-2 rounded-full"></div>\\u8BF7\\u6C42\\u4F53</div><pre class="bg-slate-800 p-2.5 rounded ' + bodyColor + ' overflow-x-auto font-mono leading-tight shadow-inner">' + reqBody + "</pre></div>" : "") + '</div><div class="md:pl-6 space-y-3">' + (resHeaders ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 bg-slate-300 mr-2 rounded-full"></div>\\u54CD\\u5E94\\u5934</div><pre class="bg-slate-800 p-2.5 rounded text-slate-300 overflow-x-auto font-mono leading-tight shadow-inner">' + resHeaders + "</pre></div>" : "") + (resBody ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 ' + (ok ? "bg-emerald-400" : "bg-rose-400") + ' mr-2 rounded-full"></div>\\u54CD\\u5E94\\u4F53</div><pre class="bg-slate-800 p-2.5 rounded ' + bodyColor + ' overflow-x-auto font-mono leading-tight shadow-inner">' + resBody + "</pre></div>" : "") + "</div></div>" + assertHtml + "</div></li>";
       }).join("") + renderPendingSteps(scenarioSteps, steps.length);
     }
     function buildOverallReport(steps, scenario, scenarioFile, executionMode, environment) {
       steps = steps || [];
       var total = steps.length;
-      var passed = steps.filter(function(item) {
-        return item.passed;
+      var skipped = steps.filter(function(item) {
+        return item.skipped;
       }).length;
-      var failed = total - passed;
+      var executed = total - skipped;
+      var passed = steps.filter(function(item) {
+        return !item.skipped && item.passed;
+      }).length;
+      var failed = steps.filter(function(item) {
+        return !item.skipped && !item.passed;
+      }).length;
       var duration = steps.reduce(function(sum, item) {
         return sum + (item.duration || 0);
       }, 0);
+      var status = failed > 0 ? "FAILED" : executed === 0 ? "SKIPPED" : "PASSED";
       return {
         title: scenario && scenario.name || scenarioFile || "\\u6D4B\\u8BD5\\u62A5\\u544A",
         scenarioFile: scenarioFile || "",
         executionMode: executionMode || "full",
         environment: environment ? environment.name || environment.key : "\\u9ED8\\u8BA4",
+        status,
         summary: {
           totalSteps: scenario && scenario.steps && scenario.steps.length || total,
-          executedSteps: total,
+          plannedSteps: scenario && scenario.steps && scenario.steps.length || total,
+          executedSteps: executed,
           passedSteps: passed,
           failedSteps: failed,
-          passRate: total ? (passed / total * 100).toFixed(2) + "%" : "0.00%",
+          skippedSteps: skipped,
+          passRate: executed ? (passed / executed * 100).toFixed(2) + "%" : "0.00%",
           totalDurationMs: duration,
           totalDurationFmt: fmt(duration)
         },
@@ -71193,9 +71677,11 @@ var ScenarioTest = (() => {
             path: item.path,
             status: item.status,
             passed: item.passed,
+            skipped: Boolean(item.skipped),
             durationMs: item.duration,
             durationFmt: fmt(item.duration),
             error: item.error || "",
+            warnings: item.warnings || [],
             request: item.request,
             response: item.response,
             assertions: item.assertions || []
@@ -71212,18 +71698,23 @@ var ScenarioTest = (() => {
       lines.push("- **\\u573A\\u666F\\u6587\\u4EF6**: \`" + (report.scenarioFile || "-") + "\`");
       lines.push("- **\\u6D4B\\u8BD5\\u73AF\\u5883**: " + (report.environment || "-"));
       lines.push("- **\\u6267\\u884C\\u6A21\\u5F0F**: " + (report.executionMode || "-"));
-      lines.push("- **\\u7ED3\\u679C**: " + (summary.failedSteps ? "\\u274C \\u5B58\\u5728\\u5931\\u8D25" : "\\u2705 \\u5168\\u90E8\\u901A\\u8FC7") + " (" + summary.passedSteps + "/" + summary.executedSteps + ")");
+      var resultText = summary.failedSteps ? "\\u274C \\u5B58\\u5728\\u5931\\u8D25" : summary.skippedSteps && summary.executedSteps === 0 ? "\\u23ED\\uFE0F \\u5168\\u90E8\\u8DF3\\u8FC7" : "\\u2705 \\u5168\\u90E8\\u901A\\u8FC7";
+      lines.push("- **\\u7ED3\\u679C**: " + resultText + " (" + summary.passedSteps + "/" + summary.executedSteps + ")");
       lines.push("- **\\u901A\\u8FC7\\u7387**: " + summary.passRate);
+      lines.push("- **\\u7EDF\\u8BA1**: \\u901A\\u8FC7 " + summary.passedSteps + " / \\u5931\\u8D25 " + summary.failedSteps + " / \\u8DF3\\u8FC7 " + summary.skippedSteps + " / \\u6267\\u884C " + summary.executedSteps + " / \\u8BA1\\u5212 " + summary.plannedSteps);
       lines.push("- **\\u603B\\u8017\\u65F6**: " + summary.totalDurationFmt);
       lines.push("");
       lines.push("## \\u6B65\\u9AA4\\u660E\\u7EC6");
       lines.push("");
       (report.steps || []).forEach(function(step) {
-        var icon = step.passed ? "\\u2705" : "\\u274C";
+        var icon = step.skipped ? "\\u23ED\\uFE0F" : step.passed ? "\\u2705" : "\\u274C";
         lines.push("### " + icon + " \\u6B65\\u9AA4 " + step.stepNo + ": " + step.name);
         lines.push("- **\\u8BF7\\u6C42**: \`" + step.method + " " + step.path + "\`");
         lines.push("- **\\u72B6\\u6001**: " + step.status + " | **\\u8017\\u65F6**: " + step.durationFmt);
         if (step.error) lines.push("- **\\u5931\\u8D25\\u539F\\u56E0**: " + step.error);
+        (step.warnings || []).forEach(function(warning) {
+          lines.push("- **\\u8B66\\u544A**: " + warning);
+        });
         if (step.assertions && step.assertions.length) {
           lines.push("- **\\u65AD\\u8A00\\u7ED3\\u679C**:");
           step.assertions.forEach(function(a) {
@@ -71256,9 +71747,10 @@ var ScenarioTest = (() => {
       var summary = report.summary;
       var pending = summary.totalSteps - summary.executedSteps;
       var hasFailure = summary.failedSteps > 0;
+      var allSkipped = !hasFailure && summary.executedSteps === 0 && summary.skippedSteps > 0;
       var completed = pending <= 0;
-      var statusClass = hasFailure ? "report-status--failed" : completed ? "report-status--passed" : "report-status--running";
-      var statusText = hasFailure ? "\\u5B58\\u5728\\u5931\\u8D25" : completed ? "\\u5168\\u90E8\\u901A\\u8FC7" : "\\u6267\\u884C\\u4E2D";
+      var statusClass = hasFailure ? "report-status--failed" : allSkipped ? "report-status--skipped" : completed ? "report-status--passed" : "report-status--running";
+      var statusText = hasFailure ? "\\u5B58\\u5728\\u5931\\u8D25" : allSkipped ? "\\u5168\\u90E8\\u8DF3\\u8FC7" : completed ? "\\u5168\\u90E8\\u901A\\u8FC7" : "\\u6267\\u884C\\u4E2D";
       var modeText = report.executionMode === "step" ? "\\u5355\\u6B65\\u6267\\u884C" : "\\u5168\\u91CF\\u6267\\u884C";
       var progressText = summary.executedSteps + " / " + summary.totalSteps;
       var reportSteps = hasFailure ? report.steps.filter(function(step) {
@@ -71276,8 +71768,8 @@ var ScenarioTest = (() => {
         var responseHtml = '<details class="report-step__response"><summary>\\u5B8C\\u6574\\u54CD\\u5E94</summary><div class="report-step__response-section">\\u54CD\\u5E94\\u5934</div><pre>' + esc(formatReportPayload(response.headers || {})) + '</pre><div class="report-step__response-section">\\u54CD\\u5E94\\u4F53</div><pre>' + esc(formatReportPayload(responseBody)) + "</pre></details>";
         return '<div class="report-step ' + (step.passed ? "report-step--passed" : "report-step--failed") + '"><div class="report-step__marker" aria-hidden="true">' + (step.passed ? "\\u2713" : "!") + '</div><div class="report-step__content"><div class="report-step__heading"><span class="report-step__number">\\u6B65\\u9AA4 ' + step.stepNo + '</span><span class="report-step__name" title="' + esc(step.name || "") + '">' + esc(step.name || "\\u672A\\u547D\\u540D\\u6B65\\u9AA4") + '</span></div><div class="report-step__request"><span class="report-method ' + methodClass + '">' + esc(method) + '</span><span class="report-step__path" title="' + esc(step.path || "") + '">' + esc(step.path || "-") + "</span></div>" + (issue ? '<div class="report-step__issue">' + esc(issue) + "</div>" : "") + responseHtml + '</div><div class="report-step__result"><span class="report-step__code">' + esc(String(step.status || "-")) + '</span><span class="report-step__duration">' + esc(step.durationFmt || "-") + "</span></div></div>";
       }).join("");
-      var diagnosisHtml = hasFailure ? '<div class="report-steps"><div class="report-steps__title">\\u5931\\u8D25\\u6B65\\u9AA4</div>' + stepHtml + "</div>" : '<div class="report-healthy"><div class="report-healthy__title">' + (completed ? "\\u6240\\u6709\\u6B65\\u9AA4\\u5747\\u5DF2\\u901A\\u8FC7" : "\\u5F53\\u524D\\u5DF2\\u6267\\u884C\\u6B65\\u9AA4\\u5747\\u901A\\u8FC7") + '</div><div class="report-healthy__hint">\\u8BE6\\u7EC6\\u8BF7\\u6C42\\u4E0E\\u54CD\\u5E94\\u8BF7\\u5728\\u5DE6\\u4FA7\\u6B65\\u9AA4\\u5217\\u8868\\u67E5\\u770B\\uFF1B\\u5B8C\\u6574\\u62A5\\u544A\\u53EF\\u901A\\u8FC7\\u9876\\u90E8\\u6309\\u94AE\\u590D\\u5236\\u3002</div></div>';
-      node.innerHTML = '<div class="report-content"><div class="report-overview"><div class="report-overview__top"><div><div class="report-overview__eyebrow">\\u5F53\\u524D\\u6267\\u884C\\u6982\\u89C8</div><div class="report-overview__title">' + esc(report.title || "\\u6D4B\\u8BD5\\u62A5\\u544A") + '</div></div><span class="report-status ' + statusClass + '">' + statusText + '</span></div><div class="report-overview__meta"><span>' + esc(report.environment || "\\u9ED8\\u8BA4\\u73AF\\u5883") + "</span><span>" + modeText + "</span><span>\\u5DF2\\u6267\\u884C " + progressText + '</span></div></div><div class="report-metrics"><div class="report-metric"><span class="report-metric__label">\\u901A\\u8FC7</span><strong class="report-metric__value report-metric__value--passed">' + summary.passedSteps + '</strong></div><div class="report-metric"><span class="report-metric__label">\\u5931\\u8D25</span><strong class="report-metric__value ' + (hasFailure ? "report-metric__value--failed" : "") + '">' + summary.failedSteps + '</strong></div><div class="report-metric"><span class="report-metric__label">\\u603B\\u8017\\u65F6</span><strong class="report-metric__value report-metric__duration">' + esc(summary.totalDurationFmt) + '</strong></div></div><div class="report-progress"><div class="report-progress__labels"><span>\\u6267\\u884C\\u8FDB\\u5EA6</span><strong>' + progressText + " \\xB7 " + esc(summary.passRate) + '</strong></div><div class="report-progress__track' + (hasFailure ? " report-progress__track--failed" : "") + '"><span style="width:' + (summary.totalSteps ? summary.executedSteps / summary.totalSteps * 100 : 0) + '%"></span></div></div>' + diagnosisHtml + "</div>";
+      var diagnosisHtml = hasFailure ? '<div class="report-steps"><div class="report-steps__title">\\u5931\\u8D25\\u6B65\\u9AA4</div>' + stepHtml + "</div>" : allSkipped ? '<div class="report-healthy"><div class="report-healthy__title">\\u6240\\u6709\\u6B65\\u9AA4\\u5747\\u56E0\\u6761\\u4EF6\\u4E0D\\u6EE1\\u8DB3\\u800C\\u8DF3\\u8FC7</div><div class="report-healthy__hint">\\u672C\\u6B21\\u6267\\u884C\\u672A\\u53D1\\u8D77\\u4EFB\\u4F55\\u8BF7\\u6C42\\uFF0C\\u8BE6\\u7EC6\\u8DF3\\u8FC7\\u539F\\u56E0\\u8BF7\\u5728\\u5DE6\\u4FA7\\u6B65\\u9AA4\\u5217\\u8868\\u67E5\\u770B\\u3002</div></div>' : '<div class="report-healthy"><div class="report-healthy__title">' + (completed ? "\\u6240\\u6709\\u6B65\\u9AA4\\u5747\\u5DF2\\u901A\\u8FC7" : "\\u5F53\\u524D\\u5DF2\\u6267\\u884C\\u6B65\\u9AA4\\u5747\\u901A\\u8FC7") + '</div><div class="report-healthy__hint">\\u8BE6\\u7EC6\\u8BF7\\u6C42\\u4E0E\\u54CD\\u5E94\\u8BF7\\u5728\\u5DE6\\u4FA7\\u6B65\\u9AA4\\u5217\\u8868\\u67E5\\u770B\\uFF1B\\u5B8C\\u6574\\u62A5\\u544A\\u53EF\\u901A\\u8FC7\\u9876\\u90E8\\u6309\\u94AE\\u590D\\u5236\\u3002</div></div>';
+      node.innerHTML = '<div class="report-content"><div class="report-overview"><div class="report-overview__top"><div><div class="report-overview__eyebrow">\\u5F53\\u524D\\u6267\\u884C\\u6982\\u89C8</div><div class="report-overview__title">' + esc(report.title || "\\u6D4B\\u8BD5\\u62A5\\u544A") + '</div></div><span class="report-status ' + statusClass + '">' + statusText + '</span></div><div class="report-overview__meta"><span>' + esc(report.environment || "\\u9ED8\\u8BA4\\u73AF\\u5883") + "</span><span>" + modeText + "</span><span>\\u5DF2\\u6267\\u884C " + progressText + '</span></div></div><div class="report-metrics"><div class="report-metric"><span class="report-metric__label">\\u901A\\u8FC7</span><strong class="report-metric__value report-metric__value--passed">' + summary.passedSteps + '</strong></div><div class="report-metric"><span class="report-metric__label">\\u5931\\u8D25</span><strong class="report-metric__value ' + (hasFailure ? "report-metric__value--failed" : "") + '">' + summary.failedSteps + "</strong></div>" + (summary.skippedSteps > 0 ? '<div class="report-metric"><span class="report-metric__label">\\u8DF3\\u8FC7</span><strong class="report-metric__value">' + summary.skippedSteps + "</strong></div>" : "") + '<div class="report-metric"><span class="report-metric__label">\\u603B\\u8017\\u65F6</span><strong class="report-metric__value report-metric__duration">' + esc(summary.totalDurationFmt) + '</strong></div></div><div class="report-progress"><div class="report-progress__labels"><span>\\u6267\\u884C\\u8FDB\\u5EA6</span><strong>' + progressText + " \\xB7 " + esc(summary.passRate) + '</strong></div><div class="report-progress__track' + (hasFailure ? " report-progress__track--failed" : "") + '"><span style="width:' + (summary.totalSteps ? summary.executedSteps / summary.totalSteps * 100 : 0) + '%"></span></div></div>' + diagnosisHtml + "</div>";
       return report;
     }
     return {
@@ -71610,6 +72102,8 @@ var ScenarioTest = (() => {
     var evaluateAssertion2 = core.evaluateAssertion;
     var buildAssertions2 = core.buildAssertions;
     var applyExtract2 = core.applyExtract;
+    var assertNotReservedVar2 = core.assertNotReservedVar;
+    var assertNoReservedVars2 = core.assertNoReservedVars;
     var md52 = core.md5;
     var esc = core.esc;
     var fmt = core.fmt;
@@ -71671,11 +72165,14 @@ var ScenarioTest = (() => {
           if (type === "all") activeCls = "font-bold text-blue-700 bg-white border border-blue-200 rounded shadow-sm";
           else if (type === "pass") activeCls = "font-bold text-emerald-700 bg-white border border-emerald-200 rounded shadow-sm";
           else if (type === "fail") activeCls = "font-bold text-rose-700 bg-white border border-rose-200 rounded shadow-sm";
+          else if (type === "skip") activeCls = "font-bold text-slate-700 bg-white border border-slate-300 rounded shadow-sm";
           b.className = "filter-btn px-3 py-1 text-xs " + (active ? activeCls : "font-medium text-slate-600 hover:bg-white rounded");
         });
         document.querySelectorAll("#stepsList li").forEach(function(li) {
-          var status = li.dataset.passed;
-          li.style.display = type === "all" || type === "pass" && status === "true" || type === "fail" && status === "false" ? "" : "none";
+          var passed = li.dataset.passed === "true";
+          var skipped = li.dataset.skipped === "true";
+          var visible = type === "all" || type === "pass" && passed && !skipped || type === "fail" && !passed || type === "skip" && skipped;
+          li.style.display = visible ? "" : "none";
         });
       },
       search: function(q) {
@@ -71915,9 +72412,13 @@ var ScenarioTest = (() => {
         }).join("\\u3001") + "\\u3002\\u8BF7\\u5728\\u201C\\u914D\\u7F6E\\u53C2\\u6570 \\u2192 \\u5F53\\u524D\\u573A\\u666F\\u51ED\\u636E\\u201D\\u4E2D\\u586B\\u5199\\u5E76\\u4FDD\\u5B58\\u3002");
       }
       var identifiers = createRunIdentifiers2();
+      assertNoReservedVars2(scenario.vars, "\\u573A\\u666F vars");
+      assertNoReservedVars2(cfg.vars, "\\u914D\\u7F6E vars");
+      assertNoReservedVars2(scenarioVars, "\\u9875\\u9762\\u573A\\u666F\\u53D8\\u91CF");
       var vars = Object.assign({}, scenario.vars || {}, cfg.vars || {}, scenarioVars, identifiers);
       (scenario.generatedVars || []).forEach(function(def) {
         if (!def || !def.name) return;
+        assertNotReservedVar2(def.name, "generatedVars");
         if (def.type === "timestamp") {
           vars[def.name] = Date.now();
           return;
@@ -72008,7 +72509,7 @@ var ScenarioTest = (() => {
     }
     async function executeStep(step, runtime, cfg) {
       if (step.when !== void 0) {
-        var shouldRun = typeof step.when === "object" ? evaluateAssertion2(step.when, { status: 0, headers: {}, body: null, bodyText: "" }, runtime).passed : Boolean(resolve2(step.when, runtime));
+        var shouldRun = typeof step.when === "object" ? evaluateAssertion2(step.when, { status: 0, headers: {}, body: null, bodyText: "" }, runtime, { stepName: step.name }).passed : Boolean(resolve2(step.when, runtime));
         if (!shouldRun) {
           return {
             name: step.name || "\\u672A\\u547D\\u540D\\u6B65\\u9AA4",
@@ -72019,6 +72520,7 @@ var ScenarioTest = (() => {
             passed: true,
             skipped: true,
             error: "",
+            warnings: [],
             assertions: [],
             request: null,
             response: null
@@ -72106,10 +72608,13 @@ var ScenarioTest = (() => {
         var responseData = await sendRequest();
         var headerObj = responseData.headers;
         var body = responseData.body;
+        var stepWarnings = [];
         runtime.lastResponse = responseData;
         runtime.lastResponseBody = body;
-        applyExtract2(step, responseData, runtime);
-        var assertions = buildAssertions2(step, responseData, runtime);
+        var extractResult = applyExtract2(step, responseData, runtime);
+        stepWarnings = extractResult.warnings;
+        var assertions = buildAssertions2(step, responseData, runtime, { stepName: step.name });
+        if (extractResult.failures.length) assertions.push.apply(assertions, extractResult.failures);
         var failedAssertion = assertions.find(function(item) {
           return !item.passed;
         });
@@ -72127,8 +72632,10 @@ var ScenarioTest = (() => {
             body = responseData.body;
             runtime.lastResponse = responseData;
             runtime.lastResponseBody = body;
-            applyExtract2(step, responseData, runtime);
-            assertions = buildAssertions2(step, responseData, runtime);
+            extractResult = applyExtract2(step, responseData, runtime);
+            stepWarnings = extractResult.warnings;
+            assertions = buildAssertions2(step, responseData, runtime, { stepName: step.name });
+            if (extractResult.failures.length) assertions.push.apply(assertions, extractResult.failures);
             failedAssertion = assertions.find(function(item) {
               return !item.passed;
             });
@@ -72142,6 +72649,7 @@ var ScenarioTest = (() => {
                 attempts: requestAttempts,
                 passed: true,
                 error: "",
+                warnings: stepWarnings,
                 request: { headers, body: bodyData },
                 response: { headers: headerObj, body, bodyText: responseData.bodyText },
                 assertions
@@ -72158,6 +72666,7 @@ var ScenarioTest = (() => {
           attempts: requestAttempts,
           passed: !failedAssertion,
           error: failedAssertion ? failedAssertion.name : "",
+          warnings: stepWarnings,
           request: { headers, body: bodyData },
           response: { headers: headerObj, body, bodyText: responseData.bodyText },
           assertions
@@ -72177,6 +72686,7 @@ var ScenarioTest = (() => {
           cancelled,
           timedOut,
           error: errorMessage,
+          warnings: [],
           request: { headers, body: bodyData },
           response: { headers: {}, body: null },
           assertions: [{ name: cancelled ? "\\u6267\\u884C\\u672A\\u53D6\\u6D88" : timedOut ? "\\u8BF7\\u6C42\\u672A\\u8D85\\u65F6" : "\\u8BF7\\u6C42\\u6267\\u884C\\u6210\\u529F", passed: false, actual: errorMessage, expected: "\\u65E0\\u5F02\\u5E38" }]
@@ -72301,10 +72811,14 @@ var ScenarioTest = (() => {
         renderReportPanel();
         return;
       }
-      var failed = state.steps.filter(function(item) {
-        return !item.passed;
+      var skipped = state.steps.filter(function(item) {
+        return item.skipped;
       }).length;
-      uiView.setRunState(failed ? "failed" : "success", failed ? "\\u5B58\\u5728\\u5931\\u8D25" : "\\u6267\\u884C\\u6210\\u529F");
+      var failed = state.steps.filter(function(item) {
+        return !item.skipped && !item.passed;
+      }).length;
+      var executed = state.steps.length - skipped;
+      uiView.setRunState(failed ? "failed" : executed === 0 ? "skipped" : "success", failed ? "\\u5B58\\u5728\\u5931\\u8D25" : executed === 0 ? "\\u5168\\u90E8\\u8DF3\\u8FC7" : "\\u6267\\u884C\\u6210\\u529F");
       renderReportPanel();
     }
     async function runScenario2() {
@@ -72888,7 +73402,7 @@ var ScenarioTest = (() => {
   }
 
   // src/browser/tailwind.generated.js
-  var TAILWIND_CSS = '*, ::before, ::after {\\n  --tw-border-spacing-x: 0;\\n  --tw-border-spacing-y: 0;\\n  --tw-translate-x: 0;\\n  --tw-translate-y: 0;\\n  --tw-rotate: 0;\\n  --tw-skew-x: 0;\\n  --tw-skew-y: 0;\\n  --tw-scale-x: 1;\\n  --tw-scale-y: 1;\\n  --tw-pan-x:  ;\\n  --tw-pan-y:  ;\\n  --tw-pinch-zoom:  ;\\n  --tw-scroll-snap-strictness: proximity;\\n  --tw-gradient-from-position:  ;\\n  --tw-gradient-via-position:  ;\\n  --tw-gradient-to-position:  ;\\n  --tw-ordinal:  ;\\n  --tw-slashed-zero:  ;\\n  --tw-numeric-figure:  ;\\n  --tw-numeric-spacing:  ;\\n  --tw-numeric-fraction:  ;\\n  --tw-ring-inset:  ;\\n  --tw-ring-offset-width: 0px;\\n  --tw-ring-offset-color: #fff;\\n  --tw-ring-color: rgb(59 130 246 / 0.5);\\n  --tw-ring-offset-shadow: 0 0 #0000;\\n  --tw-ring-shadow: 0 0 #0000;\\n  --tw-shadow: 0 0 #0000;\\n  --tw-shadow-colored: 0 0 #0000;\\n  --tw-blur:  ;\\n  --tw-brightness:  ;\\n  --tw-contrast:  ;\\n  --tw-grayscale:  ;\\n  --tw-hue-rotate:  ;\\n  --tw-invert:  ;\\n  --tw-saturate:  ;\\n  --tw-sepia:  ;\\n  --tw-drop-shadow:  ;\\n  --tw-backdrop-blur:  ;\\n  --tw-backdrop-brightness:  ;\\n  --tw-backdrop-contrast:  ;\\n  --tw-backdrop-grayscale:  ;\\n  --tw-backdrop-hue-rotate:  ;\\n  --tw-backdrop-invert:  ;\\n  --tw-backdrop-opacity:  ;\\n  --tw-backdrop-saturate:  ;\\n  --tw-backdrop-sepia:  ;\\n  --tw-contain-size:  ;\\n  --tw-contain-layout:  ;\\n  --tw-contain-paint:  ;\\n  --tw-contain-style:  ;\\n}\\n\\n::backdrop {\\n  --tw-border-spacing-x: 0;\\n  --tw-border-spacing-y: 0;\\n  --tw-translate-x: 0;\\n  --tw-translate-y: 0;\\n  --tw-rotate: 0;\\n  --tw-skew-x: 0;\\n  --tw-skew-y: 0;\\n  --tw-scale-x: 1;\\n  --tw-scale-y: 1;\\n  --tw-pan-x:  ;\\n  --tw-pan-y:  ;\\n  --tw-pinch-zoom:  ;\\n  --tw-scroll-snap-strictness: proximity;\\n  --tw-gradient-from-position:  ;\\n  --tw-gradient-via-position:  ;\\n  --tw-gradient-to-position:  ;\\n  --tw-ordinal:  ;\\n  --tw-slashed-zero:  ;\\n  --tw-numeric-figure:  ;\\n  --tw-numeric-spacing:  ;\\n  --tw-numeric-fraction:  ;\\n  --tw-ring-inset:  ;\\n  --tw-ring-offset-width: 0px;\\n  --tw-ring-offset-color: #fff;\\n  --tw-ring-color: rgb(59 130 246 / 0.5);\\n  --tw-ring-offset-shadow: 0 0 #0000;\\n  --tw-ring-shadow: 0 0 #0000;\\n  --tw-shadow: 0 0 #0000;\\n  --tw-shadow-colored: 0 0 #0000;\\n  --tw-blur:  ;\\n  --tw-brightness:  ;\\n  --tw-contrast:  ;\\n  --tw-grayscale:  ;\\n  --tw-hue-rotate:  ;\\n  --tw-invert:  ;\\n  --tw-saturate:  ;\\n  --tw-sepia:  ;\\n  --tw-drop-shadow:  ;\\n  --tw-backdrop-blur:  ;\\n  --tw-backdrop-brightness:  ;\\n  --tw-backdrop-contrast:  ;\\n  --tw-backdrop-grayscale:  ;\\n  --tw-backdrop-hue-rotate:  ;\\n  --tw-backdrop-invert:  ;\\n  --tw-backdrop-opacity:  ;\\n  --tw-backdrop-saturate:  ;\\n  --tw-backdrop-sepia:  ;\\n  --tw-contain-size:  ;\\n  --tw-contain-layout:  ;\\n  --tw-contain-paint:  ;\\n  --tw-contain-style:  ;\\n}/*\\n! tailwindcss v3.4.17 | MIT License | https://tailwindcss.com\\n*//*\\n1. Prevent padding and border from affecting element width. (https://github.com/mozdevs/cssremedy/issues/4)\\n2. Allow adding a border to an element by just adding a border-width. (https://github.com/tailwindcss/tailwindcss/pull/116)\\n*/\\n\\n*,\\n::before,\\n::after {\\n  box-sizing: border-box; /* 1 */\\n  border-width: 0; /* 2 */\\n  border-style: solid; /* 2 */\\n  border-color: #e5e7eb; /* 2 */\\n}\\n\\n::before,\\n::after {\\n  --tw-content: \\'\\';\\n}\\n\\n/*\\n1. Use a consistent sensible line-height in all browsers.\\n2. Prevent adjustments of font size after orientation changes in iOS.\\n3. Use a more readable tab size.\\n4. Use the user\\'s configured \`sans\` font-family by default.\\n5. Use the user\\'s configured \`sans\` font-feature-settings by default.\\n6. Use the user\\'s configured \`sans\` font-variation-settings by default.\\n7. Disable tap highlights on iOS\\n*/\\n\\nhtml,\\n:host {\\n  line-height: 1.5; /* 1 */\\n  -webkit-text-size-adjust: 100%; /* 2 */\\n  -moz-tab-size: 4; /* 3 */\\n  tab-size: 4; /* 3 */\\n  font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"; /* 4 */\\n  font-feature-settings: normal; /* 5 */\\n  font-variation-settings: normal; /* 6 */\\n  -webkit-tap-highlight-color: transparent; /* 7 */\\n}\\n\\n/*\\n1. Remove the margin in all browsers.\\n2. Inherit line-height from \`html\` so users can set them as a class directly on the \`html\` element.\\n*/\\n\\nbody {\\n  margin: 0; /* 1 */\\n  line-height: inherit; /* 2 */\\n}\\n\\n/*\\n1. Add the correct height in Firefox.\\n2. Correct the inheritance of border color in Firefox. (https://bugzilla.mozilla.org/show_bug.cgi?id=190655)\\n3. Ensure horizontal rules are visible by default.\\n*/\\n\\nhr {\\n  height: 0; /* 1 */\\n  color: inherit; /* 2 */\\n  border-top-width: 1px; /* 3 */\\n}\\n\\n/*\\nAdd the correct text decoration in Chrome, Edge, and Safari.\\n*/\\n\\nabbr:where([title]) {\\n  text-decoration: underline dotted;\\n}\\n\\n/*\\nRemove the default font size and weight for headings.\\n*/\\n\\nh1,\\nh2,\\nh3,\\nh4,\\nh5,\\nh6 {\\n  font-size: inherit;\\n  font-weight: inherit;\\n}\\n\\n/*\\nReset links to optimize for opt-in styling instead of opt-out.\\n*/\\n\\na {\\n  color: inherit;\\n  text-decoration: inherit;\\n}\\n\\n/*\\nAdd the correct font weight in Edge and Safari.\\n*/\\n\\nb,\\nstrong {\\n  font-weight: bolder;\\n}\\n\\n/*\\n1. Use the user\\'s configured \`mono\` font-family by default.\\n2. Use the user\\'s configured \`mono\` font-feature-settings by default.\\n3. Use the user\\'s configured \`mono\` font-variation-settings by default.\\n4. Correct the odd \`em\` font sizing in all browsers.\\n*/\\n\\ncode,\\nkbd,\\nsamp,\\npre {\\n  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; /* 1 */\\n  font-feature-settings: normal; /* 2 */\\n  font-variation-settings: normal; /* 3 */\\n  font-size: 1em; /* 4 */\\n}\\n\\n/*\\nAdd the correct font size in all browsers.\\n*/\\n\\nsmall {\\n  font-size: 80%;\\n}\\n\\n/*\\nPrevent \`sub\` and \`sup\` elements from affecting the line height in all browsers.\\n*/\\n\\nsub,\\nsup {\\n  font-size: 75%;\\n  line-height: 0;\\n  position: relative;\\n  vertical-align: baseline;\\n}\\n\\nsub {\\n  bottom: -0.25em;\\n}\\n\\nsup {\\n  top: -0.5em;\\n}\\n\\n/*\\n1. Remove text indentation from table contents in Chrome and Safari. (https://bugs.chromium.org/p/chromium/issues/detail?id=999088, https://bugs.webkit.org/show_bug.cgi?id=201297)\\n2. Correct table border color inheritance in all Chrome and Safari. (https://bugs.chromium.org/p/chromium/issues/detail?id=935729, https://bugs.webkit.org/show_bug.cgi?id=195016)\\n3. Remove gaps between table borders by default.\\n*/\\n\\ntable {\\n  text-indent: 0; /* 1 */\\n  border-color: inherit; /* 2 */\\n  border-collapse: collapse; /* 3 */\\n}\\n\\n/*\\n1. Change the font styles in all browsers.\\n2. Remove the margin in Firefox and Safari.\\n3. Remove default padding in all browsers.\\n*/\\n\\nbutton,\\ninput,\\noptgroup,\\nselect,\\ntextarea {\\n  font-family: inherit; /* 1 */\\n  font-feature-settings: inherit; /* 1 */\\n  font-variation-settings: inherit; /* 1 */\\n  font-size: 100%; /* 1 */\\n  font-weight: inherit; /* 1 */\\n  line-height: inherit; /* 1 */\\n  letter-spacing: inherit; /* 1 */\\n  color: inherit; /* 1 */\\n  margin: 0; /* 2 */\\n  padding: 0; /* 3 */\\n}\\n\\n/*\\nRemove the inheritance of text transform in Edge and Firefox.\\n*/\\n\\nbutton,\\nselect {\\n  text-transform: none;\\n}\\n\\n/*\\n1. Correct the inability to style clickable types in iOS and Safari.\\n2. Remove default button styles.\\n*/\\n\\nbutton,\\ninput:where([type=\\'button\\']),\\ninput:where([type=\\'reset\\']),\\ninput:where([type=\\'submit\\']) {\\n  -webkit-appearance: button; /* 1 */\\n  background-color: transparent; /* 2 */\\n  background-image: none; /* 2 */\\n}\\n\\n/*\\nUse the modern Firefox focus style for all focusable elements.\\n*/\\n\\n:-moz-focusring {\\n  outline: auto;\\n}\\n\\n/*\\nRemove the additional \`:invalid\` styles in Firefox. (https://github.com/mozilla/gecko-dev/blob/2f9eacd9d3d995c937b4251a5557d95d494c9be1/layout/style/res/forms.css#L728-L737)\\n*/\\n\\n:-moz-ui-invalid {\\n  box-shadow: none;\\n}\\n\\n/*\\nAdd the correct vertical alignment in Chrome and Firefox.\\n*/\\n\\nprogress {\\n  vertical-align: baseline;\\n}\\n\\n/*\\nCorrect the cursor style of increment and decrement buttons in Safari.\\n*/\\n\\n::-webkit-inner-spin-button,\\n::-webkit-outer-spin-button {\\n  height: auto;\\n}\\n\\n/*\\n1. Correct the odd appearance in Chrome and Safari.\\n2. Correct the outline style in Safari.\\n*/\\n\\n[type=\\'search\\'] {\\n  -webkit-appearance: textfield; /* 1 */\\n  outline-offset: -2px; /* 2 */\\n}\\n\\n/*\\nRemove the inner padding in Chrome and Safari on macOS.\\n*/\\n\\n::-webkit-search-decoration {\\n  -webkit-appearance: none;\\n}\\n\\n/*\\n1. Correct the inability to style clickable types in iOS and Safari.\\n2. Change font properties to \`inherit\` in Safari.\\n*/\\n\\n::-webkit-file-upload-button {\\n  -webkit-appearance: button; /* 1 */\\n  font: inherit; /* 2 */\\n}\\n\\n/*\\nAdd the correct display in Chrome and Safari.\\n*/\\n\\nsummary {\\n  display: list-item;\\n}\\n\\n/*\\nRemoves the default spacing and border for appropriate elements.\\n*/\\n\\nblockquote,\\ndl,\\ndd,\\nh1,\\nh2,\\nh3,\\nh4,\\nh5,\\nh6,\\nhr,\\nfigure,\\np,\\npre {\\n  margin: 0;\\n}\\n\\nfieldset {\\n  margin: 0;\\n  padding: 0;\\n}\\n\\nlegend {\\n  padding: 0;\\n}\\n\\nol,\\nul,\\nmenu {\\n  list-style: none;\\n  margin: 0;\\n  padding: 0;\\n}\\n\\n/*\\nReset default styling for dialogs.\\n*/\\ndialog {\\n  padding: 0;\\n}\\n\\n/*\\nPrevent resizing textareas horizontally by default.\\n*/\\n\\ntextarea {\\n  resize: vertical;\\n}\\n\\n/*\\n1. Reset the default placeholder opacity in Firefox. (https://github.com/tailwindlabs/tailwindcss/issues/3300)\\n2. Set the default placeholder color to the user\\'s configured gray 400 color.\\n*/\\n\\ninput::placeholder,\\ntextarea::placeholder {\\n  opacity: 1; /* 1 */\\n  color: #9ca3af; /* 2 */\\n}\\n\\n/*\\nSet the default cursor for buttons.\\n*/\\n\\nbutton,\\n[role="button"] {\\n  cursor: pointer;\\n}\\n\\n/*\\nMake sure disabled buttons don\\'t get the pointer cursor.\\n*/\\n:disabled {\\n  cursor: default;\\n}\\n\\n/*\\n1. Make replaced elements \`display: block\` by default. (https://github.com/mozdevs/cssremedy/issues/14)\\n2. Add \`vertical-align: middle\` to align replaced elements more sensibly by default. (https://github.com/jensimmons/cssremedy/issues/14#issuecomment-634934210)\\n   This can trigger a poorly considered lint error in some tools but is included by design.\\n*/\\n\\nimg,\\nsvg,\\nvideo,\\ncanvas,\\naudio,\\niframe,\\nembed,\\nobject {\\n  display: block; /* 1 */\\n  vertical-align: middle; /* 2 */\\n}\\n\\n/*\\nConstrain images and videos to the parent width and preserve their intrinsic aspect ratio. (https://github.com/mozdevs/cssremedy/issues/14)\\n*/\\n\\nimg,\\nvideo {\\n  max-width: 100%;\\n  height: auto;\\n}\\n\\n/* Make elements with the HTML hidden attribute stay hidden by default */\\n[hidden]:where(:not([hidden="until-found"])) {\\n  display: none;\\n} .\\\\!container {\\n  width: 100% !important;\\n} .container {\\n  width: 100%;\\n} @media (min-width: 640px) {\\n\\n  .\\\\!container {\\n    max-width: 640px !important;\\n  }\\n\\n  .container {\\n    max-width: 640px;\\n  }\\n} @media (min-width: 768px) {\\n\\n  .\\\\!container {\\n    max-width: 768px !important;\\n  }\\n\\n  .container {\\n    max-width: 768px;\\n  }\\n} @media (min-width: 1024px) {\\n\\n  .\\\\!container {\\n    max-width: 1024px !important;\\n  }\\n\\n  .container {\\n    max-width: 1024px;\\n  }\\n} @media (min-width: 1280px) {\\n\\n  .\\\\!container {\\n    max-width: 1280px !important;\\n  }\\n\\n  .container {\\n    max-width: 1280px;\\n  }\\n} @media (min-width: 1536px) {\\n\\n  .\\\\!container {\\n    max-width: 1536px !important;\\n  }\\n\\n  .container {\\n    max-width: 1536px;\\n  }\\n} #scenario-test-root .sr-only {\\n  position: absolute;\\n  width: 1px;\\n  height: 1px;\\n  padding: 0;\\n  margin: -1px;\\n  overflow: hidden;\\n  clip: rect(0, 0, 0, 0);\\n  white-space: nowrap;\\n  border-width: 0;\\n} #scenario-test-root .visible {\\n  visibility: visible;\\n} #scenario-test-root .fixed {\\n  position: fixed;\\n} #scenario-test-root .relative {\\n  position: relative;\\n} #scenario-test-root .sticky {\\n  position: sticky;\\n} #scenario-test-root .inset-0 {\\n  inset: 0px;\\n} #scenario-test-root .top-0 {\\n  top: 0px;\\n} #scenario-test-root .z-10 {\\n  z-index: 10;\\n} #scenario-test-root .z-30 {\\n  z-index: 30;\\n} #scenario-test-root .z-40 {\\n  z-index: 40;\\n} #scenario-test-root .col-span-2 {\\n  grid-column: span 2 / span 2;\\n} #scenario-test-root .mx-1 {\\n  margin-left: 0.25rem;\\n  margin-right: 0.25rem;\\n} #scenario-test-root .mx-auto {\\n  margin-left: auto;\\n  margin-right: auto;\\n} #scenario-test-root .my-2 {\\n  margin-top: 0.5rem;\\n  margin-bottom: 0.5rem;\\n} #scenario-test-root .my-8 {\\n  margin-top: 2rem;\\n  margin-bottom: 2rem;\\n} #scenario-test-root .mb-1 {\\n  margin-bottom: 0.25rem;\\n} #scenario-test-root .mb-1\\\\.5 {\\n  margin-bottom: 0.375rem;\\n} #scenario-test-root .mb-2 {\\n  margin-bottom: 0.5rem;\\n} #scenario-test-root .mb-3 {\\n  margin-bottom: 0.75rem;\\n} #scenario-test-root .ml-0\\\\.5 {\\n  margin-left: 0.125rem;\\n} #scenario-test-root .ml-1 {\\n  margin-left: 0.25rem;\\n} #scenario-test-root .mr-1 {\\n  margin-right: 0.25rem;\\n} #scenario-test-root .mr-1\\\\.5 {\\n  margin-right: 0.375rem;\\n} #scenario-test-root .mr-2 {\\n  margin-right: 0.5rem;\\n} #scenario-test-root .mt-0\\\\.5 {\\n  margin-top: 0.125rem;\\n} #scenario-test-root .mt-1 {\\n  margin-top: 0.25rem;\\n} #scenario-test-root .mt-2 {\\n  margin-top: 0.5rem;\\n} #scenario-test-root .mt-3 {\\n  margin-top: 0.75rem;\\n} #scenario-test-root .mt-4 {\\n  margin-top: 1rem;\\n} #scenario-test-root .block {\\n  display: block;\\n} #scenario-test-root .inline {\\n  display: inline;\\n} #scenario-test-root .flex {\\n  display: flex;\\n} #scenario-test-root .grid {\\n  display: grid;\\n} #scenario-test-root .hidden {\\n  display: none;\\n} #scenario-test-root .h-1\\\\.5 {\\n  height: 0.375rem;\\n} #scenario-test-root .h-2 {\\n  height: 0.5rem;\\n} #scenario-test-root .h-28 {\\n  height: 7rem;\\n} #scenario-test-root .h-3 {\\n  height: 0.75rem;\\n} #scenario-test-root .h-3\\\\.5 {\\n  height: 0.875rem;\\n} #scenario-test-root .h-4 {\\n  height: 1rem;\\n} #scenario-test-root .h-40 {\\n  height: 10rem;\\n} #scenario-test-root .h-5 {\\n  height: 1.25rem;\\n} #scenario-test-root .max-h-48 {\\n  max-height: 12rem;\\n} #scenario-test-root .max-h-\\\\[85vh\\\\] {\\n  max-height: 85vh;\\n} #scenario-test-root .w-1 {\\n  width: 0.25rem;\\n} #scenario-test-root .w-1\\\\.5 {\\n  width: 0.375rem;\\n} #scenario-test-root .w-1\\\\/3 {\\n  width: 33.333333%;\\n} #scenario-test-root .w-16 {\\n  width: 4rem;\\n} #scenario-test-root .w-2 {\\n  width: 0.5rem;\\n} #scenario-test-root .w-3 {\\n  width: 0.75rem;\\n} #scenario-test-root .w-3\\\\.5 {\\n  width: 0.875rem;\\n} #scenario-test-root .w-4 {\\n  width: 1rem;\\n} #scenario-test-root .w-44 {\\n  width: 11rem;\\n} #scenario-test-root .w-5 {\\n  width: 1.25rem;\\n} #scenario-test-root .w-\\\\[70\\\\%\\\\] {\\n  width: 70%;\\n} #scenario-test-root .w-full {\\n  width: 100%;\\n} #scenario-test-root .min-w-0 {\\n  min-width: 0px;\\n} #scenario-test-root .max-w-3xl {\\n  max-width: 48rem;\\n} #scenario-test-root .max-w-\\\\[280px\\\\] {\\n  max-width: 280px;\\n} #scenario-test-root .max-w-\\\\[50\\\\%\\\\] {\\n  max-width: 50%;\\n} #scenario-test-root .max-w-\\\\[55\\\\%\\\\] {\\n  max-width: 55%;\\n} #scenario-test-root .max-w-full {\\n  max-width: 100%;\\n} #scenario-test-root .flex-1 {\\n  flex: 1 1 0%;\\n} #scenario-test-root .flex-shrink-0 {\\n  flex-shrink: 0;\\n} #scenario-test-root .rotate-180 {\\n  --tw-rotate: 180deg;\\n  transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));\\n} #scenario-test-root .scale-90 {\\n  --tw-scale-x: .9;\\n  --tw-scale-y: .9;\\n  transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));\\n} #scenario-test-root .cursor-pointer {\\n  cursor: pointer;\\n} #scenario-test-root .select-none {\\n  user-select: none;\\n} #scenario-test-root .select-text {\\n  user-select: text;\\n} #scenario-test-root .appearance-none {\\n  appearance: none;\\n} #scenario-test-root .grid-cols-1 {\\n  grid-template-columns: repeat(1, minmax(0, 1fr));\\n} #scenario-test-root .flex-col {\\n  flex-direction: column;\\n} #scenario-test-root .flex-wrap {\\n  flex-wrap: wrap;\\n} #scenario-test-root .items-start {\\n  align-items: flex-start;\\n} #scenario-test-root .items-center {\\n  align-items: center;\\n} #scenario-test-root .justify-end {\\n  justify-content: flex-end;\\n} #scenario-test-root .justify-center {\\n  justify-content: center;\\n} #scenario-test-root .justify-between {\\n  justify-content: space-between;\\n} #scenario-test-root .gap-1 {\\n  gap: 0.25rem;\\n} #scenario-test-root .gap-1\\\\.5 {\\n  gap: 0.375rem;\\n} #scenario-test-root .gap-2 {\\n  gap: 0.5rem;\\n} #scenario-test-root .gap-3 {\\n  gap: 0.75rem;\\n} #scenario-test-root .gap-4 {\\n  gap: 1rem;\\n} #scenario-test-root :is(.space-x-1 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-x-reverse: 0;\\n  margin-right: calc(0.25rem * var(--tw-space-x-reverse));\\n  margin-left: calc(0.25rem * calc(1 - var(--tw-space-x-reverse)));\\n} #scenario-test-root :is(.space-x-1\\\\.5 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-x-reverse: 0;\\n  margin-right: calc(0.375rem * var(--tw-space-x-reverse));\\n  margin-left: calc(0.375rem * calc(1 - var(--tw-space-x-reverse)));\\n} #scenario-test-root :is(.space-x-2 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-x-reverse: 0;\\n  margin-right: calc(0.5rem * var(--tw-space-x-reverse));\\n  margin-left: calc(0.5rem * calc(1 - var(--tw-space-x-reverse)));\\n} #scenario-test-root :is(.space-x-2\\\\.5 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-x-reverse: 0;\\n  margin-right: calc(0.625rem * var(--tw-space-x-reverse));\\n  margin-left: calc(0.625rem * calc(1 - var(--tw-space-x-reverse)));\\n} #scenario-test-root :is(.space-x-3 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-x-reverse: 0;\\n  margin-right: calc(0.75rem * var(--tw-space-x-reverse));\\n  margin-left: calc(0.75rem * calc(1 - var(--tw-space-x-reverse)));\\n} #scenario-test-root :is(.space-x-4 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-x-reverse: 0;\\n  margin-right: calc(1rem * var(--tw-space-x-reverse));\\n  margin-left: calc(1rem * calc(1 - var(--tw-space-x-reverse)));\\n} #scenario-test-root :is(.space-x-6 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-x-reverse: 0;\\n  margin-right: calc(1.5rem * var(--tw-space-x-reverse));\\n  margin-left: calc(1.5rem * calc(1 - var(--tw-space-x-reverse)));\\n} #scenario-test-root :is(.space-x-8 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-x-reverse: 0;\\n  margin-right: calc(2rem * var(--tw-space-x-reverse));\\n  margin-left: calc(2rem * calc(1 - var(--tw-space-x-reverse)));\\n} #scenario-test-root :is(.space-y-0\\\\.5 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-y-reverse: 0;\\n  margin-top: calc(0.125rem * calc(1 - var(--tw-space-y-reverse)));\\n  margin-bottom: calc(0.125rem * var(--tw-space-y-reverse));\\n} #scenario-test-root :is(.space-y-1 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-y-reverse: 0;\\n  margin-top: calc(0.25rem * calc(1 - var(--tw-space-y-reverse)));\\n  margin-bottom: calc(0.25rem * var(--tw-space-y-reverse));\\n} #scenario-test-root :is(.space-y-2 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-y-reverse: 0;\\n  margin-top: calc(0.5rem * calc(1 - var(--tw-space-y-reverse)));\\n  margin-bottom: calc(0.5rem * var(--tw-space-y-reverse));\\n} #scenario-test-root :is(.space-y-3 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-y-reverse: 0;\\n  margin-top: calc(0.75rem * calc(1 - var(--tw-space-y-reverse)));\\n  margin-bottom: calc(0.75rem * var(--tw-space-y-reverse));\\n} #scenario-test-root :is(.space-y-4 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-y-reverse: 0;\\n  margin-top: calc(1rem * calc(1 - var(--tw-space-y-reverse)));\\n  margin-bottom: calc(1rem * var(--tw-space-y-reverse));\\n} #scenario-test-root :is(.divide-y > :not([hidden]) ~ :not([hidden])) {\\n  --tw-divide-y-reverse: 0;\\n  border-top-width: calc(1px * calc(1 - var(--tw-divide-y-reverse)));\\n  border-bottom-width: calc(1px * var(--tw-divide-y-reverse));\\n} #scenario-test-root :is(.divide-slate-100 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-divide-opacity: 1;\\n  border-color: rgb(241 245 249 / var(--tw-divide-opacity, 1));\\n} #scenario-test-root :is(.divide-slate-200 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-divide-opacity: 1;\\n  border-color: rgb(226 232 240 / var(--tw-divide-opacity, 1));\\n} #scenario-test-root .overflow-hidden {\\n  overflow: hidden;\\n} #scenario-test-root .overflow-x-auto {\\n  overflow-x: auto;\\n} #scenario-test-root .overflow-y-auto {\\n  overflow-y: auto;\\n} #scenario-test-root .truncate {\\n  overflow: hidden;\\n  text-overflow: ellipsis;\\n  white-space: nowrap;\\n} #scenario-test-root .whitespace-nowrap {\\n  white-space: nowrap;\\n} #scenario-test-root .break-all {\\n  word-break: break-all;\\n} #scenario-test-root .rounded {\\n  border-radius: 0.25rem;\\n} #scenario-test-root .rounded-full {\\n  border-radius: 9999px;\\n} #scenario-test-root .rounded-lg {\\n  border-radius: 0.5rem;\\n} #scenario-test-root .rounded-md {\\n  border-radius: 0.375rem;\\n} #scenario-test-root .rounded-xl {\\n  border-radius: 0.75rem;\\n} #scenario-test-root .border {\\n  border-width: 1px;\\n} #scenario-test-root .border-b {\\n  border-bottom-width: 1px;\\n} #scenario-test-root .border-l {\\n  border-left-width: 1px;\\n} #scenario-test-root .border-t {\\n  border-top-width: 1px;\\n} #scenario-test-root .border-blue-200 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(191 219 254 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-emerald-100 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(209 250 229 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-emerald-100\\\\/50 {\\n  border-color: rgb(209 250 229 / 0.5);\\n} #scenario-test-root .border-emerald-200 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(167 243 208 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-indigo-100 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(224 231 255 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-rose-100 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(255 228 230 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-rose-100\\\\/50 {\\n  border-color: rgb(255 228 230 / 0.5);\\n} #scenario-test-root .border-rose-200 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(254 205 211 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-slate-100 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(241 245 249 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-slate-100\\\\/80 {\\n  border-color: rgb(241 245 249 / 0.8);\\n} #scenario-test-root .border-slate-200 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(226 232 240 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-slate-200\\\\/50 {\\n  border-color: rgb(226 232 240 / 0.5);\\n} #scenario-test-root .border-slate-200\\\\/60 {\\n  border-color: rgb(226 232 240 / 0.6);\\n} #scenario-test-root .border-slate-300 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(203 213 225 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-slate-600 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(71 85 105 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-slate-700 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(51 65 85 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-slate-700\\\\/50 {\\n  border-color: rgb(51 65 85 / 0.5);\\n} #scenario-test-root .border-transparent {\\n  border-color: transparent;\\n} #scenario-test-root .border-zinc-200 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(228 228 231 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .bg-\\\\[\\\\#1e293b\\\\] {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(30 41 59 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-emerald-400 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(52 211 153 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-emerald-50 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(236 253 245 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-emerald-500 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(16 185 129 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-emerald-600 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(5 150 105 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-indigo-50 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(238 242 255 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-rose-100 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(255 228 230 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-rose-400 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(251 113 133 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-rose-50 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(255 241 242 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-rose-50\\\\/20 {\\n  background-color: rgb(255 241 242 / 0.2);\\n} #scenario-test-root .bg-rose-500 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(244 63 94 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-100 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(241 245 249 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-100\\\\/70 {\\n  background-color: rgb(241 245 249 / 0.7);\\n} #scenario-test-root .bg-slate-200 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(226 232 240 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-200\\\\/60 {\\n  background-color: rgb(226 232 240 / 0.6);\\n} #scenario-test-root .bg-slate-300 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(203 213 225 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-400 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(148 163 184 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-50 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(248 250 252 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-50\\\\/30 {\\n  background-color: rgb(248 250 252 / 0.3);\\n} #scenario-test-root .bg-slate-50\\\\/50 {\\n  background-color: rgb(248 250 252 / 0.5);\\n} #scenario-test-root .bg-slate-50\\\\/70 {\\n  background-color: rgb(248 250 252 / 0.7);\\n} #scenario-test-root .bg-slate-700 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(51 65 85 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-800 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(30 41 59 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-900 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(15 23 42 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-950\\\\/20 {\\n  background-color: rgb(2 6 23 / 0.2);\\n} #scenario-test-root .bg-slate-950\\\\/40 {\\n  background-color: rgb(2 6 23 / 0.4);\\n} #scenario-test-root .bg-transparent {\\n  background-color: transparent;\\n} #scenario-test-root .bg-white {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(255 255 255 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-zinc-100 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(244 244 245 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .p-1 {\\n  padding: 0.25rem;\\n} #scenario-test-root .p-2 {\\n  padding: 0.5rem;\\n} #scenario-test-root .p-2\\\\.5 {\\n  padding: 0.625rem;\\n} #scenario-test-root .p-3 {\\n  padding: 0.75rem;\\n} #scenario-test-root .p-3\\\\.5 {\\n  padding: 0.875rem;\\n} #scenario-test-root .p-4 {\\n  padding: 1rem;\\n} #scenario-test-root .p-5 {\\n  padding: 1.25rem;\\n} #scenario-test-root .p-8 {\\n  padding: 2rem;\\n} #scenario-test-root .px-1 {\\n  padding-left: 0.25rem;\\n  padding-right: 0.25rem;\\n} #scenario-test-root .px-1\\\\.5 {\\n  padding-left: 0.375rem;\\n  padding-right: 0.375rem;\\n} #scenario-test-root .px-2 {\\n  padding-left: 0.5rem;\\n  padding-right: 0.5rem;\\n} #scenario-test-root .px-2\\\\.5 {\\n  padding-left: 0.625rem;\\n  padding-right: 0.625rem;\\n} #scenario-test-root .px-3 {\\n  padding-left: 0.75rem;\\n  padding-right: 0.75rem;\\n} #scenario-test-root .px-4 {\\n  padding-left: 1rem;\\n  padding-right: 1rem;\\n} #scenario-test-root .px-5 {\\n  padding-left: 1.25rem;\\n  padding-right: 1.25rem;\\n} #scenario-test-root .py-0\\\\.5 {\\n  padding-top: 0.125rem;\\n  padding-bottom: 0.125rem;\\n} #scenario-test-root .py-1 {\\n  padding-top: 0.25rem;\\n  padding-bottom: 0.25rem;\\n} #scenario-test-root .py-1\\\\.5 {\\n  padding-top: 0.375rem;\\n  padding-bottom: 0.375rem;\\n} #scenario-test-root .py-2 {\\n  padding-top: 0.5rem;\\n  padding-bottom: 0.5rem;\\n} #scenario-test-root .py-2\\\\.5 {\\n  padding-top: 0.625rem;\\n  padding-bottom: 0.625rem;\\n} #scenario-test-root .py-3 {\\n  padding-top: 0.75rem;\\n  padding-bottom: 0.75rem;\\n} #scenario-test-root .py-4 {\\n  padding-top: 1rem;\\n  padding-bottom: 1rem;\\n} #scenario-test-root .pb-3 {\\n  padding-bottom: 0.75rem;\\n} #scenario-test-root .pl-2 {\\n  padding-left: 0.5rem;\\n} #scenario-test-root .pl-6 {\\n  padding-left: 1.5rem;\\n} #scenario-test-root .pr-4 {\\n  padding-right: 1rem;\\n} #scenario-test-root .pr-5 {\\n  padding-right: 1.25rem;\\n} #scenario-test-root .pt-4 {\\n  padding-top: 1rem;\\n} #scenario-test-root .text-left {\\n  text-align: left;\\n} #scenario-test-root .text-center {\\n  text-align: center;\\n} #scenario-test-root .text-right {\\n  text-align: right;\\n} #scenario-test-root .font-mono {\\n  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;\\n} #scenario-test-root .text-\\\\[10px\\\\] {\\n  font-size: 10px;\\n} #scenario-test-root .text-\\\\[11px\\\\] {\\n  font-size: 11px;\\n} #scenario-test-root .text-\\\\[12px\\\\] {\\n  font-size: 12px;\\n} #scenario-test-root .text-\\\\[13px\\\\] {\\n  font-size: 13px;\\n} #scenario-test-root .text-sm {\\n  font-size: 0.875rem;\\n  line-height: 1.25rem;\\n} #scenario-test-root .text-xl {\\n  font-size: 1.25rem;\\n  line-height: 1.75rem;\\n} #scenario-test-root .text-xs {\\n  font-size: 0.75rem;\\n  line-height: 1rem;\\n} #scenario-test-root .font-bold {\\n  font-weight: 700;\\n} #scenario-test-root .font-extrabold {\\n  font-weight: 800;\\n} #scenario-test-root .font-medium {\\n  font-weight: 500;\\n} #scenario-test-root .font-normal {\\n  font-weight: 400;\\n} #scenario-test-root .font-semibold {\\n  font-weight: 600;\\n} #scenario-test-root .uppercase {\\n  text-transform: uppercase;\\n} #scenario-test-root .normal-case {\\n  text-transform: none;\\n} #scenario-test-root .leading-relaxed {\\n  line-height: 1.625;\\n} #scenario-test-root .leading-tight {\\n  line-height: 1.25;\\n} #scenario-test-root .tracking-tight {\\n  letter-spacing: -0.025em;\\n} #scenario-test-root .tracking-wider {\\n  letter-spacing: 0.05em;\\n} #scenario-test-root .text-amber-400 {\\n  --tw-text-opacity: 1;\\n  color: rgb(251 191 36 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-amber-600 {\\n  --tw-text-opacity: 1;\\n  color: rgb(217 119 6 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-blue-700 {\\n  --tw-text-opacity: 1;\\n  color: rgb(29 78 216 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-emerald-400 {\\n  --tw-text-opacity: 1;\\n  color: rgb(52 211 153 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-emerald-500 {\\n  --tw-text-opacity: 1;\\n  color: rgb(16 185 129 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-emerald-600 {\\n  --tw-text-opacity: 1;\\n  color: rgb(5 150 105 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-emerald-600\\\\/70 {\\n  color: rgb(5 150 105 / 0.7);\\n} #scenario-test-root .text-emerald-700 {\\n  --tw-text-opacity: 1;\\n  color: rgb(4 120 87 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-indigo-500 {\\n  --tw-text-opacity: 1;\\n  color: rgb(99 102 241 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-indigo-700 {\\n  --tw-text-opacity: 1;\\n  color: rgb(67 56 202 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-orange-500 {\\n  --tw-text-opacity: 1;\\n  color: rgb(249 115 22 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-purple-600 {\\n  --tw-text-opacity: 1;\\n  color: rgb(147 51 234 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-rose-400 {\\n  --tw-text-opacity: 1;\\n  color: rgb(251 113 133 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-rose-500 {\\n  --tw-text-opacity: 1;\\n  color: rgb(244 63 94 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-rose-500\\\\/70 {\\n  color: rgb(244 63 94 / 0.7);\\n} #scenario-test-root .text-rose-600 {\\n  --tw-text-opacity: 1;\\n  color: rgb(225 29 72 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-rose-700 {\\n  --tw-text-opacity: 1;\\n  color: rgb(190 18 60 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-rose-800 {\\n  --tw-text-opacity: 1;\\n  color: rgb(159 18 57 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-slate-200 {\\n  --tw-text-opacity: 1;\\n  color: rgb(226 232 240 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-slate-300 {\\n  --tw-text-opacity: 1;\\n  color: rgb(203 213 225 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-slate-400 {\\n  --tw-text-opacity: 1;\\n  color: rgb(148 163 184 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-slate-500 {\\n  --tw-text-opacity: 1;\\n  color: rgb(100 116 139 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-slate-600 {\\n  --tw-text-opacity: 1;\\n  color: rgb(71 85 105 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-slate-700 {\\n  --tw-text-opacity: 1;\\n  color: rgb(51 65 85 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-slate-800 {\\n  --tw-text-opacity: 1;\\n  color: rgb(30 41 59 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-slate-900 {\\n  --tw-text-opacity: 1;\\n  color: rgb(15 23 42 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-white {\\n  --tw-text-opacity: 1;\\n  color: rgb(255 255 255 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-zinc-700 {\\n  --tw-text-opacity: 1;\\n  color: rgb(63 63 70 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .placeholder-slate-400::placeholder {\\n  --tw-placeholder-opacity: 1;\\n  color: rgb(148 163 184 / var(--tw-placeholder-opacity, 1));\\n} #scenario-test-root .placeholder-slate-500::placeholder {\\n  --tw-placeholder-opacity: 1;\\n  color: rgb(100 116 139 / var(--tw-placeholder-opacity, 1));\\n} #scenario-test-root .shadow-inner {\\n  --tw-shadow: inset 0 2px 4px 0 rgb(0 0 0 / 0.05);\\n  --tw-shadow-colored: inset 0 2px 4px 0 var(--tw-shadow-color);\\n  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);\\n} #scenario-test-root .shadow-sm {\\n  --tw-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);\\n  --tw-shadow-colored: 0 1px 2px 0 var(--tw-shadow-color);\\n  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);\\n} #scenario-test-root .shadow-xl {\\n  --tw-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);\\n  --tw-shadow-colored: 0 20px 25px -5px var(--tw-shadow-color), 0 8px 10px -6px var(--tw-shadow-color);\\n  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);\\n} #scenario-test-root .outline-none {\\n  outline: 2px solid transparent;\\n  outline-offset: 2px;\\n} #scenario-test-root .filter {\\n  filter: var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow);\\n} #scenario-test-root .transition-all {\\n  transition-property: all;\\n  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);\\n  transition-duration: 150ms;\\n} #scenario-test-root .transition-colors {\\n  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;\\n  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);\\n  transition-duration: 150ms;\\n} #scenario-test-root .transition-transform {\\n  transition-property: transform;\\n  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);\\n  transition-duration: 150ms;\\n} #scenario-test-root .duration-150 {\\n  transition-duration: 150ms;\\n} #scenario-test-root .duration-200 {\\n  transition-duration: 200ms;\\n} #scenario-test-root .placeholder\\\\:text-slate-300::placeholder {\\n  --tw-text-opacity: 1;\\n  color: rgb(203 213 225 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .hover\\\\:border-emerald-300:hover {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(110 231 183 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .hover\\\\:border-slate-200:hover {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(226 232 240 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .hover\\\\:bg-emerald-600:hover {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(5 150 105 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .hover\\\\:bg-emerald-700:hover {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(4 120 87 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .hover\\\\:bg-indigo-100:hover {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(224 231 255 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .hover\\\\:bg-slate-100:hover {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(241 245 249 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .hover\\\\:bg-slate-50:hover {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(248 250 252 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .hover\\\\:bg-slate-50\\\\/50:hover {\\n  background-color: rgb(248 250 252 / 0.5);\\n} #scenario-test-root .hover\\\\:bg-slate-50\\\\/60:hover {\\n  background-color: rgb(248 250 252 / 0.6);\\n} #scenario-test-root .hover\\\\:bg-slate-600:hover {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(71 85 105 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .hover\\\\:bg-slate-700:hover {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(51 65 85 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .hover\\\\:bg-white:hover {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(255 255 255 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .hover\\\\:text-emerald-700:hover {\\n  --tw-text-opacity: 1;\\n  color: rgb(4 120 87 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .hover\\\\:text-rose-600:hover {\\n  --tw-text-opacity: 1;\\n  color: rgb(225 29 72 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .hover\\\\:text-slate-700:hover {\\n  --tw-text-opacity: 1;\\n  color: rgb(51 65 85 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .hover\\\\:text-slate-900:hover {\\n  --tw-text-opacity: 1;\\n  color: rgb(15 23 42 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .hover\\\\:text-white:hover {\\n  --tw-text-opacity: 1;\\n  color: rgb(255 255 255 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .focus\\\\:border-emerald-500:focus {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(16 185 129 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .focus\\\\:outline-none:focus {\\n  outline: 2px solid transparent;\\n  outline-offset: 2px;\\n} #scenario-test-root .focus\\\\:ring-1:focus {\\n  --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);\\n  --tw-ring-shadow: var(--tw-ring-inset) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color);\\n  box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000);\\n} #scenario-test-root .focus\\\\:ring-emerald-500:focus {\\n  --tw-ring-opacity: 1;\\n  --tw-ring-color: rgb(16 185 129 / var(--tw-ring-opacity, 1));\\n} #scenario-test-root :is(.group:hover .group-hover\\\\:text-emerald-700) {\\n  --tw-text-opacity: 1;\\n  color: rgb(4 120 87 / var(--tw-text-opacity, 1));\\n} #scenario-test-root :is(.group:hover .group-hover\\\\:text-slate-500) {\\n  --tw-text-opacity: 1;\\n  color: rgb(100 116 139 / var(--tw-text-opacity, 1));\\n} #scenario-test-root :is(.group:hover .group-hover\\\\:text-slate-600) {\\n  --tw-text-opacity: 1;\\n  color: rgb(71 85 105 / var(--tw-text-opacity, 1));\\n} #scenario-test-root :is(.group:hover .group-hover\\\\:text-slate-950) {\\n  --tw-text-opacity: 1;\\n  color: rgb(2 6 23 / var(--tw-text-opacity, 1));\\n} @media (min-width: 640px) {\\n\\n  #scenario-test-root .sm\\\\:mt-0 {\\n    margin-top: 0px;\\n  }\\n\\n  #scenario-test-root .sm\\\\:flex {\\n    display: flex;\\n  }\\n\\n  #scenario-test-root .sm\\\\:hidden {\\n    display: none;\\n  }\\n\\n  #scenario-test-root .sm\\\\:max-w-xl {\\n    max-width: 36rem;\\n  }\\n\\n  #scenario-test-root .sm\\\\:grid-cols-\\\\[120px_1fr\\\\] {\\n    grid-template-columns: 120px 1fr;\\n  }\\n} @media (min-width: 768px) {\\n\\n  #scenario-test-root .md\\\\:mt-0 {\\n    margin-top: 0px;\\n  }\\n\\n  #scenario-test-root .md\\\\:w-auto {\\n    width: auto;\\n  }\\n\\n  #scenario-test-root .md\\\\:grid-cols-2 {\\n    grid-template-columns: repeat(2, minmax(0, 1fr));\\n  }\\n\\n  #scenario-test-root .md\\\\:gap-0 {\\n    gap: 0px;\\n  }\\n\\n  #scenario-test-root :is(.md\\\\:divide-x > :not([hidden]) ~ :not([hidden])) {\\n    --tw-divide-x-reverse: 0;\\n    border-right-width: calc(1px * var(--tw-divide-x-reverse));\\n    border-left-width: calc(1px * calc(1 - var(--tw-divide-x-reverse)));\\n  }\\n\\n  #scenario-test-root .md\\\\:pl-6 {\\n    padding-left: 1.5rem;\\n  }\\n\\n  #scenario-test-root .md\\\\:pr-6 {\\n    padding-right: 1.5rem;\\n  }\\n} @media (min-width: 1024px) {\\n\\n  #scenario-test-root .lg\\\\:w-\\\\[80\\\\%\\\\] {\\n    width: 80%;\\n  }\\n} @media (min-width: 1280px) {\\n\\n  #scenario-test-root .xl\\\\:max-h-\\\\[calc\\\\(100vh-52px\\\\)\\\\] {\\n    max-height: calc(100vh - 52px);\\n  }\\n\\n  #scenario-test-root .xl\\\\:grid-cols-\\\\[minmax\\\\(164px\\\\2c 1fr\\\\)_minmax\\\\(500px\\\\2c 3\\\\.18fr\\\\)_minmax\\\\(280px\\\\2c 1\\\\.75fr\\\\)\\\\] {\\n    grid-template-columns: minmax(164px,1fr) minmax(500px,3.18fr) minmax(280px,1.75fr);\\n  }\\n}';
+  var TAILWIND_CSS = '*, ::before, ::after {\\n  --tw-border-spacing-x: 0;\\n  --tw-border-spacing-y: 0;\\n  --tw-translate-x: 0;\\n  --tw-translate-y: 0;\\n  --tw-rotate: 0;\\n  --tw-skew-x: 0;\\n  --tw-skew-y: 0;\\n  --tw-scale-x: 1;\\n  --tw-scale-y: 1;\\n  --tw-pan-x:  ;\\n  --tw-pan-y:  ;\\n  --tw-pinch-zoom:  ;\\n  --tw-scroll-snap-strictness: proximity;\\n  --tw-gradient-from-position:  ;\\n  --tw-gradient-via-position:  ;\\n  --tw-gradient-to-position:  ;\\n  --tw-ordinal:  ;\\n  --tw-slashed-zero:  ;\\n  --tw-numeric-figure:  ;\\n  --tw-numeric-spacing:  ;\\n  --tw-numeric-fraction:  ;\\n  --tw-ring-inset:  ;\\n  --tw-ring-offset-width: 0px;\\n  --tw-ring-offset-color: #fff;\\n  --tw-ring-color: rgb(59 130 246 / 0.5);\\n  --tw-ring-offset-shadow: 0 0 #0000;\\n  --tw-ring-shadow: 0 0 #0000;\\n  --tw-shadow: 0 0 #0000;\\n  --tw-shadow-colored: 0 0 #0000;\\n  --tw-blur:  ;\\n  --tw-brightness:  ;\\n  --tw-contrast:  ;\\n  --tw-grayscale:  ;\\n  --tw-hue-rotate:  ;\\n  --tw-invert:  ;\\n  --tw-saturate:  ;\\n  --tw-sepia:  ;\\n  --tw-drop-shadow:  ;\\n  --tw-backdrop-blur:  ;\\n  --tw-backdrop-brightness:  ;\\n  --tw-backdrop-contrast:  ;\\n  --tw-backdrop-grayscale:  ;\\n  --tw-backdrop-hue-rotate:  ;\\n  --tw-backdrop-invert:  ;\\n  --tw-backdrop-opacity:  ;\\n  --tw-backdrop-saturate:  ;\\n  --tw-backdrop-sepia:  ;\\n  --tw-contain-size:  ;\\n  --tw-contain-layout:  ;\\n  --tw-contain-paint:  ;\\n  --tw-contain-style:  ;\\n}\\n\\n::backdrop {\\n  --tw-border-spacing-x: 0;\\n  --tw-border-spacing-y: 0;\\n  --tw-translate-x: 0;\\n  --tw-translate-y: 0;\\n  --tw-rotate: 0;\\n  --tw-skew-x: 0;\\n  --tw-skew-y: 0;\\n  --tw-scale-x: 1;\\n  --tw-scale-y: 1;\\n  --tw-pan-x:  ;\\n  --tw-pan-y:  ;\\n  --tw-pinch-zoom:  ;\\n  --tw-scroll-snap-strictness: proximity;\\n  --tw-gradient-from-position:  ;\\n  --tw-gradient-via-position:  ;\\n  --tw-gradient-to-position:  ;\\n  --tw-ordinal:  ;\\n  --tw-slashed-zero:  ;\\n  --tw-numeric-figure:  ;\\n  --tw-numeric-spacing:  ;\\n  --tw-numeric-fraction:  ;\\n  --tw-ring-inset:  ;\\n  --tw-ring-offset-width: 0px;\\n  --tw-ring-offset-color: #fff;\\n  --tw-ring-color: rgb(59 130 246 / 0.5);\\n  --tw-ring-offset-shadow: 0 0 #0000;\\n  --tw-ring-shadow: 0 0 #0000;\\n  --tw-shadow: 0 0 #0000;\\n  --tw-shadow-colored: 0 0 #0000;\\n  --tw-blur:  ;\\n  --tw-brightness:  ;\\n  --tw-contrast:  ;\\n  --tw-grayscale:  ;\\n  --tw-hue-rotate:  ;\\n  --tw-invert:  ;\\n  --tw-saturate:  ;\\n  --tw-sepia:  ;\\n  --tw-drop-shadow:  ;\\n  --tw-backdrop-blur:  ;\\n  --tw-backdrop-brightness:  ;\\n  --tw-backdrop-contrast:  ;\\n  --tw-backdrop-grayscale:  ;\\n  --tw-backdrop-hue-rotate:  ;\\n  --tw-backdrop-invert:  ;\\n  --tw-backdrop-opacity:  ;\\n  --tw-backdrop-saturate:  ;\\n  --tw-backdrop-sepia:  ;\\n  --tw-contain-size:  ;\\n  --tw-contain-layout:  ;\\n  --tw-contain-paint:  ;\\n  --tw-contain-style:  ;\\n}/*\\n! tailwindcss v3.4.17 | MIT License | https://tailwindcss.com\\n*//*\\n1. Prevent padding and border from affecting element width. (https://github.com/mozdevs/cssremedy/issues/4)\\n2. Allow adding a border to an element by just adding a border-width. (https://github.com/tailwindcss/tailwindcss/pull/116)\\n*/\\n\\n*,\\n::before,\\n::after {\\n  box-sizing: border-box; /* 1 */\\n  border-width: 0; /* 2 */\\n  border-style: solid; /* 2 */\\n  border-color: #e5e7eb; /* 2 */\\n}\\n\\n::before,\\n::after {\\n  --tw-content: \\'\\';\\n}\\n\\n/*\\n1. Use a consistent sensible line-height in all browsers.\\n2. Prevent adjustments of font size after orientation changes in iOS.\\n3. Use a more readable tab size.\\n4. Use the user\\'s configured \`sans\` font-family by default.\\n5. Use the user\\'s configured \`sans\` font-feature-settings by default.\\n6. Use the user\\'s configured \`sans\` font-variation-settings by default.\\n7. Disable tap highlights on iOS\\n*/\\n\\nhtml,\\n:host {\\n  line-height: 1.5; /* 1 */\\n  -webkit-text-size-adjust: 100%; /* 2 */\\n  -moz-tab-size: 4; /* 3 */\\n  tab-size: 4; /* 3 */\\n  font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"; /* 4 */\\n  font-feature-settings: normal; /* 5 */\\n  font-variation-settings: normal; /* 6 */\\n  -webkit-tap-highlight-color: transparent; /* 7 */\\n}\\n\\n/*\\n1. Remove the margin in all browsers.\\n2. Inherit line-height from \`html\` so users can set them as a class directly on the \`html\` element.\\n*/\\n\\nbody {\\n  margin: 0; /* 1 */\\n  line-height: inherit; /* 2 */\\n}\\n\\n/*\\n1. Add the correct height in Firefox.\\n2. Correct the inheritance of border color in Firefox. (https://bugzilla.mozilla.org/show_bug.cgi?id=190655)\\n3. Ensure horizontal rules are visible by default.\\n*/\\n\\nhr {\\n  height: 0; /* 1 */\\n  color: inherit; /* 2 */\\n  border-top-width: 1px; /* 3 */\\n}\\n\\n/*\\nAdd the correct text decoration in Chrome, Edge, and Safari.\\n*/\\n\\nabbr:where([title]) {\\n  text-decoration: underline dotted;\\n}\\n\\n/*\\nRemove the default font size and weight for headings.\\n*/\\n\\nh1,\\nh2,\\nh3,\\nh4,\\nh5,\\nh6 {\\n  font-size: inherit;\\n  font-weight: inherit;\\n}\\n\\n/*\\nReset links to optimize for opt-in styling instead of opt-out.\\n*/\\n\\na {\\n  color: inherit;\\n  text-decoration: inherit;\\n}\\n\\n/*\\nAdd the correct font weight in Edge and Safari.\\n*/\\n\\nb,\\nstrong {\\n  font-weight: bolder;\\n}\\n\\n/*\\n1. Use the user\\'s configured \`mono\` font-family by default.\\n2. Use the user\\'s configured \`mono\` font-feature-settings by default.\\n3. Use the user\\'s configured \`mono\` font-variation-settings by default.\\n4. Correct the odd \`em\` font sizing in all browsers.\\n*/\\n\\ncode,\\nkbd,\\nsamp,\\npre {\\n  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; /* 1 */\\n  font-feature-settings: normal; /* 2 */\\n  font-variation-settings: normal; /* 3 */\\n  font-size: 1em; /* 4 */\\n}\\n\\n/*\\nAdd the correct font size in all browsers.\\n*/\\n\\nsmall {\\n  font-size: 80%;\\n}\\n\\n/*\\nPrevent \`sub\` and \`sup\` elements from affecting the line height in all browsers.\\n*/\\n\\nsub,\\nsup {\\n  font-size: 75%;\\n  line-height: 0;\\n  position: relative;\\n  vertical-align: baseline;\\n}\\n\\nsub {\\n  bottom: -0.25em;\\n}\\n\\nsup {\\n  top: -0.5em;\\n}\\n\\n/*\\n1. Remove text indentation from table contents in Chrome and Safari. (https://bugs.chromium.org/p/chromium/issues/detail?id=999088, https://bugs.webkit.org/show_bug.cgi?id=201297)\\n2. Correct table border color inheritance in all Chrome and Safari. (https://bugs.chromium.org/p/chromium/issues/detail?id=935729, https://bugs.webkit.org/show_bug.cgi?id=195016)\\n3. Remove gaps between table borders by default.\\n*/\\n\\ntable {\\n  text-indent: 0; /* 1 */\\n  border-color: inherit; /* 2 */\\n  border-collapse: collapse; /* 3 */\\n}\\n\\n/*\\n1. Change the font styles in all browsers.\\n2. Remove the margin in Firefox and Safari.\\n3. Remove default padding in all browsers.\\n*/\\n\\nbutton,\\ninput,\\noptgroup,\\nselect,\\ntextarea {\\n  font-family: inherit; /* 1 */\\n  font-feature-settings: inherit; /* 1 */\\n  font-variation-settings: inherit; /* 1 */\\n  font-size: 100%; /* 1 */\\n  font-weight: inherit; /* 1 */\\n  line-height: inherit; /* 1 */\\n  letter-spacing: inherit; /* 1 */\\n  color: inherit; /* 1 */\\n  margin: 0; /* 2 */\\n  padding: 0; /* 3 */\\n}\\n\\n/*\\nRemove the inheritance of text transform in Edge and Firefox.\\n*/\\n\\nbutton,\\nselect {\\n  text-transform: none;\\n}\\n\\n/*\\n1. Correct the inability to style clickable types in iOS and Safari.\\n2. Remove default button styles.\\n*/\\n\\nbutton,\\ninput:where([type=\\'button\\']),\\ninput:where([type=\\'reset\\']),\\ninput:where([type=\\'submit\\']) {\\n  -webkit-appearance: button; /* 1 */\\n  background-color: transparent; /* 2 */\\n  background-image: none; /* 2 */\\n}\\n\\n/*\\nUse the modern Firefox focus style for all focusable elements.\\n*/\\n\\n:-moz-focusring {\\n  outline: auto;\\n}\\n\\n/*\\nRemove the additional \`:invalid\` styles in Firefox. (https://github.com/mozilla/gecko-dev/blob/2f9eacd9d3d995c937b4251a5557d95d494c9be1/layout/style/res/forms.css#L728-L737)\\n*/\\n\\n:-moz-ui-invalid {\\n  box-shadow: none;\\n}\\n\\n/*\\nAdd the correct vertical alignment in Chrome and Firefox.\\n*/\\n\\nprogress {\\n  vertical-align: baseline;\\n}\\n\\n/*\\nCorrect the cursor style of increment and decrement buttons in Safari.\\n*/\\n\\n::-webkit-inner-spin-button,\\n::-webkit-outer-spin-button {\\n  height: auto;\\n}\\n\\n/*\\n1. Correct the odd appearance in Chrome and Safari.\\n2. Correct the outline style in Safari.\\n*/\\n\\n[type=\\'search\\'] {\\n  -webkit-appearance: textfield; /* 1 */\\n  outline-offset: -2px; /* 2 */\\n}\\n\\n/*\\nRemove the inner padding in Chrome and Safari on macOS.\\n*/\\n\\n::-webkit-search-decoration {\\n  -webkit-appearance: none;\\n}\\n\\n/*\\n1. Correct the inability to style clickable types in iOS and Safari.\\n2. Change font properties to \`inherit\` in Safari.\\n*/\\n\\n::-webkit-file-upload-button {\\n  -webkit-appearance: button; /* 1 */\\n  font: inherit; /* 2 */\\n}\\n\\n/*\\nAdd the correct display in Chrome and Safari.\\n*/\\n\\nsummary {\\n  display: list-item;\\n}\\n\\n/*\\nRemoves the default spacing and border for appropriate elements.\\n*/\\n\\nblockquote,\\ndl,\\ndd,\\nh1,\\nh2,\\nh3,\\nh4,\\nh5,\\nh6,\\nhr,\\nfigure,\\np,\\npre {\\n  margin: 0;\\n}\\n\\nfieldset {\\n  margin: 0;\\n  padding: 0;\\n}\\n\\nlegend {\\n  padding: 0;\\n}\\n\\nol,\\nul,\\nmenu {\\n  list-style: none;\\n  margin: 0;\\n  padding: 0;\\n}\\n\\n/*\\nReset default styling for dialogs.\\n*/\\ndialog {\\n  padding: 0;\\n}\\n\\n/*\\nPrevent resizing textareas horizontally by default.\\n*/\\n\\ntextarea {\\n  resize: vertical;\\n}\\n\\n/*\\n1. Reset the default placeholder opacity in Firefox. (https://github.com/tailwindlabs/tailwindcss/issues/3300)\\n2. Set the default placeholder color to the user\\'s configured gray 400 color.\\n*/\\n\\ninput::placeholder,\\ntextarea::placeholder {\\n  opacity: 1; /* 1 */\\n  color: #9ca3af; /* 2 */\\n}\\n\\n/*\\nSet the default cursor for buttons.\\n*/\\n\\nbutton,\\n[role="button"] {\\n  cursor: pointer;\\n}\\n\\n/*\\nMake sure disabled buttons don\\'t get the pointer cursor.\\n*/\\n:disabled {\\n  cursor: default;\\n}\\n\\n/*\\n1. Make replaced elements \`display: block\` by default. (https://github.com/mozdevs/cssremedy/issues/14)\\n2. Add \`vertical-align: middle\` to align replaced elements more sensibly by default. (https://github.com/jensimmons/cssremedy/issues/14#issuecomment-634934210)\\n   This can trigger a poorly considered lint error in some tools but is included by design.\\n*/\\n\\nimg,\\nsvg,\\nvideo,\\ncanvas,\\naudio,\\niframe,\\nembed,\\nobject {\\n  display: block; /* 1 */\\n  vertical-align: middle; /* 2 */\\n}\\n\\n/*\\nConstrain images and videos to the parent width and preserve their intrinsic aspect ratio. (https://github.com/mozdevs/cssremedy/issues/14)\\n*/\\n\\nimg,\\nvideo {\\n  max-width: 100%;\\n  height: auto;\\n}\\n\\n/* Make elements with the HTML hidden attribute stay hidden by default */\\n[hidden]:where(:not([hidden="until-found"])) {\\n  display: none;\\n} .\\\\!container {\\n  width: 100% !important;\\n} .container {\\n  width: 100%;\\n} @media (min-width: 640px) {\\n\\n  .\\\\!container {\\n    max-width: 640px !important;\\n  }\\n\\n  .container {\\n    max-width: 640px;\\n  }\\n} @media (min-width: 768px) {\\n\\n  .\\\\!container {\\n    max-width: 768px !important;\\n  }\\n\\n  .container {\\n    max-width: 768px;\\n  }\\n} @media (min-width: 1024px) {\\n\\n  .\\\\!container {\\n    max-width: 1024px !important;\\n  }\\n\\n  .container {\\n    max-width: 1024px;\\n  }\\n} @media (min-width: 1280px) {\\n\\n  .\\\\!container {\\n    max-width: 1280px !important;\\n  }\\n\\n  .container {\\n    max-width: 1280px;\\n  }\\n} @media (min-width: 1536px) {\\n\\n  .\\\\!container {\\n    max-width: 1536px !important;\\n  }\\n\\n  .container {\\n    max-width: 1536px;\\n  }\\n} #scenario-test-root .sr-only {\\n  position: absolute;\\n  width: 1px;\\n  height: 1px;\\n  padding: 0;\\n  margin: -1px;\\n  overflow: hidden;\\n  clip: rect(0, 0, 0, 0);\\n  white-space: nowrap;\\n  border-width: 0;\\n} #scenario-test-root .visible {\\n  visibility: visible;\\n} #scenario-test-root .fixed {\\n  position: fixed;\\n} #scenario-test-root .relative {\\n  position: relative;\\n} #scenario-test-root .sticky {\\n  position: sticky;\\n} #scenario-test-root .inset-0 {\\n  inset: 0px;\\n} #scenario-test-root .top-0 {\\n  top: 0px;\\n} #scenario-test-root .z-10 {\\n  z-index: 10;\\n} #scenario-test-root .z-30 {\\n  z-index: 30;\\n} #scenario-test-root .z-40 {\\n  z-index: 40;\\n} #scenario-test-root .col-span-2 {\\n  grid-column: span 2 / span 2;\\n} #scenario-test-root .mx-1 {\\n  margin-left: 0.25rem;\\n  margin-right: 0.25rem;\\n} #scenario-test-root .mx-auto {\\n  margin-left: auto;\\n  margin-right: auto;\\n} #scenario-test-root .my-2 {\\n  margin-top: 0.5rem;\\n  margin-bottom: 0.5rem;\\n} #scenario-test-root .my-8 {\\n  margin-top: 2rem;\\n  margin-bottom: 2rem;\\n} #scenario-test-root .mb-1 {\\n  margin-bottom: 0.25rem;\\n} #scenario-test-root .mb-1\\\\.5 {\\n  margin-bottom: 0.375rem;\\n} #scenario-test-root .mb-2 {\\n  margin-bottom: 0.5rem;\\n} #scenario-test-root .mb-3 {\\n  margin-bottom: 0.75rem;\\n} #scenario-test-root .ml-0\\\\.5 {\\n  margin-left: 0.125rem;\\n} #scenario-test-root .ml-1 {\\n  margin-left: 0.25rem;\\n} #scenario-test-root .mr-1 {\\n  margin-right: 0.25rem;\\n} #scenario-test-root .mr-1\\\\.5 {\\n  margin-right: 0.375rem;\\n} #scenario-test-root .mr-2 {\\n  margin-right: 0.5rem;\\n} #scenario-test-root .mt-0\\\\.5 {\\n  margin-top: 0.125rem;\\n} #scenario-test-root .mt-1 {\\n  margin-top: 0.25rem;\\n} #scenario-test-root .mt-2 {\\n  margin-top: 0.5rem;\\n} #scenario-test-root .mt-3 {\\n  margin-top: 0.75rem;\\n} #scenario-test-root .mt-4 {\\n  margin-top: 1rem;\\n} #scenario-test-root .block {\\n  display: block;\\n} #scenario-test-root .inline {\\n  display: inline;\\n} #scenario-test-root .flex {\\n  display: flex;\\n} #scenario-test-root .grid {\\n  display: grid;\\n} #scenario-test-root .hidden {\\n  display: none;\\n} #scenario-test-root .h-1\\\\.5 {\\n  height: 0.375rem;\\n} #scenario-test-root .h-2 {\\n  height: 0.5rem;\\n} #scenario-test-root .h-28 {\\n  height: 7rem;\\n} #scenario-test-root .h-3 {\\n  height: 0.75rem;\\n} #scenario-test-root .h-3\\\\.5 {\\n  height: 0.875rem;\\n} #scenario-test-root .h-4 {\\n  height: 1rem;\\n} #scenario-test-root .h-40 {\\n  height: 10rem;\\n} #scenario-test-root .h-5 {\\n  height: 1.25rem;\\n} #scenario-test-root .max-h-48 {\\n  max-height: 12rem;\\n} #scenario-test-root .max-h-\\\\[85vh\\\\] {\\n  max-height: 85vh;\\n} #scenario-test-root .w-1 {\\n  width: 0.25rem;\\n} #scenario-test-root .w-1\\\\.5 {\\n  width: 0.375rem;\\n} #scenario-test-root .w-1\\\\/3 {\\n  width: 33.333333%;\\n} #scenario-test-root .w-16 {\\n  width: 4rem;\\n} #scenario-test-root .w-2 {\\n  width: 0.5rem;\\n} #scenario-test-root .w-3 {\\n  width: 0.75rem;\\n} #scenario-test-root .w-3\\\\.5 {\\n  width: 0.875rem;\\n} #scenario-test-root .w-4 {\\n  width: 1rem;\\n} #scenario-test-root .w-44 {\\n  width: 11rem;\\n} #scenario-test-root .w-5 {\\n  width: 1.25rem;\\n} #scenario-test-root .w-\\\\[70\\\\%\\\\] {\\n  width: 70%;\\n} #scenario-test-root .w-full {\\n  width: 100%;\\n} #scenario-test-root .min-w-0 {\\n  min-width: 0px;\\n} #scenario-test-root .max-w-3xl {\\n  max-width: 48rem;\\n} #scenario-test-root .max-w-\\\\[280px\\\\] {\\n  max-width: 280px;\\n} #scenario-test-root .max-w-\\\\[50\\\\%\\\\] {\\n  max-width: 50%;\\n} #scenario-test-root .max-w-\\\\[55\\\\%\\\\] {\\n  max-width: 55%;\\n} #scenario-test-root .max-w-full {\\n  max-width: 100%;\\n} #scenario-test-root .flex-1 {\\n  flex: 1 1 0%;\\n} #scenario-test-root .flex-shrink-0 {\\n  flex-shrink: 0;\\n} #scenario-test-root .rotate-180 {\\n  --tw-rotate: 180deg;\\n  transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));\\n} #scenario-test-root .scale-90 {\\n  --tw-scale-x: .9;\\n  --tw-scale-y: .9;\\n  transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));\\n} #scenario-test-root .cursor-pointer {\\n  cursor: pointer;\\n} #scenario-test-root .select-none {\\n  user-select: none;\\n} #scenario-test-root .select-text {\\n  user-select: text;\\n} #scenario-test-root .appearance-none {\\n  appearance: none;\\n} #scenario-test-root .grid-cols-1 {\\n  grid-template-columns: repeat(1, minmax(0, 1fr));\\n} #scenario-test-root .flex-col {\\n  flex-direction: column;\\n} #scenario-test-root .flex-wrap {\\n  flex-wrap: wrap;\\n} #scenario-test-root .items-start {\\n  align-items: flex-start;\\n} #scenario-test-root .items-center {\\n  align-items: center;\\n} #scenario-test-root .justify-end {\\n  justify-content: flex-end;\\n} #scenario-test-root .justify-center {\\n  justify-content: center;\\n} #scenario-test-root .justify-between {\\n  justify-content: space-between;\\n} #scenario-test-root .gap-1 {\\n  gap: 0.25rem;\\n} #scenario-test-root .gap-1\\\\.5 {\\n  gap: 0.375rem;\\n} #scenario-test-root .gap-2 {\\n  gap: 0.5rem;\\n} #scenario-test-root .gap-3 {\\n  gap: 0.75rem;\\n} #scenario-test-root .gap-4 {\\n  gap: 1rem;\\n} #scenario-test-root :is(.space-x-1 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-x-reverse: 0;\\n  margin-right: calc(0.25rem * var(--tw-space-x-reverse));\\n  margin-left: calc(0.25rem * calc(1 - var(--tw-space-x-reverse)));\\n} #scenario-test-root :is(.space-x-1\\\\.5 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-x-reverse: 0;\\n  margin-right: calc(0.375rem * var(--tw-space-x-reverse));\\n  margin-left: calc(0.375rem * calc(1 - var(--tw-space-x-reverse)));\\n} #scenario-test-root :is(.space-x-2 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-x-reverse: 0;\\n  margin-right: calc(0.5rem * var(--tw-space-x-reverse));\\n  margin-left: calc(0.5rem * calc(1 - var(--tw-space-x-reverse)));\\n} #scenario-test-root :is(.space-x-2\\\\.5 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-x-reverse: 0;\\n  margin-right: calc(0.625rem * var(--tw-space-x-reverse));\\n  margin-left: calc(0.625rem * calc(1 - var(--tw-space-x-reverse)));\\n} #scenario-test-root :is(.space-x-3 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-x-reverse: 0;\\n  margin-right: calc(0.75rem * var(--tw-space-x-reverse));\\n  margin-left: calc(0.75rem * calc(1 - var(--tw-space-x-reverse)));\\n} #scenario-test-root :is(.space-x-4 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-x-reverse: 0;\\n  margin-right: calc(1rem * var(--tw-space-x-reverse));\\n  margin-left: calc(1rem * calc(1 - var(--tw-space-x-reverse)));\\n} #scenario-test-root :is(.space-x-6 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-x-reverse: 0;\\n  margin-right: calc(1.5rem * var(--tw-space-x-reverse));\\n  margin-left: calc(1.5rem * calc(1 - var(--tw-space-x-reverse)));\\n} #scenario-test-root :is(.space-x-8 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-x-reverse: 0;\\n  margin-right: calc(2rem * var(--tw-space-x-reverse));\\n  margin-left: calc(2rem * calc(1 - var(--tw-space-x-reverse)));\\n} #scenario-test-root :is(.space-y-0\\\\.5 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-y-reverse: 0;\\n  margin-top: calc(0.125rem * calc(1 - var(--tw-space-y-reverse)));\\n  margin-bottom: calc(0.125rem * var(--tw-space-y-reverse));\\n} #scenario-test-root :is(.space-y-1 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-y-reverse: 0;\\n  margin-top: calc(0.25rem * calc(1 - var(--tw-space-y-reverse)));\\n  margin-bottom: calc(0.25rem * var(--tw-space-y-reverse));\\n} #scenario-test-root :is(.space-y-2 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-y-reverse: 0;\\n  margin-top: calc(0.5rem * calc(1 - var(--tw-space-y-reverse)));\\n  margin-bottom: calc(0.5rem * var(--tw-space-y-reverse));\\n} #scenario-test-root :is(.space-y-3 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-y-reverse: 0;\\n  margin-top: calc(0.75rem * calc(1 - var(--tw-space-y-reverse)));\\n  margin-bottom: calc(0.75rem * var(--tw-space-y-reverse));\\n} #scenario-test-root :is(.space-y-4 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-y-reverse: 0;\\n  margin-top: calc(1rem * calc(1 - var(--tw-space-y-reverse)));\\n  margin-bottom: calc(1rem * var(--tw-space-y-reverse));\\n} #scenario-test-root :is(.divide-y > :not([hidden]) ~ :not([hidden])) {\\n  --tw-divide-y-reverse: 0;\\n  border-top-width: calc(1px * calc(1 - var(--tw-divide-y-reverse)));\\n  border-bottom-width: calc(1px * var(--tw-divide-y-reverse));\\n} #scenario-test-root :is(.divide-slate-100 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-divide-opacity: 1;\\n  border-color: rgb(241 245 249 / var(--tw-divide-opacity, 1));\\n} #scenario-test-root :is(.divide-slate-200 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-divide-opacity: 1;\\n  border-color: rgb(226 232 240 / var(--tw-divide-opacity, 1));\\n} #scenario-test-root .overflow-hidden {\\n  overflow: hidden;\\n} #scenario-test-root .overflow-x-auto {\\n  overflow-x: auto;\\n} #scenario-test-root .overflow-y-auto {\\n  overflow-y: auto;\\n} #scenario-test-root .truncate {\\n  overflow: hidden;\\n  text-overflow: ellipsis;\\n  white-space: nowrap;\\n} #scenario-test-root .whitespace-nowrap {\\n  white-space: nowrap;\\n} #scenario-test-root .break-all {\\n  word-break: break-all;\\n} #scenario-test-root .rounded {\\n  border-radius: 0.25rem;\\n} #scenario-test-root .rounded-full {\\n  border-radius: 9999px;\\n} #scenario-test-root .rounded-lg {\\n  border-radius: 0.5rem;\\n} #scenario-test-root .rounded-md {\\n  border-radius: 0.375rem;\\n} #scenario-test-root .rounded-xl {\\n  border-radius: 0.75rem;\\n} #scenario-test-root .border {\\n  border-width: 1px;\\n} #scenario-test-root .border-b {\\n  border-bottom-width: 1px;\\n} #scenario-test-root .border-l {\\n  border-left-width: 1px;\\n} #scenario-test-root .border-t {\\n  border-top-width: 1px;\\n} #scenario-test-root .border-blue-200 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(191 219 254 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-emerald-100 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(209 250 229 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-emerald-100\\\\/50 {\\n  border-color: rgb(209 250 229 / 0.5);\\n} #scenario-test-root .border-emerald-200 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(167 243 208 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-indigo-100 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(224 231 255 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-rose-100 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(255 228 230 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-rose-100\\\\/50 {\\n  border-color: rgb(255 228 230 / 0.5);\\n} #scenario-test-root .border-rose-200 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(254 205 211 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-slate-100 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(241 245 249 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-slate-100\\\\/80 {\\n  border-color: rgb(241 245 249 / 0.8);\\n} #scenario-test-root .border-slate-200 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(226 232 240 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-slate-200\\\\/50 {\\n  border-color: rgb(226 232 240 / 0.5);\\n} #scenario-test-root .border-slate-200\\\\/60 {\\n  border-color: rgb(226 232 240 / 0.6);\\n} #scenario-test-root .border-slate-300 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(203 213 225 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-slate-600 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(71 85 105 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-slate-700 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(51 65 85 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-slate-700\\\\/50 {\\n  border-color: rgb(51 65 85 / 0.5);\\n} #scenario-test-root .border-transparent {\\n  border-color: transparent;\\n} #scenario-test-root .border-zinc-200 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(228 228 231 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .bg-\\\\[\\\\#1e293b\\\\] {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(30 41 59 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-emerald-400 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(52 211 153 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-emerald-50 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(236 253 245 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-emerald-500 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(16 185 129 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-emerald-600 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(5 150 105 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-indigo-50 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(238 242 255 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-rose-100 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(255 228 230 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-rose-400 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(251 113 133 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-rose-50 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(255 241 242 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-rose-50\\\\/20 {\\n  background-color: rgb(255 241 242 / 0.2);\\n} #scenario-test-root .bg-rose-500 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(244 63 94 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-100 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(241 245 249 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-100\\\\/70 {\\n  background-color: rgb(241 245 249 / 0.7);\\n} #scenario-test-root .bg-slate-200 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(226 232 240 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-200\\\\/60 {\\n  background-color: rgb(226 232 240 / 0.6);\\n} #scenario-test-root .bg-slate-300 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(203 213 225 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-400 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(148 163 184 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-50 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(248 250 252 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-50\\\\/30 {\\n  background-color: rgb(248 250 252 / 0.3);\\n} #scenario-test-root .bg-slate-50\\\\/50 {\\n  background-color: rgb(248 250 252 / 0.5);\\n} #scenario-test-root .bg-slate-50\\\\/70 {\\n  background-color: rgb(248 250 252 / 0.7);\\n} #scenario-test-root .bg-slate-700 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(51 65 85 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-800 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(30 41 59 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-900 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(15 23 42 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-950\\\\/20 {\\n  background-color: rgb(2 6 23 / 0.2);\\n} #scenario-test-root .bg-slate-950\\\\/40 {\\n  background-color: rgb(2 6 23 / 0.4);\\n} #scenario-test-root .bg-transparent {\\n  background-color: transparent;\\n} #scenario-test-root .bg-white {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(255 255 255 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-zinc-100 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(244 244 245 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .p-1 {\\n  padding: 0.25rem;\\n} #scenario-test-root .p-2 {\\n  padding: 0.5rem;\\n} #scenario-test-root .p-2\\\\.5 {\\n  padding: 0.625rem;\\n} #scenario-test-root .p-3 {\\n  padding: 0.75rem;\\n} #scenario-test-root .p-3\\\\.5 {\\n  padding: 0.875rem;\\n} #scenario-test-root .p-4 {\\n  padding: 1rem;\\n} #scenario-test-root .p-5 {\\n  padding: 1.25rem;\\n} #scenario-test-root .p-8 {\\n  padding: 2rem;\\n} #scenario-test-root .px-1 {\\n  padding-left: 0.25rem;\\n  padding-right: 0.25rem;\\n} #scenario-test-root .px-1\\\\.5 {\\n  padding-left: 0.375rem;\\n  padding-right: 0.375rem;\\n} #scenario-test-root .px-2 {\\n  padding-left: 0.5rem;\\n  padding-right: 0.5rem;\\n} #scenario-test-root .px-2\\\\.5 {\\n  padding-left: 0.625rem;\\n  padding-right: 0.625rem;\\n} #scenario-test-root .px-3 {\\n  padding-left: 0.75rem;\\n  padding-right: 0.75rem;\\n} #scenario-test-root .px-4 {\\n  padding-left: 1rem;\\n  padding-right: 1rem;\\n} #scenario-test-root .px-5 {\\n  padding-left: 1.25rem;\\n  padding-right: 1.25rem;\\n} #scenario-test-root .py-0\\\\.5 {\\n  padding-top: 0.125rem;\\n  padding-bottom: 0.125rem;\\n} #scenario-test-root .py-1 {\\n  padding-top: 0.25rem;\\n  padding-bottom: 0.25rem;\\n} #scenario-test-root .py-1\\\\.5 {\\n  padding-top: 0.375rem;\\n  padding-bottom: 0.375rem;\\n} #scenario-test-root .py-2 {\\n  padding-top: 0.5rem;\\n  padding-bottom: 0.5rem;\\n} #scenario-test-root .py-2\\\\.5 {\\n  padding-top: 0.625rem;\\n  padding-bottom: 0.625rem;\\n} #scenario-test-root .py-3 {\\n  padding-top: 0.75rem;\\n  padding-bottom: 0.75rem;\\n} #scenario-test-root .py-4 {\\n  padding-top: 1rem;\\n  padding-bottom: 1rem;\\n} #scenario-test-root .pb-3 {\\n  padding-bottom: 0.75rem;\\n} #scenario-test-root .pl-2 {\\n  padding-left: 0.5rem;\\n} #scenario-test-root .pl-6 {\\n  padding-left: 1.5rem;\\n} #scenario-test-root .pr-4 {\\n  padding-right: 1rem;\\n} #scenario-test-root .pr-5 {\\n  padding-right: 1.25rem;\\n} #scenario-test-root .pt-4 {\\n  padding-top: 1rem;\\n} #scenario-test-root .text-left {\\n  text-align: left;\\n} #scenario-test-root .text-center {\\n  text-align: center;\\n} #scenario-test-root .text-right {\\n  text-align: right;\\n} #scenario-test-root .font-mono {\\n  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;\\n} #scenario-test-root .text-\\\\[10px\\\\] {\\n  font-size: 10px;\\n} #scenario-test-root .text-\\\\[11px\\\\] {\\n  font-size: 11px;\\n} #scenario-test-root .text-\\\\[12px\\\\] {\\n  font-size: 12px;\\n} #scenario-test-root .text-\\\\[13px\\\\] {\\n  font-size: 13px;\\n} #scenario-test-root .text-sm {\\n  font-size: 0.875rem;\\n  line-height: 1.25rem;\\n} #scenario-test-root .text-xl {\\n  font-size: 1.25rem;\\n  line-height: 1.75rem;\\n} #scenario-test-root .text-xs {\\n  font-size: 0.75rem;\\n  line-height: 1rem;\\n} #scenario-test-root .font-bold {\\n  font-weight: 700;\\n} #scenario-test-root .font-extrabold {\\n  font-weight: 800;\\n} #scenario-test-root .font-medium {\\n  font-weight: 500;\\n} #scenario-test-root .font-normal {\\n  font-weight: 400;\\n} #scenario-test-root .font-semibold {\\n  font-weight: 600;\\n} #scenario-test-root .uppercase {\\n  text-transform: uppercase;\\n} #scenario-test-root .normal-case {\\n  text-transform: none;\\n} #scenario-test-root .leading-relaxed {\\n  line-height: 1.625;\\n} #scenario-test-root .leading-tight {\\n  line-height: 1.25;\\n} #scenario-test-root .tracking-tight {\\n  letter-spacing: -0.025em;\\n} #scenario-test-root .tracking-wider {\\n  letter-spacing: 0.05em;\\n} #scenario-test-root .text-amber-400 {\\n  --tw-text-opacity: 1;\\n  color: rgb(251 191 36 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-amber-600 {\\n  --tw-text-opacity: 1;\\n  color: rgb(217 119 6 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-blue-700 {\\n  --tw-text-opacity: 1;\\n  color: rgb(29 78 216 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-emerald-400 {\\n  --tw-text-opacity: 1;\\n  color: rgb(52 211 153 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-emerald-500 {\\n  --tw-text-opacity: 1;\\n  color: rgb(16 185 129 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-emerald-600 {\\n  --tw-text-opacity: 1;\\n  color: rgb(5 150 105 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-emerald-600\\\\/70 {\\n  color: rgb(5 150 105 / 0.7);\\n} #scenario-test-root .text-emerald-700 {\\n  --tw-text-opacity: 1;\\n  color: rgb(4 120 87 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-indigo-500 {\\n  --tw-text-opacity: 1;\\n  color: rgb(99 102 241 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-indigo-700 {\\n  --tw-text-opacity: 1;\\n  color: rgb(67 56 202 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-orange-500 {\\n  --tw-text-opacity: 1;\\n  color: rgb(249 115 22 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-purple-600 {\\n  --tw-text-opacity: 1;\\n  color: rgb(147 51 234 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-rose-400 {\\n  --tw-text-opacity: 1;\\n  color: rgb(251 113 133 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-rose-500 {\\n  --tw-text-opacity: 1;\\n  color: rgb(244 63 94 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-rose-500\\\\/70 {\\n  color: rgb(244 63 94 / 0.7);\\n} #scenario-test-root .text-rose-600 {\\n  --tw-text-opacity: 1;\\n  color: rgb(225 29 72 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-rose-700 {\\n  --tw-text-opacity: 1;\\n  color: rgb(190 18 60 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-rose-800 {\\n  --tw-text-opacity: 1;\\n  color: rgb(159 18 57 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-slate-200 {\\n  --tw-text-opacity: 1;\\n  color: rgb(226 232 240 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-slate-300 {\\n  --tw-text-opacity: 1;\\n  color: rgb(203 213 225 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-slate-400 {\\n  --tw-text-opacity: 1;\\n  color: rgb(148 163 184 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-slate-400\\\\/80 {\\n  color: rgb(148 163 184 / 0.8);\\n} #scenario-test-root .text-slate-500 {\\n  --tw-text-opacity: 1;\\n  color: rgb(100 116 139 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-slate-600 {\\n  --tw-text-opacity: 1;\\n  color: rgb(71 85 105 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-slate-700 {\\n  --tw-text-opacity: 1;\\n  color: rgb(51 65 85 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-slate-800 {\\n  --tw-text-opacity: 1;\\n  color: rgb(30 41 59 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-slate-900 {\\n  --tw-text-opacity: 1;\\n  color: rgb(15 23 42 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-white {\\n  --tw-text-opacity: 1;\\n  color: rgb(255 255 255 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-zinc-700 {\\n  --tw-text-opacity: 1;\\n  color: rgb(63 63 70 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .placeholder-slate-400::placeholder {\\n  --tw-placeholder-opacity: 1;\\n  color: rgb(148 163 184 / var(--tw-placeholder-opacity, 1));\\n} #scenario-test-root .placeholder-slate-500::placeholder {\\n  --tw-placeholder-opacity: 1;\\n  color: rgb(100 116 139 / var(--tw-placeholder-opacity, 1));\\n} #scenario-test-root .shadow-inner {\\n  --tw-shadow: inset 0 2px 4px 0 rgb(0 0 0 / 0.05);\\n  --tw-shadow-colored: inset 0 2px 4px 0 var(--tw-shadow-color);\\n  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);\\n} #scenario-test-root .shadow-sm {\\n  --tw-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);\\n  --tw-shadow-colored: 0 1px 2px 0 var(--tw-shadow-color);\\n  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);\\n} #scenario-test-root .shadow-xl {\\n  --tw-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);\\n  --tw-shadow-colored: 0 20px 25px -5px var(--tw-shadow-color), 0 8px 10px -6px var(--tw-shadow-color);\\n  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);\\n} #scenario-test-root .outline-none {\\n  outline: 2px solid transparent;\\n  outline-offset: 2px;\\n} #scenario-test-root .filter {\\n  filter: var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow);\\n} #scenario-test-root .transition-all {\\n  transition-property: all;\\n  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);\\n  transition-duration: 150ms;\\n} #scenario-test-root .transition-colors {\\n  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;\\n  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);\\n  transition-duration: 150ms;\\n} #scenario-test-root .transition-transform {\\n  transition-property: transform;\\n  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);\\n  transition-duration: 150ms;\\n} #scenario-test-root .duration-150 {\\n  transition-duration: 150ms;\\n} #scenario-test-root .duration-200 {\\n  transition-duration: 200ms;\\n} #scenario-test-root .placeholder\\\\:text-slate-300::placeholder {\\n  --tw-text-opacity: 1;\\n  color: rgb(203 213 225 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .hover\\\\:border-emerald-300:hover {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(110 231 183 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .hover\\\\:border-slate-200:hover {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(226 232 240 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .hover\\\\:bg-emerald-600:hover {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(5 150 105 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .hover\\\\:bg-emerald-700:hover {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(4 120 87 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .hover\\\\:bg-indigo-100:hover {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(224 231 255 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .hover\\\\:bg-slate-100:hover {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(241 245 249 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .hover\\\\:bg-slate-50:hover {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(248 250 252 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .hover\\\\:bg-slate-50\\\\/50:hover {\\n  background-color: rgb(248 250 252 / 0.5);\\n} #scenario-test-root .hover\\\\:bg-slate-50\\\\/60:hover {\\n  background-color: rgb(248 250 252 / 0.6);\\n} #scenario-test-root .hover\\\\:bg-slate-600:hover {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(71 85 105 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .hover\\\\:bg-slate-700:hover {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(51 65 85 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .hover\\\\:bg-white:hover {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(255 255 255 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .hover\\\\:text-emerald-700:hover {\\n  --tw-text-opacity: 1;\\n  color: rgb(4 120 87 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .hover\\\\:text-rose-600:hover {\\n  --tw-text-opacity: 1;\\n  color: rgb(225 29 72 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .hover\\\\:text-slate-700:hover {\\n  --tw-text-opacity: 1;\\n  color: rgb(51 65 85 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .hover\\\\:text-slate-900:hover {\\n  --tw-text-opacity: 1;\\n  color: rgb(15 23 42 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .hover\\\\:text-white:hover {\\n  --tw-text-opacity: 1;\\n  color: rgb(255 255 255 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .focus\\\\:border-emerald-500:focus {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(16 185 129 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .focus\\\\:outline-none:focus {\\n  outline: 2px solid transparent;\\n  outline-offset: 2px;\\n} #scenario-test-root .focus\\\\:ring-1:focus {\\n  --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);\\n  --tw-ring-shadow: var(--tw-ring-inset) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color);\\n  box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000);\\n} #scenario-test-root .focus\\\\:ring-emerald-500:focus {\\n  --tw-ring-opacity: 1;\\n  --tw-ring-color: rgb(16 185 129 / var(--tw-ring-opacity, 1));\\n} #scenario-test-root :is(.group:hover .group-hover\\\\:text-emerald-700) {\\n  --tw-text-opacity: 1;\\n  color: rgb(4 120 87 / var(--tw-text-opacity, 1));\\n} #scenario-test-root :is(.group:hover .group-hover\\\\:text-slate-500) {\\n  --tw-text-opacity: 1;\\n  color: rgb(100 116 139 / var(--tw-text-opacity, 1));\\n} #scenario-test-root :is(.group:hover .group-hover\\\\:text-slate-600) {\\n  --tw-text-opacity: 1;\\n  color: rgb(71 85 105 / var(--tw-text-opacity, 1));\\n} #scenario-test-root :is(.group:hover .group-hover\\\\:text-slate-950) {\\n  --tw-text-opacity: 1;\\n  color: rgb(2 6 23 / var(--tw-text-opacity, 1));\\n} @media (min-width: 640px) {\\n\\n  #scenario-test-root .sm\\\\:mt-0 {\\n    margin-top: 0px;\\n  }\\n\\n  #scenario-test-root .sm\\\\:flex {\\n    display: flex;\\n  }\\n\\n  #scenario-test-root .sm\\\\:hidden {\\n    display: none;\\n  }\\n\\n  #scenario-test-root .sm\\\\:max-w-xl {\\n    max-width: 36rem;\\n  }\\n\\n  #scenario-test-root .sm\\\\:grid-cols-\\\\[120px_1fr\\\\] {\\n    grid-template-columns: 120px 1fr;\\n  }\\n} @media (min-width: 768px) {\\n\\n  #scenario-test-root .md\\\\:mt-0 {\\n    margin-top: 0px;\\n  }\\n\\n  #scenario-test-root .md\\\\:w-auto {\\n    width: auto;\\n  }\\n\\n  #scenario-test-root .md\\\\:grid-cols-2 {\\n    grid-template-columns: repeat(2, minmax(0, 1fr));\\n  }\\n\\n  #scenario-test-root .md\\\\:gap-0 {\\n    gap: 0px;\\n  }\\n\\n  #scenario-test-root :is(.md\\\\:divide-x > :not([hidden]) ~ :not([hidden])) {\\n    --tw-divide-x-reverse: 0;\\n    border-right-width: calc(1px * var(--tw-divide-x-reverse));\\n    border-left-width: calc(1px * calc(1 - var(--tw-divide-x-reverse)));\\n  }\\n\\n  #scenario-test-root .md\\\\:pl-6 {\\n    padding-left: 1.5rem;\\n  }\\n\\n  #scenario-test-root .md\\\\:pr-6 {\\n    padding-right: 1.5rem;\\n  }\\n} @media (min-width: 1024px) {\\n\\n  #scenario-test-root .lg\\\\:w-\\\\[80\\\\%\\\\] {\\n    width: 80%;\\n  }\\n} @media (min-width: 1280px) {\\n\\n  #scenario-test-root .xl\\\\:max-h-\\\\[calc\\\\(100vh-52px\\\\)\\\\] {\\n    max-height: calc(100vh - 52px);\\n  }\\n\\n  #scenario-test-root .xl\\\\:grid-cols-\\\\[minmax\\\\(164px\\\\2c 1fr\\\\)_minmax\\\\(500px\\\\2c 3\\\\.18fr\\\\)_minmax\\\\(280px\\\\2c 1\\\\.75fr\\\\)\\\\] {\\n    grid-template-columns: minmax(164px,1fr) minmax(500px,3.18fr) minmax(280px,1.75fr);\\n  }\\n}';
 
   // src/browser/app.js
   function resolveMount(mount) {
@@ -72972,7 +73486,7 @@ var ScenarioTest = (() => {
 })();
 //# sourceMappingURL=scenario-test.umd.js.map
 `) {
-    import_node_fs4.default.writeFileSync(target, `/*! scenario-test v0.3.0 */
+    import_node_fs4.default.writeFileSync(target, `/*! scenario-test v0.4.0 */
 var ScenarioTest = (() => {
   var __create = Object.create;
   var __defProp = Object.defineProperty;
@@ -73217,8 +73731,13 @@ var ScenarioTest = (() => {
   // src/index.js
   var index_exports = {};
   __export(index_exports, {
+    ASSERTION_META_KEYS: () => ASSERTION_META_KEYS,
+    ASSERTION_OPERATORS: () => ASSERTION_OPERATORS,
     GLOBAL_TYPES: () => GLOBAL_TYPES,
+    RESERVED_VARS: () => RESERVED_VARS,
     applyExtract: () => applyExtract,
+    assertNoReservedVars: () => assertNoReservedVars,
+    assertNotReservedVar: () => assertNotReservedVar,
     buildAssertions: () => buildAssertions,
     buildUrl: () => buildUrl,
     clearAdapters: () => clearAdapters,
@@ -73231,6 +73750,7 @@ var ScenarioTest = (() => {
     defineScenario: () => defineScenario,
     evalExpression: () => evalExpression,
     evaluateAssertion: () => evaluateAssertion,
+    formatAssertionContext: () => formatAssertionContext,
     formatDuration: () => formatDuration,
     generateSignature: () => generateSignature,
     getAdapter: () => getAdapter,
@@ -73258,7 +73778,8 @@ var ScenarioTest = (() => {
     sanitizeSensitive: () => sanitizeSensitive,
     unregisterAdapter: () => unregisterAdapter,
     validateAdapter: () => validateAdapter,
-    validateAdapterResponse: () => validateAdapterResponse
+    validateAdapterResponse: () => validateAdapterResponse,
+    validateAssertion: () => validateAssertion
   });
 
   // src/core.js
@@ -73384,6 +73905,35 @@ var ScenarioTest = (() => {
     }
     return value;
   }
+  var ASSERTION_OPERATORS = ["exists", "equals", "includes", "matches", "oneOf", "notEquals", "gt", "gte", "lt", "lte"];
+  var ASSERTION_META_KEYS = ["name", "path", "from", "target", "header", "implicit"];
+  function formatAssertionContext(context) {
+    if (!context) return "";
+    if (typeof context === "string") return context;
+    const parts = [];
+    if (context.scenarioName) parts.push(\`\\u573A\\u666F \${context.scenarioName}\`);
+    if (context.stepNo !== void 0) parts.push(\`\\u7B2C \${context.stepNo} \\u6B65\`);
+    if (context.stepName) parts.push(\`\\u6B65\\u9AA4 \${context.stepName}\`);
+    if (context.assertionNo !== void 0) parts.push(\`\\u7B2C \${context.assertionNo} \\u6761\`);
+    return parts.join(" ");
+  }
+  function validateAssertion(definition, context) {
+    const where = formatAssertionContext(context);
+    const prefix = where ? \`\${where}\\u65AD\\u8A00\\u65E0\\u6548\` : "\\u65AD\\u8A00\\u65E0\\u6548";
+    if (!isPlainObject(definition)) throw new TypeError(\`\${prefix}: \\u65AD\\u8A00\\u5FC5\\u987B\\u662F\\u5BF9\\u8C61\`);
+    const keys = Object.keys(definition);
+    const operators = keys.filter((key) => ASSERTION_OPERATORS.includes(key));
+    const unknown = keys.filter((key) => !ASSERTION_OPERATORS.includes(key) && !ASSERTION_META_KEYS.includes(key));
+    if (unknown.length) {
+      throw new TypeError(
+        \`\${prefix}: \\u5305\\u542B\\u672A\\u77E5\\u952E \${unknown.map((key) => \`"\${key}"\`).join(", ")}\\uFF0C\\u5141\\u8BB8\\u7684\\u5143\\u6570\\u636E\\u952E\\u4E3A \${ASSERTION_META_KEYS.join("/")}\\uFF0C\\u64CD\\u4F5C\\u7B26\\u4E3A \${ASSERTION_OPERATORS.join("/")}\`
+      );
+    }
+    if (!operators.length) {
+      throw new TypeError(\`\${prefix}: \\u5FC5\\u987B\\u81F3\\u5C11\\u5305\\u542B\\u4E00\\u4E2A\\u64CD\\u4F5C\\u7B26\\uFF08\${ASSERTION_OPERATORS.join("/")}\\uFF09\`);
+    }
+    return definition;
+  }
   function assertionActual(definition, response, runtime) {
     if (definition.target === "status") return response.status;
     if (definition.header) return headerValue(response.headers, definition.header);
@@ -73392,7 +73942,8 @@ var ScenarioTest = (() => {
     if (definition.from === "bodyText") return response.bodyText;
     return definition.path ? getByPath(response.body, definition.path) : response.body;
   }
-  function evaluateAssertion(definition, response, runtime) {
+  function evaluateAssertion(definition, response, runtime, context) {
+    validateAssertion(definition, context);
     const actual = assertionActual(definition, response, runtime);
     let expected;
     let passed = true;
@@ -73404,6 +73955,10 @@ var ScenarioTest = (() => {
     if (Object.prototype.hasOwnProperty.call(definition, "equals")) {
       expected = resolve(definition.equals, runtime);
       passed = passed && JSON.stringify(actual) === JSON.stringify(expected);
+    }
+    if (Object.prototype.hasOwnProperty.call(definition, "notEquals")) {
+      expected = resolve(definition.notEquals, runtime);
+      passed = passed && JSON.stringify(actual) !== JSON.stringify(expected);
     }
     if (Object.prototype.hasOwnProperty.call(definition, "includes")) {
       expected = resolve(definition.includes, runtime);
@@ -73423,6 +73978,19 @@ var ScenarioTest = (() => {
       expected = resolve(definition.oneOf, runtime);
       passed = passed && Array.isArray(expected) && expected.some((item) => JSON.stringify(item) === JSON.stringify(actual));
     }
+    for (const op of ["gt", "gte", "lt", "lte"]) {
+      if (!Object.prototype.hasOwnProperty.call(definition, op)) continue;
+      expected = resolve(definition[op], runtime);
+      const comparable = typeof actual === "number" && Number.isFinite(actual) && typeof expected === "number" && Number.isFinite(expected);
+      if (!comparable) {
+        passed = false;
+        continue;
+      }
+      if (op === "gt") passed = passed && actual > expected;
+      else if (op === "gte") passed = passed && actual >= expected;
+      else if (op === "lt") passed = passed && actual < expected;
+      else passed = passed && actual <= expected;
+    }
     return {
       name: definition.name || definition.path || "\\u65AD\\u8A00",
       passed,
@@ -73430,25 +73998,52 @@ var ScenarioTest = (() => {
       expected
     };
   }
-  function buildAssertions(step, response, runtime) {
+  function buildAssertions(step, response, runtime, context) {
     const definitions = Array.isArray(step.assertions) ? [...step.assertions] : [];
     if (step.status !== void 0 && !definitions.some((item) => item.target === "status")) {
       definitions.unshift({ name: \`\\u8FD4\\u56DE HTTP \${step.status}\`, target: "status", equals: step.status });
     } else if (step.status === void 0 && definitions.length === 0) {
       definitions.push({ name: "\\u8FD4\\u56DE HTTP 2xx", target: "status", matches: "^2\\\\d\\\\d$", implicit: true });
     }
-    return definitions.map((definition) => evaluateAssertion(definition, response, runtime));
+    return definitions.map((definition, index) => evaluateAssertion(definition, response, runtime, { ...context || {}, assertionNo: index + 1 }));
+  }
+  var RESERVED_VARS = ["runId", "runNo"];
+  function assertNotReservedVar(name, label) {
+    if (RESERVED_VARS.includes(name)) {
+      throw new Error(\`\${label || "\\u53D8\\u91CF"} "\${name}" \\u662F\\u8FD0\\u884C\\u65F6\\u81EA\\u52A8\\u751F\\u6210\\u7684\\u4FDD\\u7559\\u53D8\\u91CF\\uFF0C\\u7981\\u6B62\\u58F0\\u660E\\u6216\\u8986\\u76D6\`);
+    }
+  }
+  function assertNoReservedVars(source, label) {
+    for (const name of Object.keys(source || {})) {
+      assertNotReservedVar(name, label);
+    }
   }
   function applyExtract(step, response, runtime) {
+    const warnings = [];
+    const failures = [];
     for (const definition of step.extract || []) {
       if (!definition || !definition.name) continue;
+      assertNotReservedVar(definition.name, "extract \\u53D8\\u91CF");
       let source = response.body;
       if (definition.from === "headers") source = response.headers;
       else if (definition.from === "bodyText") source = response.bodyText;
       else if (definition.from === "response") source = response;
-      runtime.vars[definition.name] = definition.path ? getByPath(source, definition.path) : source;
+      const value = definition.path ? getByPath(source, definition.path) : source;
+      if (value === void 0) {
+        if (definition.required === true) {
+          failures.push({
+            name: \`\\u63D0\\u53D6 \${definition.name}\\uFF08\\u8DEF\\u5F84\\u4E0D\\u5B58\\u5728\\uFF09\`,
+            passed: false,
+            actual: void 0,
+            expected: \`\\u8DEF\\u5F84 \${definition.path || "(\\u6574\\u4E2A\\u54CD\\u5E94)"} \\u5B58\\u5728\`
+          });
+        } else {
+          warnings.push(\`\\u63D0\\u53D6\\u53D8\\u91CF \${definition.name}\\uFF1A\\u8DEF\\u5F84 \${definition.path || "(\\u6574\\u4E2A\\u54CD\\u5E94)"} \\u4E0D\\u5B58\\u5728\\uFF0C\\u53D8\\u91CF\\u503C\\u4E3A undefined\\uFF08required \\u672A\\u5F00\\u542F\\uFF0C\\u4E0D\\u5F71\\u54CD\\u6267\\u884C\\uFF09\`);
+        }
+      }
+      runtime.vars[definition.name] = value;
     }
-    return runtime.vars;
+    return { warnings, failures };
   }
   function md5(value) {
     return (0, import_blueimp_md5.default)(String(value));
@@ -73543,16 +74138,41 @@ var ScenarioTest = (() => {
     invariant(isPlainObject(input), "\\u573A\\u666F\\u5FC5\\u987B\\u662F\\u5BF9\\u8C61");
     invariant(typeof input.name === "string" && input.name.trim(), "\\u573A\\u666F\\u7F3A\\u5C11 name");
     invariant(Array.isArray(input.steps), \`\\u573A\\u666F \${input.name} \\u7F3A\\u5C11 steps \\u6570\\u7EC4\`);
+    assertNoReservedVars(input.vars, \`\\u573A\\u666F \${input.name} \\u7684 vars\`);
     input.steps.forEach((step, index) => {
       invariant(isPlainObject(step), \`\\u573A\\u666F \${input.name} \\u7B2C \${index + 1} \\u6B65\\u5FC5\\u987B\\u662F\\u5BF9\\u8C61\`);
       invariant(nonEmptyString(step.name), \`\\u573A\\u666F \${input.name} \\u7B2C \${index + 1} \\u6B65\\u7F3A\\u5C11 name\`);
       if (step.method !== void 0) invariant(nonEmptyString(step.method), \`\\u6B65\\u9AA4 \${step.name} \\u7684 method \\u65E0\\u6548\`);
+      const stepContext = { scenarioName: input.name, stepNo: index + 1, stepName: step.name };
+      if (step.assertions !== void 0) {
+        invariant(Array.isArray(step.assertions), \`\\u6B65\\u9AA4 \${step.name} \\u7684 assertions \\u5FC5\\u987B\\u662F\\u6570\\u7EC4\`);
+        step.assertions.forEach((definition, assertionIndex) => {
+          validateAssertion(definition, { ...stepContext, assertionNo: assertionIndex + 1 });
+        });
+      }
       if (step.retryUntil !== void 0) {
         invariant(isPlainObject(step.retryUntil), \`\\u6B65\\u9AA4 \${step.name} \\u7684 retryUntil \\u5FC5\\u987B\\u662F\\u5BF9\\u8C61\`);
+        if (step.retryUntil.assertions !== void 0) {
+          invariant(Array.isArray(step.retryUntil.assertions), \`\\u6B65\\u9AA4 \${step.name} \\u7684 retryUntil.assertions \\u5FC5\\u987B\\u662F\\u6570\\u7EC4\`);
+          step.retryUntil.assertions.forEach((definition, assertionIndex) => {
+            validateAssertion(definition, { ...stepContext, assertionNo: assertionIndex + 1 });
+          });
+        }
         const maxAttempts = Number(step.retryUntil.maxAttempts ?? 10);
         const intervalMs = Number(step.retryUntil.intervalMs ?? 2e3);
         invariant(Number.isInteger(maxAttempts) && maxAttempts >= 1, \`\\u6B65\\u9AA4 \${step.name} \\u7684 maxAttempts \\u5FC5\\u987B\\u662F\\u6B63\\u6574\\u6570\`);
         invariant(Number.isFinite(intervalMs) && intervalMs >= 0, \`\\u6B65\\u9AA4 \${step.name} \\u7684 intervalMs \\u4E0D\\u80FD\\u4E3A\\u8D1F\\u6570\`);
+      }
+      if (step.when !== void 0 && isPlainObject(step.when)) {
+        if (step.when.from !== "vars") {
+          throw new TypeError(
+            \`\\u6B65\\u9AA4 \${step.name} \\u7684 when \\u5BF9\\u8C61\\u5F62\\u5F0F\\u53EA\\u5141\\u8BB8 from: "vars"\\uFF08\\u5F53\\u524D\\u4E3A \${JSON.stringify(step.when.from)}\\uFF09\\uFF0C\\u4E0D\\u5141\\u8BB8\\u4ECE\\u54CD\\u5E94 body/status/header \\u53D6\\u6761\\u4EF6\`
+          );
+        }
+        if (step.when.target !== void 0 || step.when.header !== void 0) {
+          throw new TypeError(\`\\u6B65\\u9AA4 \${step.name} \\u7684 when \\u5BF9\\u8C61\\u5F62\\u5F0F\\u4E0D\\u5141\\u8BB8\\u4F7F\\u7528 target/header \\u6761\\u4EF6\`);
+        }
+        validateAssertion(step.when, stepContext);
       }
     });
     const failurePolicy = input.failurePolicy || "stop";
@@ -73580,6 +74200,9 @@ var ScenarioTest = (() => {
       const id = entry.id || url || \`scenario-\${index + 1}\`;
       invariant(nonEmptyString(id), \`\\u7B2C \${index + 1} \\u4E2A\\u573A\\u666F\\u7F3A\\u5C11 id\`);
       invariant(nonEmptyString(url), \`\\u573A\\u666F \${id} \\u7F3A\\u5C11 url\`);
+      if (entry.manual !== void 0) {
+        invariant(typeof entry.manual === "boolean", \`\\u573A\\u666F \${id} \\u7684 manual \\u5FC5\\u987B\\u662F\\u5E03\\u5C14\\u503C\`);
+      }
       return { ...entry, id, name: entry.name || id, url };
     });
     assertUnique(scenarios, "id", "\\u573A\\u666F id");
@@ -73708,9 +74331,12 @@ var ScenarioTest = (() => {
   }
   function buildGeneratedVars(scenario, baseVars, environmentVariables, options = {}) {
     const identifiers = createRunIdentifiers();
+    assertNoReservedVars(scenario.vars, "\\u573A\\u666F vars");
+    assertNoReservedVars(baseVars, "\\u914D\\u7F6E/\\u9009\\u9879 vars");
     const vars = { ...scenario.vars || {}, ...baseVars || {}, ...identifiers };
     const verboseErrors = options.verboseErrors || process.env.SCENARIO_VERBOSE_ERRORS === "true";
     for (const [name, environmentName] of Object.entries(scenario.envVars || {})) {
+      assertNotReservedVar(name, \`\\u573A\\u666F envVars\`);
       const value = environmentVariables?.[environmentName] ?? vars[name];
       if (value === void 0 || value === null || value === "") {
         if (verboseErrors) {
@@ -73731,6 +74357,7 @@ var ScenarioTest = (() => {
     }
     for (const definition of scenario.generatedVars || []) {
       if (!definition?.name) continue;
+      assertNotReservedVar(definition.name, "generatedVars");
       if (definition.type === "timestamp") vars[definition.name] = Date.now();
       else if (definition.type === "uuidHex") {
         if (!globalThis.crypto?.randomUUID) throw new Error("\\u5F53\\u524D\\u73AF\\u5883\\u4E0D\\u652F\\u6301 crypto.randomUUID");
@@ -73918,7 +74545,7 @@ var ScenarioTest = (() => {
         requestTimeoutMs: runOptions.requestTimeoutMs || engineOptions.requestTimeoutMs || 3e4
       };
       if (step.when !== void 0) {
-        const shouldRun = typeof step.when === "object" ? evaluateAssertion(step.when, { status: 0, headers: {}, body: null, bodyText: "" }, runtime).passed : Boolean(resolve(step.when, runtime));
+        const shouldRun = typeof step.when === "object" ? evaluateAssertion(step.when, { status: 0, headers: {}, body: null, bodyText: "" }, runtime, { stepName: step.name }).passed : Boolean(resolve(step.when, runtime));
         if (!shouldRun) {
           return {
             name: step.name || "\\u672A\\u547D\\u540D\\u6B65\\u9AA4",
@@ -73929,6 +74556,7 @@ var ScenarioTest = (() => {
             passed: true,
             skipped: true,
             error: "",
+            warnings: [],
             assertions: [],
             request: null,
             response: null
@@ -73937,6 +74565,7 @@ var ScenarioTest = (() => {
       }
       let lastExecution;
       let assertions = [];
+      let stepWarnings = [];
       const retry = step.retryUntil || null;
       const totalAttempts = retry ? Number(retry.maxAttempts || 10) + 1 : 1;
       const retryStartTime = now();
@@ -73954,8 +74583,10 @@ var ScenarioTest = (() => {
           lastExecution = adapter ? await executeAdapter(adapter, step, runtime, options) : await executeHttp(step, runtime, options);
           runtime.lastResponse = lastExecution.response;
           runtime.lastResponseBody = lastExecution.response.body;
-          applyExtract(step, lastExecution.response, runtime);
-          assertions = buildAssertions(step, lastExecution.response, runtime);
+          const extractResult = applyExtract(step, lastExecution.response, runtime);
+          stepWarnings = extractResult.warnings;
+          assertions = buildAssertions(step, lastExecution.response, runtime, { stepName: step.name });
+          if (extractResult.failures.length) assertions.push(...extractResult.failures);
           if (assertions.every((item) => item.passed) || attempt === totalAttempts) break;
           const intervalMs = Math.max(100, Number(retry.intervalMs || 2e3));
           await delay(intervalMs, options.signal);
@@ -73969,6 +74600,7 @@ var ScenarioTest = (() => {
           duration: now() - startedAt,
           passed: !failed,
           error: failed?.name || "",
+          warnings: stepWarnings,
           assertions,
           request: lastExecution.request,
           response: lastExecution.response
@@ -73982,6 +74614,7 @@ var ScenarioTest = (() => {
           duration: now() - startedAt,
           passed: false,
           error: error?.message || String(error),
+          warnings: [],
           assertions: [{ name: "\\u6B65\\u9AA4\\u6267\\u884C\\u6210\\u529F", passed: false, actual: error?.message || String(error), expected: "\\u65E0\\u5F02\\u5E38" }],
           request: null,
           response: null
@@ -74005,13 +74638,20 @@ var ScenarioTest = (() => {
         if (!result.passed && scenario.failurePolicy !== "continue") break;
         if (runOptions.signal?.aborted) break;
       }
-      const failed = results.filter((item) => !item.passed).length;
+      const skipped = results.filter((item) => item.skipped).length;
+      const executed = results.length - skipped;
+      const failed = results.filter((item) => !item.skipped && !item.passed).length;
+      const passedSteps = results.filter((item) => !item.skipped && item.passed).length;
+      const status = failed > 0 ? "FAILED" : executed === 0 ? "SKIPPED" : "PASSED";
       return {
         scenarioName: scenario.name,
         passed: failed === 0 && results.length === scenario.steps.length,
+        status,
         planned: scenario.steps.length,
-        executed: results.length,
+        executed,
+        passedSteps,
         failed,
+        skipped,
         results,
         vars: runtime.vars
       };
@@ -74204,6 +74844,29 @@ var ScenarioTest = (() => {
       }
       return bodyText;
     }
+    var ASSERTION_OPERATORS2 = ["exists", "equals", "includes", "matches", "oneOf", "notEquals", "gt", "gte", "lt", "lte"];
+    var ASSERTION_META_KEYS2 = ["name", "path", "from", "target", "header", "implicit"];
+    function validateAssertion2(def, context) {
+      var where = context || "";
+      var prefix = where ? where + "\\u65AD\\u8A00\\u65E0\\u6548" : "\\u65AD\\u8A00\\u65E0\\u6548";
+      if (!isPlainObject2(def)) throw new TypeError(prefix + ": \\u65AD\\u8A00\\u5FC5\\u987B\\u662F\\u5BF9\\u8C61");
+      var keys = Object.keys(def);
+      var operators = keys.filter(function(key) {
+        return ASSERTION_OPERATORS2.indexOf(key) >= 0;
+      });
+      var unknown = keys.filter(function(key) {
+        return ASSERTION_OPERATORS2.indexOf(key) < 0 && ASSERTION_META_KEYS2.indexOf(key) < 0;
+      });
+      if (unknown.length) {
+        throw new TypeError(prefix + ": \\u5305\\u542B\\u672A\\u77E5\\u952E " + unknown.map(function(key) {
+          return '"' + key + '"';
+        }).join(", ") + "\\uFF0C\\u5141\\u8BB8\\u7684\\u5143\\u6570\\u636E\\u952E\\u4E3A " + ASSERTION_META_KEYS2.join("/") + "\\uFF0C\\u64CD\\u4F5C\\u7B26\\u4E3A " + ASSERTION_OPERATORS2.join("/"));
+      }
+      if (!operators.length) {
+        throw new TypeError(prefix + ": \\u5FC5\\u987B\\u81F3\\u5C11\\u5305\\u542B\\u4E00\\u4E2A\\u64CD\\u4F5C\\u7B26\\uFF08" + ASSERTION_OPERATORS2.join("/") + "\\uFF09");
+      }
+      return def;
+    }
     function assertionActual2(def, response, runtime) {
       if (def.target === "status") return response.status;
       if (def.header) return headerValue2(response.headers, def.header);
@@ -74212,7 +74875,8 @@ var ScenarioTest = (() => {
       if (def.from === "bodyText") return response.bodyText;
       return def.path ? getByPath2(response.body, def.path) : response.body;
     }
-    function evaluateAssertion2(def, response, runtime) {
+    function evaluateAssertion2(def, response, runtime, context) {
+      validateAssertion2(def, context);
       var actual = assertionActual2(def, response, runtime);
       var expected;
       var passed = true;
@@ -74223,6 +74887,10 @@ var ScenarioTest = (() => {
       if (def.equals !== void 0) {
         expected = resolve2(clone2(def.equals), runtime);
         passed = passed && deepEqual(actual, expected);
+      }
+      if (def.notEquals !== void 0) {
+        expected = resolve2(clone2(def.notEquals), runtime);
+        passed = passed && !deepEqual(actual, expected);
       }
       if (def.includes !== void 0) {
         expected = resolve2(def.includes, runtime);
@@ -74240,14 +74908,27 @@ var ScenarioTest = (() => {
           return deepEqual(actual, item);
         });
       }
+      ["gt", "gte", "lt", "lte"].forEach(function(op) {
+        if (!Object.prototype.hasOwnProperty.call(def, op)) return;
+        expected = resolve2(def[op], runtime);
+        var comparable = typeof actual === "number" && isFinite(actual) && typeof expected === "number" && isFinite(expected);
+        if (!comparable) {
+          passed = false;
+          return;
+        }
+        if (op === "gt") passed = passed && actual > expected;
+        else if (op === "gte") passed = passed && actual >= expected;
+        else if (op === "lt") passed = passed && actual < expected;
+        else passed = passed && actual <= expected;
+      });
       return {
-        name: def.name || "\\u65AD\\u8A00",
+        name: def.name || def.path || "\\u65AD\\u8A00",
         passed: !!passed,
         actual,
         expected
       };
     }
-    function buildAssertions2(step, response, runtime) {
+    function buildAssertions2(step, response, runtime, context) {
       var defs = Array.isArray(step.assertions) ? step.assertions.slice() : [];
       if (step.status !== void 0 && !defs.some(function(item) {
         return item && item.target === "status";
@@ -74256,23 +74937,54 @@ var ScenarioTest = (() => {
       } else if (step.status === void 0 && defs.length === 0) {
         defs.push({ name: "\\u8FD4\\u56DE HTTP 2xx", target: "status", matches: "^2\\\\d\\\\d$", implicit: true });
       }
-      return defs.map(function(def) {
-        return evaluateAssertion2(def, response, runtime);
+      return defs.map(function(def, index) {
+        var stepContext = context || {};
+        return evaluateAssertion2(def, response, runtime, {
+          stepName: stepContext.stepName,
+          assertionNo: index + 1
+        });
+      });
+    }
+    var RESERVED_VARS2 = ["runId", "runNo"];
+    function assertNotReservedVar2(name, label) {
+      if (RESERVED_VARS2.indexOf(name) >= 0) {
+        throw new Error((label || "\\u53D8\\u91CF") + ' "' + name + '" \\u662F\\u8FD0\\u884C\\u65F6\\u81EA\\u52A8\\u751F\\u6210\\u7684\\u4FDD\\u7559\\u53D8\\u91CF\\uFF0C\\u7981\\u6B62\\u58F0\\u660E\\u6216\\u8986\\u76D6');
+      }
+    }
+    function assertNoReservedVars2(source, label) {
+      Object.keys(source || {}).forEach(function(name) {
+        assertNotReservedVar2(name, label);
       });
     }
     function applyExtract2(step, response, runtime) {
+      var warnings = [];
+      var failures = [];
       (step.extract || []).forEach(function(item) {
         if (!item || !item.name) return;
+        assertNotReservedVar2(item.name, "extract \\u53D8\\u91CF");
+        var source;
         if (item.target === "status") {
-          runtime.vars[item.name] = response.status;
-          return;
+          source = response.status;
+        } else if (item.header) {
+          source = headerValue2(response.headers, item.header);
+        } else {
+          source = item.path ? getByPath2(response.body, item.path) : response.body;
         }
-        if (item.header) {
-          runtime.vars[item.name] = headerValue2(response.headers, item.header);
-          return;
+        if (source === void 0) {
+          if (item.required === true) {
+            failures.push({
+              name: "\\u63D0\\u53D6 " + item.name + "\\uFF08\\u8DEF\\u5F84\\u4E0D\\u5B58\\u5728\\uFF09",
+              passed: false,
+              actual: void 0,
+              expected: "\\u8DEF\\u5F84 " + (item.path || "(\\u6574\\u4E2A\\u54CD\\u5E94)") + " \\u5B58\\u5728"
+            });
+          } else {
+            warnings.push("\\u63D0\\u53D6\\u53D8\\u91CF " + item.name + "\\uFF1A\\u8DEF\\u5F84 " + (item.path || "(\\u6574\\u4E2A\\u54CD\\u5E94)") + " \\u4E0D\\u5B58\\u5728\\uFF0C\\u53D8\\u91CF\\u503C\\u4E3A undefined\\uFF08required \\u672A\\u5F00\\u542F\\uFF0C\\u4E0D\\u5F71\\u54CD\\u6267\\u884C\\uFF09");
+          }
         }
-        runtime.vars[item.name] = item.path ? getByPath2(response.body, item.path) : response.body;
+        runtime.vars[item.name] = source;
       });
+      return { warnings, failures };
     }
     function md52(str) {
       var s = unescape(encodeURIComponent(String(str)));
@@ -74408,9 +75120,13 @@ var ScenarioTest = (() => {
       buildUrl: buildUrl2,
       parseBody: parseBody2,
       assertionActual: assertionActual2,
+      validateAssertion: validateAssertion2,
       evaluateAssertion: evaluateAssertion2,
       buildAssertions: buildAssertions2,
       applyExtract: applyExtract2,
+      RESERVED_VARS: RESERVED_VARS2,
+      assertNotReservedVar: assertNotReservedVar2,
+      assertNoReservedVars: assertNoReservedVars2,
       esc,
       fmt,
       safeJson,
@@ -74942,16 +75658,22 @@ var ScenarioTest = (() => {
         return;
       }
       var total = steps.length;
-      var passed = steps.filter(function(s) {
-        return s.passed;
+      var skipped = steps.filter(function(s) {
+        return s.skipped;
       }).length;
-      var failed = total - passed;
-      var passRate = total ? (passed / total * 100).toFixed(2) : 0;
-      var failRate = total ? (failed / total * 100).toFixed(2) : 0;
+      var executed = total - skipped;
+      var passed = steps.filter(function(s) {
+        return !s.skipped && s.passed;
+      }).length;
+      var failed = steps.filter(function(s) {
+        return !s.skipped && !s.passed;
+      }).length;
+      var passRate = executed ? (passed / executed * 100).toFixed(2) : 0;
+      var failRate = executed ? (failed / executed * 100).toFixed(2) : 0;
       var totalMs = steps.reduce(function(a, s) {
         return a + (s.duration || 0);
       }, 0);
-      var avgMs = total ? totalMs / total : 0;
+      var avgMs = executed ? totalMs / executed : 0;
       var assertTotal = steps.reduce(function(a, s) {
         return a + (s.assertions ? s.assertions.length : 0);
       }, 0);
@@ -74961,7 +75683,7 @@ var ScenarioTest = (() => {
         }).length : 0);
       }, 0);
       var iter = iterations || { run: 1, failed: 0 };
-      var chart = '<div class="flex items-center space-x-6 w-full md:w-auto"><div class="circle-chart scale-90" style="background:conic-gradient(#10b981 0% ' + passRate + "%, #f43f5e " + passRate + '% 100%)"><div class="circle-inner"><span class="text-[10px] font-medium text-slate-400 uppercase tracking-wider">\\u5DF2\\u5B8C\\u6210</span><span class="text-xl font-bold text-slate-800 mt-0.5">' + total + '</span></div></div><div class="flex space-x-3"><div class="flex items-center space-x-2 px-2 py-1 rounded bg-emerald-50 border border-emerald-100/50"><span class="w-2 h-2 rounded-full bg-emerald-500 shadow-sm"></span><span class="text-xs font-bold text-emerald-700">' + passed + ' <span class="text-emerald-600/70 font-medium text-[10px] ml-0.5">(' + passRate + '%)</span></span></div><div class="flex items-center space-x-2 px-2 py-1 rounded bg-rose-50 border border-rose-100/50"><span class="w-2 h-2 rounded-full bg-rose-500 shadow-sm"></span><span class="text-xs font-bold text-rose-600">' + failed + ' <span class="text-rose-500/70 font-medium text-[10px] ml-0.5">(' + failRate + "%)</span></span></div></div></div>";
+      var chart = '<div class="flex items-center space-x-6 w-full md:w-auto"><div class="circle-chart scale-90" style="background:conic-gradient(#10b981 0% ' + passRate + "%, #f43f5e " + passRate + '% 100%)"><div class="circle-inner"><span class="text-[10px] font-medium text-slate-400 uppercase tracking-wider">\\u5DF2\\u5B8C\\u6210</span><span class="text-xl font-bold text-slate-800 mt-0.5">' + total + '</span></div></div><div class="flex space-x-3"><div class="flex items-center space-x-2 px-2 py-1 rounded bg-emerald-50 border border-emerald-100/50"><span class="w-2 h-2 rounded-full bg-emerald-500 shadow-sm"></span><span class="text-xs font-bold text-emerald-700">' + passed + ' <span class="text-emerald-600/70 font-medium text-[10px] ml-0.5">(' + passRate + '%)</span></span></div><div class="flex items-center space-x-2 px-2 py-1 rounded bg-rose-50 border border-rose-100/50"><span class="w-2 h-2 rounded-full bg-rose-500 shadow-sm"></span><span class="text-xs font-bold text-rose-600">' + failed + ' <span class="text-rose-500/70 font-medium text-[10px] ml-0.5">(' + failRate + "%)</span></span></div>" + (skipped ? '<div class="flex items-center space-x-2 px-2 py-1 rounded bg-slate-100 border border-slate-200/60"><span class="w-2 h-2 rounded-full bg-slate-400 shadow-sm"></span><span class="text-xs font-bold text-slate-600">' + skipped + ' <span class="text-slate-400/80 font-medium text-[10px] ml-0.5">\\u8DF3\\u8FC7</span></span></div>' : "") + "</div></div>";
       var metrics = '<div class="flex space-x-8 mt-4 md:mt-0 pl-6 border-l border-slate-100"><div class="space-y-0.5"><div class="text-[10px] font-medium text-slate-400 uppercase tracking-wider">\\u8017\\u65F6(\\u603B/\\u5747)</div><div class="text-emerald-500 font-bold text-sm tracking-tight">' + fmt(totalMs) + " / " + fmt(avgMs) + '</div></div><div class="space-y-0.5"><div class="text-[10px] font-medium text-slate-400 uppercase tracking-wider">\\u5FAA\\u73AF(\\u6267\\u884C/\\u5931\\u8D25)</div><div class="text-xs font-medium text-slate-700"><span class="font-bold text-slate-900">' + (iter.run || 1) + '</span> <span class="mx-1 text-slate-300">/</span> <span class="text-rose-500 font-bold">' + (iter.failed || 0) + '</span></div></div><div class="space-y-0.5"><div class="text-[10px] font-medium text-slate-400 uppercase tracking-wider">\\u65AD\\u8A00(\\u6267\\u884C/\\u5931\\u8D25)</div><div class="text-xs font-medium text-slate-700"><span class="font-bold text-slate-900">' + assertTotal + '</span> <span class="mx-1 text-slate-300">/</span> <span class="text-rose-500 font-bold">' + assertFailed + "</span></div></div></div>";
       statsPanel.innerHTML = chart + metrics;
     }
@@ -74974,15 +75696,21 @@ var ScenarioTest = (() => {
         return;
       }
       var total = steps.length;
-      var passed = steps.filter(function(s) {
-        return s.passed;
+      var skipped = steps.filter(function(s) {
+        return s.skipped;
       }).length;
-      var failed = total - passed;
+      var passed = steps.filter(function(s) {
+        return !s.skipped && s.passed;
+      }).length;
+      var failed = steps.filter(function(s) {
+        return !s.skipped && !s.passed;
+      }).length;
       filterBar.innerHTML = \`
             <div class="flex items-center space-x-1 bg-slate-200/60 p-1 rounded-md">
                 <button data-f="all" onclick="window.__R.filter('all')" class="filter-btn px-3 py-1 text-xs font-bold text-blue-700 bg-white border border-blue-200 rounded shadow-sm">\\u5168\\u90E8 (\${total})</button>
                 <button data-f="pass" onclick="window.__R.filter('pass')" class="filter-btn px-3 py-1 text-xs font-medium text-slate-600 hover:bg-white rounded">\\u6210\\u529F (\${passed})</button>
                 <button data-f="fail" onclick="window.__R.filter('fail')" class="filter-btn px-3 py-1 text-xs font-medium text-slate-600 hover:bg-white rounded">\\u5931\\u8D25 (\${failed})</button>
+                \${skipped ? \`<button data-f="skip" onclick="window.__R.filter('skip')" class="filter-btn px-3 py-1 text-xs font-medium text-slate-600 hover:bg-white rounded">\\u8DF3\\u8FC7 (\${skipped})</button>\` : ""}
             </div>
             <div class="flex items-center space-x-2">
                 <input type="search" placeholder="\\u641C\\u7D22\\u6B65\\u9AA4/\\u5730\\u5740..." oninput="window.__R.search(this.value)" class="px-2.5 py-1 rounded border border-slate-200 text-xs bg-white focus:outline-none focus:border-emerald-500 w-44">
@@ -75043,30 +75771,40 @@ var ScenarioTest = (() => {
         var bodyColor = ok ? "text-emerald-400" : "text-rose-400";
         var detailPanelCls = ok ? "details-panel px-4 bg-slate-50/30 border-t border-slate-100 text-[13px]" : "details-panel px-4 bg-white border-t border-rose-100 text-[13px] shadow-inner";
         var stepActions = executionMode === "step" ? '<span class="step-run-actions"><button type="button" data-step-action="rewind" data-step-index="' + i + '" title="\\u4EC5\\u56DE\\u9000\\u6D4B\\u8BD5\\u8FD0\\u884C\\u65F6\\u4E0E\\u62A5\\u544A\\uFF0C\\u4E0D\\u64A4\\u9500\\u5DF2\\u53D1\\u51FA\\u7684\\u4E1A\\u52A1\\u8BF7\\u6C42">\\u56DE\\u9000</button><button type="button" data-step-action="rerun" data-step-index="' + i + '" title="\\u4ECE\\u672C\\u6B65\\u9AA4\\u6267\\u884C\\u524D\\u7684\\u53D8\\u91CF\\u5FEB\\u7167\\u91CD\\u65B0\\u6267\\u884C">\\u91CD\\u8DD1</button></span>' : "";
-        return '<li class="' + bgCls + ' group transition-colors" data-passed="' + ok + '" data-search="' + esc((s.name + " " + s.method + " " + s.path).toLowerCase()) + '"><div class="px-4 py-2.5 flex items-center justify-between cursor-pointer" onclick="window.__R.toggle(this, event)"><div class="flex items-center space-x-3 w-[70%] lg:w-[80%]"><div class="flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 text-[11px] font-bold shadow-sm ' + seqCls + '">' + seqNum + '</div><span class="select-text text-sm ' + nameCls + ' font-semibold truncate transition-colors" title="' + esc(s.name) + '">' + esc(s.name) + '</span><div class="hidden sm:flex items-center space-x-1.5 bg-slate-50 px-2 py-0.5 rounded border border-slate-100 flex-shrink-0 max-w-[50%]"><span class="text-[10px] font-bold ' + methodColor + ' uppercase tracking-wider">' + s.method + '</span><span class="text-slate-300">|</span><span class="select-text text-[12px] text-slate-500 font-mono truncate" title="' + esc(s.path) + '">' + esc(s.path) + '</span></div></div><div class="flex items-center space-x-4 flex-shrink-0"><button type="button" data-adhoc-step="' + i + '" class="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-bold text-slate-600 hover:border-emerald-300 hover:text-emerald-700">\\u8C03\\u8BD5</button>' + stepActions + '<span class="text-[12px] font-bold font-mono ' + statusCls + ' px-1.5 py-0.5 rounded border">' + s.status + '</span><span class="' + timeCls + ' text-[12px] font-mono w-16 text-right">' + fmt(s.duration) + '</span><svg class="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></div></div><div class="' + detailPanelCls + '"><div class="sm:hidden mb-3 pb-3 border-b border-slate-200"><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1">\\u63A5\\u53E3\\u5730\\u5740</div><div class="flex items-center space-x-2"><span class="text-xs font-bold ' + methodColor + '">' + s.method + '</span><span class="text-xs font-mono break-all">' + esc(s.path) + "</span></div></div>" + errorHtml + '<div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-0 md:divide-x divide-slate-200 py-3"><div class="md:pr-6 space-y-3">' + (reqHeaders ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 bg-slate-300 mr-2 rounded-full"></div>\\u8BF7\\u6C42\\u5934</div><pre class="bg-slate-800 p-2.5 rounded text-slate-300 overflow-x-auto font-mono leading-tight shadow-inner">' + reqHeaders + "</pre></div>" : "") + (reqBody ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 bg-emerald-400 mr-2 rounded-full"></div>\\u8BF7\\u6C42\\u4F53</div><pre class="bg-slate-800 p-2.5 rounded ' + bodyColor + ' overflow-x-auto font-mono leading-tight shadow-inner">' + reqBody + "</pre></div>" : "") + '</div><div class="md:pl-6 space-y-3">' + (resHeaders ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 bg-slate-300 mr-2 rounded-full"></div>\\u54CD\\u5E94\\u5934</div><pre class="bg-slate-800 p-2.5 rounded text-slate-300 overflow-x-auto font-mono leading-tight shadow-inner">' + resHeaders + "</pre></div>" : "") + (resBody ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 ' + (ok ? "bg-emerald-400" : "bg-rose-400") + ' mr-2 rounded-full"></div>\\u54CD\\u5E94\\u4F53</div><pre class="bg-slate-800 p-2.5 rounded ' + bodyColor + ' overflow-x-auto font-mono leading-tight shadow-inner">' + resBody + "</pre></div>" : "") + "</div></div>" + assertHtml + "</div></li>";
+        return '<li class="' + bgCls + ' group transition-colors" data-passed="' + ok + '" data-skipped="' + skipped + '" data-search="' + esc((s.name + " " + s.method + " " + s.path).toLowerCase()) + '"><div class="px-4 py-2.5 flex items-center justify-between cursor-pointer" onclick="window.__R.toggle(this, event)"><div class="flex items-center space-x-3 w-[70%] lg:w-[80%]"><div class="flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 text-[11px] font-bold shadow-sm ' + seqCls + '">' + seqNum + '</div><span class="select-text text-sm ' + nameCls + ' font-semibold truncate transition-colors" title="' + esc(s.name) + '">' + esc(s.name) + '</span><div class="hidden sm:flex items-center space-x-1.5 bg-slate-50 px-2 py-0.5 rounded border border-slate-100 flex-shrink-0 max-w-[50%]"><span class="text-[10px] font-bold ' + methodColor + ' uppercase tracking-wider">' + s.method + '</span><span class="text-slate-300">|</span><span class="select-text text-[12px] text-slate-500 font-mono truncate" title="' + esc(s.path) + '">' + esc(s.path) + '</span></div></div><div class="flex items-center space-x-4 flex-shrink-0"><button type="button" data-adhoc-step="' + i + '" class="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-bold text-slate-600 hover:border-emerald-300 hover:text-emerald-700">\\u8C03\\u8BD5</button>' + stepActions + '<span class="text-[12px] font-bold font-mono ' + statusCls + ' px-1.5 py-0.5 rounded border">' + s.status + '</span><span class="' + timeCls + ' text-[12px] font-mono w-16 text-right">' + fmt(s.duration) + '</span><svg class="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></div></div><div class="' + detailPanelCls + '"><div class="sm:hidden mb-3 pb-3 border-b border-slate-200"><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1">\\u63A5\\u53E3\\u5730\\u5740</div><div class="flex items-center space-x-2"><span class="text-xs font-bold ' + methodColor + '">' + s.method + '</span><span class="text-xs font-mono break-all">' + esc(s.path) + "</span></div></div>" + errorHtml + '<div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-0 md:divide-x divide-slate-200 py-3"><div class="md:pr-6 space-y-3">' + (reqHeaders ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 bg-slate-300 mr-2 rounded-full"></div>\\u8BF7\\u6C42\\u5934</div><pre class="bg-slate-800 p-2.5 rounded text-slate-300 overflow-x-auto font-mono leading-tight shadow-inner">' + reqHeaders + "</pre></div>" : "") + (reqBody ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 bg-emerald-400 mr-2 rounded-full"></div>\\u8BF7\\u6C42\\u4F53</div><pre class="bg-slate-800 p-2.5 rounded ' + bodyColor + ' overflow-x-auto font-mono leading-tight shadow-inner">' + reqBody + "</pre></div>" : "") + '</div><div class="md:pl-6 space-y-3">' + (resHeaders ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 bg-slate-300 mr-2 rounded-full"></div>\\u54CD\\u5E94\\u5934</div><pre class="bg-slate-800 p-2.5 rounded text-slate-300 overflow-x-auto font-mono leading-tight shadow-inner">' + resHeaders + "</pre></div>" : "") + (resBody ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 ' + (ok ? "bg-emerald-400" : "bg-rose-400") + ' mr-2 rounded-full"></div>\\u54CD\\u5E94\\u4F53</div><pre class="bg-slate-800 p-2.5 rounded ' + bodyColor + ' overflow-x-auto font-mono leading-tight shadow-inner">' + resBody + "</pre></div>" : "") + "</div></div>" + assertHtml + "</div></li>";
       }).join("") + renderPendingSteps(scenarioSteps, steps.length);
     }
     function buildOverallReport(steps, scenario, scenarioFile, executionMode, environment) {
       steps = steps || [];
       var total = steps.length;
-      var passed = steps.filter(function(item) {
-        return item.passed;
+      var skipped = steps.filter(function(item) {
+        return item.skipped;
       }).length;
-      var failed = total - passed;
+      var executed = total - skipped;
+      var passed = steps.filter(function(item) {
+        return !item.skipped && item.passed;
+      }).length;
+      var failed = steps.filter(function(item) {
+        return !item.skipped && !item.passed;
+      }).length;
       var duration = steps.reduce(function(sum, item) {
         return sum + (item.duration || 0);
       }, 0);
+      var status = failed > 0 ? "FAILED" : executed === 0 ? "SKIPPED" : "PASSED";
       return {
         title: scenario && scenario.name || scenarioFile || "\\u6D4B\\u8BD5\\u62A5\\u544A",
         scenarioFile: scenarioFile || "",
         executionMode: executionMode || "full",
         environment: environment ? environment.name || environment.key : "\\u9ED8\\u8BA4",
+        status,
         summary: {
           totalSteps: scenario && scenario.steps && scenario.steps.length || total,
-          executedSteps: total,
+          plannedSteps: scenario && scenario.steps && scenario.steps.length || total,
+          executedSteps: executed,
           passedSteps: passed,
           failedSteps: failed,
-          passRate: total ? (passed / total * 100).toFixed(2) + "%" : "0.00%",
+          skippedSteps: skipped,
+          passRate: executed ? (passed / executed * 100).toFixed(2) + "%" : "0.00%",
           totalDurationMs: duration,
           totalDurationFmt: fmt(duration)
         },
@@ -75078,9 +75816,11 @@ var ScenarioTest = (() => {
             path: item.path,
             status: item.status,
             passed: item.passed,
+            skipped: Boolean(item.skipped),
             durationMs: item.duration,
             durationFmt: fmt(item.duration),
             error: item.error || "",
+            warnings: item.warnings || [],
             request: item.request,
             response: item.response,
             assertions: item.assertions || []
@@ -75097,18 +75837,23 @@ var ScenarioTest = (() => {
       lines.push("- **\\u573A\\u666F\\u6587\\u4EF6**: \`" + (report.scenarioFile || "-") + "\`");
       lines.push("- **\\u6D4B\\u8BD5\\u73AF\\u5883**: " + (report.environment || "-"));
       lines.push("- **\\u6267\\u884C\\u6A21\\u5F0F**: " + (report.executionMode || "-"));
-      lines.push("- **\\u7ED3\\u679C**: " + (summary.failedSteps ? "\\u274C \\u5B58\\u5728\\u5931\\u8D25" : "\\u2705 \\u5168\\u90E8\\u901A\\u8FC7") + " (" + summary.passedSteps + "/" + summary.executedSteps + ")");
+      var resultText = summary.failedSteps ? "\\u274C \\u5B58\\u5728\\u5931\\u8D25" : summary.skippedSteps && summary.executedSteps === 0 ? "\\u23ED\\uFE0F \\u5168\\u90E8\\u8DF3\\u8FC7" : "\\u2705 \\u5168\\u90E8\\u901A\\u8FC7";
+      lines.push("- **\\u7ED3\\u679C**: " + resultText + " (" + summary.passedSteps + "/" + summary.executedSteps + ")");
       lines.push("- **\\u901A\\u8FC7\\u7387**: " + summary.passRate);
+      lines.push("- **\\u7EDF\\u8BA1**: \\u901A\\u8FC7 " + summary.passedSteps + " / \\u5931\\u8D25 " + summary.failedSteps + " / \\u8DF3\\u8FC7 " + summary.skippedSteps + " / \\u6267\\u884C " + summary.executedSteps + " / \\u8BA1\\u5212 " + summary.plannedSteps);
       lines.push("- **\\u603B\\u8017\\u65F6**: " + summary.totalDurationFmt);
       lines.push("");
       lines.push("## \\u6B65\\u9AA4\\u660E\\u7EC6");
       lines.push("");
       (report.steps || []).forEach(function(step) {
-        var icon = step.passed ? "\\u2705" : "\\u274C";
+        var icon = step.skipped ? "\\u23ED\\uFE0F" : step.passed ? "\\u2705" : "\\u274C";
         lines.push("### " + icon + " \\u6B65\\u9AA4 " + step.stepNo + ": " + step.name);
         lines.push("- **\\u8BF7\\u6C42**: \`" + step.method + " " + step.path + "\`");
         lines.push("- **\\u72B6\\u6001**: " + step.status + " | **\\u8017\\u65F6**: " + step.durationFmt);
         if (step.error) lines.push("- **\\u5931\\u8D25\\u539F\\u56E0**: " + step.error);
+        (step.warnings || []).forEach(function(warning) {
+          lines.push("- **\\u8B66\\u544A**: " + warning);
+        });
         if (step.assertions && step.assertions.length) {
           lines.push("- **\\u65AD\\u8A00\\u7ED3\\u679C**:");
           step.assertions.forEach(function(a) {
@@ -75141,9 +75886,10 @@ var ScenarioTest = (() => {
       var summary = report.summary;
       var pending = summary.totalSteps - summary.executedSteps;
       var hasFailure = summary.failedSteps > 0;
+      var allSkipped = !hasFailure && summary.executedSteps === 0 && summary.skippedSteps > 0;
       var completed = pending <= 0;
-      var statusClass = hasFailure ? "report-status--failed" : completed ? "report-status--passed" : "report-status--running";
-      var statusText = hasFailure ? "\\u5B58\\u5728\\u5931\\u8D25" : completed ? "\\u5168\\u90E8\\u901A\\u8FC7" : "\\u6267\\u884C\\u4E2D";
+      var statusClass = hasFailure ? "report-status--failed" : allSkipped ? "report-status--skipped" : completed ? "report-status--passed" : "report-status--running";
+      var statusText = hasFailure ? "\\u5B58\\u5728\\u5931\\u8D25" : allSkipped ? "\\u5168\\u90E8\\u8DF3\\u8FC7" : completed ? "\\u5168\\u90E8\\u901A\\u8FC7" : "\\u6267\\u884C\\u4E2D";
       var modeText = report.executionMode === "step" ? "\\u5355\\u6B65\\u6267\\u884C" : "\\u5168\\u91CF\\u6267\\u884C";
       var progressText = summary.executedSteps + " / " + summary.totalSteps;
       var reportSteps = hasFailure ? report.steps.filter(function(step) {
@@ -75161,8 +75907,8 @@ var ScenarioTest = (() => {
         var responseHtml = '<details class="report-step__response"><summary>\\u5B8C\\u6574\\u54CD\\u5E94</summary><div class="report-step__response-section">\\u54CD\\u5E94\\u5934</div><pre>' + esc(formatReportPayload(response.headers || {})) + '</pre><div class="report-step__response-section">\\u54CD\\u5E94\\u4F53</div><pre>' + esc(formatReportPayload(responseBody)) + "</pre></details>";
         return '<div class="report-step ' + (step.passed ? "report-step--passed" : "report-step--failed") + '"><div class="report-step__marker" aria-hidden="true">' + (step.passed ? "\\u2713" : "!") + '</div><div class="report-step__content"><div class="report-step__heading"><span class="report-step__number">\\u6B65\\u9AA4 ' + step.stepNo + '</span><span class="report-step__name" title="' + esc(step.name || "") + '">' + esc(step.name || "\\u672A\\u547D\\u540D\\u6B65\\u9AA4") + '</span></div><div class="report-step__request"><span class="report-method ' + methodClass + '">' + esc(method) + '</span><span class="report-step__path" title="' + esc(step.path || "") + '">' + esc(step.path || "-") + "</span></div>" + (issue ? '<div class="report-step__issue">' + esc(issue) + "</div>" : "") + responseHtml + '</div><div class="report-step__result"><span class="report-step__code">' + esc(String(step.status || "-")) + '</span><span class="report-step__duration">' + esc(step.durationFmt || "-") + "</span></div></div>";
       }).join("");
-      var diagnosisHtml = hasFailure ? '<div class="report-steps"><div class="report-steps__title">\\u5931\\u8D25\\u6B65\\u9AA4</div>' + stepHtml + "</div>" : '<div class="report-healthy"><div class="report-healthy__title">' + (completed ? "\\u6240\\u6709\\u6B65\\u9AA4\\u5747\\u5DF2\\u901A\\u8FC7" : "\\u5F53\\u524D\\u5DF2\\u6267\\u884C\\u6B65\\u9AA4\\u5747\\u901A\\u8FC7") + '</div><div class="report-healthy__hint">\\u8BE6\\u7EC6\\u8BF7\\u6C42\\u4E0E\\u54CD\\u5E94\\u8BF7\\u5728\\u5DE6\\u4FA7\\u6B65\\u9AA4\\u5217\\u8868\\u67E5\\u770B\\uFF1B\\u5B8C\\u6574\\u62A5\\u544A\\u53EF\\u901A\\u8FC7\\u9876\\u90E8\\u6309\\u94AE\\u590D\\u5236\\u3002</div></div>';
-      node.innerHTML = '<div class="report-content"><div class="report-overview"><div class="report-overview__top"><div><div class="report-overview__eyebrow">\\u5F53\\u524D\\u6267\\u884C\\u6982\\u89C8</div><div class="report-overview__title">' + esc(report.title || "\\u6D4B\\u8BD5\\u62A5\\u544A") + '</div></div><span class="report-status ' + statusClass + '">' + statusText + '</span></div><div class="report-overview__meta"><span>' + esc(report.environment || "\\u9ED8\\u8BA4\\u73AF\\u5883") + "</span><span>" + modeText + "</span><span>\\u5DF2\\u6267\\u884C " + progressText + '</span></div></div><div class="report-metrics"><div class="report-metric"><span class="report-metric__label">\\u901A\\u8FC7</span><strong class="report-metric__value report-metric__value--passed">' + summary.passedSteps + '</strong></div><div class="report-metric"><span class="report-metric__label">\\u5931\\u8D25</span><strong class="report-metric__value ' + (hasFailure ? "report-metric__value--failed" : "") + '">' + summary.failedSteps + '</strong></div><div class="report-metric"><span class="report-metric__label">\\u603B\\u8017\\u65F6</span><strong class="report-metric__value report-metric__duration">' + esc(summary.totalDurationFmt) + '</strong></div></div><div class="report-progress"><div class="report-progress__labels"><span>\\u6267\\u884C\\u8FDB\\u5EA6</span><strong>' + progressText + " \\xB7 " + esc(summary.passRate) + '</strong></div><div class="report-progress__track' + (hasFailure ? " report-progress__track--failed" : "") + '"><span style="width:' + (summary.totalSteps ? summary.executedSteps / summary.totalSteps * 100 : 0) + '%"></span></div></div>' + diagnosisHtml + "</div>";
+      var diagnosisHtml = hasFailure ? '<div class="report-steps"><div class="report-steps__title">\\u5931\\u8D25\\u6B65\\u9AA4</div>' + stepHtml + "</div>" : allSkipped ? '<div class="report-healthy"><div class="report-healthy__title">\\u6240\\u6709\\u6B65\\u9AA4\\u5747\\u56E0\\u6761\\u4EF6\\u4E0D\\u6EE1\\u8DB3\\u800C\\u8DF3\\u8FC7</div><div class="report-healthy__hint">\\u672C\\u6B21\\u6267\\u884C\\u672A\\u53D1\\u8D77\\u4EFB\\u4F55\\u8BF7\\u6C42\\uFF0C\\u8BE6\\u7EC6\\u8DF3\\u8FC7\\u539F\\u56E0\\u8BF7\\u5728\\u5DE6\\u4FA7\\u6B65\\u9AA4\\u5217\\u8868\\u67E5\\u770B\\u3002</div></div>' : '<div class="report-healthy"><div class="report-healthy__title">' + (completed ? "\\u6240\\u6709\\u6B65\\u9AA4\\u5747\\u5DF2\\u901A\\u8FC7" : "\\u5F53\\u524D\\u5DF2\\u6267\\u884C\\u6B65\\u9AA4\\u5747\\u901A\\u8FC7") + '</div><div class="report-healthy__hint">\\u8BE6\\u7EC6\\u8BF7\\u6C42\\u4E0E\\u54CD\\u5E94\\u8BF7\\u5728\\u5DE6\\u4FA7\\u6B65\\u9AA4\\u5217\\u8868\\u67E5\\u770B\\uFF1B\\u5B8C\\u6574\\u62A5\\u544A\\u53EF\\u901A\\u8FC7\\u9876\\u90E8\\u6309\\u94AE\\u590D\\u5236\\u3002</div></div>';
+      node.innerHTML = '<div class="report-content"><div class="report-overview"><div class="report-overview__top"><div><div class="report-overview__eyebrow">\\u5F53\\u524D\\u6267\\u884C\\u6982\\u89C8</div><div class="report-overview__title">' + esc(report.title || "\\u6D4B\\u8BD5\\u62A5\\u544A") + '</div></div><span class="report-status ' + statusClass + '">' + statusText + '</span></div><div class="report-overview__meta"><span>' + esc(report.environment || "\\u9ED8\\u8BA4\\u73AF\\u5883") + "</span><span>" + modeText + "</span><span>\\u5DF2\\u6267\\u884C " + progressText + '</span></div></div><div class="report-metrics"><div class="report-metric"><span class="report-metric__label">\\u901A\\u8FC7</span><strong class="report-metric__value report-metric__value--passed">' + summary.passedSteps + '</strong></div><div class="report-metric"><span class="report-metric__label">\\u5931\\u8D25</span><strong class="report-metric__value ' + (hasFailure ? "report-metric__value--failed" : "") + '">' + summary.failedSteps + "</strong></div>" + (summary.skippedSteps > 0 ? '<div class="report-metric"><span class="report-metric__label">\\u8DF3\\u8FC7</span><strong class="report-metric__value">' + summary.skippedSteps + "</strong></div>" : "") + '<div class="report-metric"><span class="report-metric__label">\\u603B\\u8017\\u65F6</span><strong class="report-metric__value report-metric__duration">' + esc(summary.totalDurationFmt) + '</strong></div></div><div class="report-progress"><div class="report-progress__labels"><span>\\u6267\\u884C\\u8FDB\\u5EA6</span><strong>' + progressText + " \\xB7 " + esc(summary.passRate) + '</strong></div><div class="report-progress__track' + (hasFailure ? " report-progress__track--failed" : "") + '"><span style="width:' + (summary.totalSteps ? summary.executedSteps / summary.totalSteps * 100 : 0) + '%"></span></div></div>' + diagnosisHtml + "</div>";
       return report;
     }
     return {
@@ -75495,6 +76241,8 @@ var ScenarioTest = (() => {
     var evaluateAssertion2 = core.evaluateAssertion;
     var buildAssertions2 = core.buildAssertions;
     var applyExtract2 = core.applyExtract;
+    var assertNotReservedVar2 = core.assertNotReservedVar;
+    var assertNoReservedVars2 = core.assertNoReservedVars;
     var md52 = core.md5;
     var esc = core.esc;
     var fmt = core.fmt;
@@ -75556,11 +76304,14 @@ var ScenarioTest = (() => {
           if (type === "all") activeCls = "font-bold text-blue-700 bg-white border border-blue-200 rounded shadow-sm";
           else if (type === "pass") activeCls = "font-bold text-emerald-700 bg-white border border-emerald-200 rounded shadow-sm";
           else if (type === "fail") activeCls = "font-bold text-rose-700 bg-white border border-rose-200 rounded shadow-sm";
+          else if (type === "skip") activeCls = "font-bold text-slate-700 bg-white border border-slate-300 rounded shadow-sm";
           b.className = "filter-btn px-3 py-1 text-xs " + (active ? activeCls : "font-medium text-slate-600 hover:bg-white rounded");
         });
         document.querySelectorAll("#stepsList li").forEach(function(li) {
-          var status = li.dataset.passed;
-          li.style.display = type === "all" || type === "pass" && status === "true" || type === "fail" && status === "false" ? "" : "none";
+          var passed = li.dataset.passed === "true";
+          var skipped = li.dataset.skipped === "true";
+          var visible = type === "all" || type === "pass" && passed && !skipped || type === "fail" && !passed || type === "skip" && skipped;
+          li.style.display = visible ? "" : "none";
         });
       },
       search: function(q) {
@@ -75800,9 +76551,13 @@ var ScenarioTest = (() => {
         }).join("\\u3001") + "\\u3002\\u8BF7\\u5728\\u201C\\u914D\\u7F6E\\u53C2\\u6570 \\u2192 \\u5F53\\u524D\\u573A\\u666F\\u51ED\\u636E\\u201D\\u4E2D\\u586B\\u5199\\u5E76\\u4FDD\\u5B58\\u3002");
       }
       var identifiers = createRunIdentifiers2();
+      assertNoReservedVars2(scenario.vars, "\\u573A\\u666F vars");
+      assertNoReservedVars2(cfg.vars, "\\u914D\\u7F6E vars");
+      assertNoReservedVars2(scenarioVars, "\\u9875\\u9762\\u573A\\u666F\\u53D8\\u91CF");
       var vars = Object.assign({}, scenario.vars || {}, cfg.vars || {}, scenarioVars, identifiers);
       (scenario.generatedVars || []).forEach(function(def) {
         if (!def || !def.name) return;
+        assertNotReservedVar2(def.name, "generatedVars");
         if (def.type === "timestamp") {
           vars[def.name] = Date.now();
           return;
@@ -75893,7 +76648,7 @@ var ScenarioTest = (() => {
     }
     async function executeStep(step, runtime, cfg) {
       if (step.when !== void 0) {
-        var shouldRun = typeof step.when === "object" ? evaluateAssertion2(step.when, { status: 0, headers: {}, body: null, bodyText: "" }, runtime).passed : Boolean(resolve2(step.when, runtime));
+        var shouldRun = typeof step.when === "object" ? evaluateAssertion2(step.when, { status: 0, headers: {}, body: null, bodyText: "" }, runtime, { stepName: step.name }).passed : Boolean(resolve2(step.when, runtime));
         if (!shouldRun) {
           return {
             name: step.name || "\\u672A\\u547D\\u540D\\u6B65\\u9AA4",
@@ -75904,6 +76659,7 @@ var ScenarioTest = (() => {
             passed: true,
             skipped: true,
             error: "",
+            warnings: [],
             assertions: [],
             request: null,
             response: null
@@ -75991,10 +76747,13 @@ var ScenarioTest = (() => {
         var responseData = await sendRequest();
         var headerObj = responseData.headers;
         var body = responseData.body;
+        var stepWarnings = [];
         runtime.lastResponse = responseData;
         runtime.lastResponseBody = body;
-        applyExtract2(step, responseData, runtime);
-        var assertions = buildAssertions2(step, responseData, runtime);
+        var extractResult = applyExtract2(step, responseData, runtime);
+        stepWarnings = extractResult.warnings;
+        var assertions = buildAssertions2(step, responseData, runtime, { stepName: step.name });
+        if (extractResult.failures.length) assertions.push.apply(assertions, extractResult.failures);
         var failedAssertion = assertions.find(function(item) {
           return !item.passed;
         });
@@ -76012,8 +76771,10 @@ var ScenarioTest = (() => {
             body = responseData.body;
             runtime.lastResponse = responseData;
             runtime.lastResponseBody = body;
-            applyExtract2(step, responseData, runtime);
-            assertions = buildAssertions2(step, responseData, runtime);
+            extractResult = applyExtract2(step, responseData, runtime);
+            stepWarnings = extractResult.warnings;
+            assertions = buildAssertions2(step, responseData, runtime, { stepName: step.name });
+            if (extractResult.failures.length) assertions.push.apply(assertions, extractResult.failures);
             failedAssertion = assertions.find(function(item) {
               return !item.passed;
             });
@@ -76027,6 +76788,7 @@ var ScenarioTest = (() => {
                 attempts: requestAttempts,
                 passed: true,
                 error: "",
+                warnings: stepWarnings,
                 request: { headers, body: bodyData },
                 response: { headers: headerObj, body, bodyText: responseData.bodyText },
                 assertions
@@ -76043,6 +76805,7 @@ var ScenarioTest = (() => {
           attempts: requestAttempts,
           passed: !failedAssertion,
           error: failedAssertion ? failedAssertion.name : "",
+          warnings: stepWarnings,
           request: { headers, body: bodyData },
           response: { headers: headerObj, body, bodyText: responseData.bodyText },
           assertions
@@ -76062,6 +76825,7 @@ var ScenarioTest = (() => {
           cancelled,
           timedOut,
           error: errorMessage,
+          warnings: [],
           request: { headers, body: bodyData },
           response: { headers: {}, body: null },
           assertions: [{ name: cancelled ? "\\u6267\\u884C\\u672A\\u53D6\\u6D88" : timedOut ? "\\u8BF7\\u6C42\\u672A\\u8D85\\u65F6" : "\\u8BF7\\u6C42\\u6267\\u884C\\u6210\\u529F", passed: false, actual: errorMessage, expected: "\\u65E0\\u5F02\\u5E38" }]
@@ -76186,10 +76950,14 @@ var ScenarioTest = (() => {
         renderReportPanel();
         return;
       }
-      var failed = state.steps.filter(function(item) {
-        return !item.passed;
+      var skipped = state.steps.filter(function(item) {
+        return item.skipped;
       }).length;
-      uiView.setRunState(failed ? "failed" : "success", failed ? "\\u5B58\\u5728\\u5931\\u8D25" : "\\u6267\\u884C\\u6210\\u529F");
+      var failed = state.steps.filter(function(item) {
+        return !item.skipped && !item.passed;
+      }).length;
+      var executed = state.steps.length - skipped;
+      uiView.setRunState(failed ? "failed" : executed === 0 ? "skipped" : "success", failed ? "\\u5B58\\u5728\\u5931\\u8D25" : executed === 0 ? "\\u5168\\u90E8\\u8DF3\\u8FC7" : "\\u6267\\u884C\\u6210\\u529F");
       renderReportPanel();
     }
     async function runScenario2() {
@@ -76773,7 +77541,7 @@ var ScenarioTest = (() => {
   }
 
   // src/browser/tailwind.generated.js
-  var TAILWIND_CSS = '*, ::before, ::after {\\n  --tw-border-spacing-x: 0;\\n  --tw-border-spacing-y: 0;\\n  --tw-translate-x: 0;\\n  --tw-translate-y: 0;\\n  --tw-rotate: 0;\\n  --tw-skew-x: 0;\\n  --tw-skew-y: 0;\\n  --tw-scale-x: 1;\\n  --tw-scale-y: 1;\\n  --tw-pan-x:  ;\\n  --tw-pan-y:  ;\\n  --tw-pinch-zoom:  ;\\n  --tw-scroll-snap-strictness: proximity;\\n  --tw-gradient-from-position:  ;\\n  --tw-gradient-via-position:  ;\\n  --tw-gradient-to-position:  ;\\n  --tw-ordinal:  ;\\n  --tw-slashed-zero:  ;\\n  --tw-numeric-figure:  ;\\n  --tw-numeric-spacing:  ;\\n  --tw-numeric-fraction:  ;\\n  --tw-ring-inset:  ;\\n  --tw-ring-offset-width: 0px;\\n  --tw-ring-offset-color: #fff;\\n  --tw-ring-color: rgb(59 130 246 / 0.5);\\n  --tw-ring-offset-shadow: 0 0 #0000;\\n  --tw-ring-shadow: 0 0 #0000;\\n  --tw-shadow: 0 0 #0000;\\n  --tw-shadow-colored: 0 0 #0000;\\n  --tw-blur:  ;\\n  --tw-brightness:  ;\\n  --tw-contrast:  ;\\n  --tw-grayscale:  ;\\n  --tw-hue-rotate:  ;\\n  --tw-invert:  ;\\n  --tw-saturate:  ;\\n  --tw-sepia:  ;\\n  --tw-drop-shadow:  ;\\n  --tw-backdrop-blur:  ;\\n  --tw-backdrop-brightness:  ;\\n  --tw-backdrop-contrast:  ;\\n  --tw-backdrop-grayscale:  ;\\n  --tw-backdrop-hue-rotate:  ;\\n  --tw-backdrop-invert:  ;\\n  --tw-backdrop-opacity:  ;\\n  --tw-backdrop-saturate:  ;\\n  --tw-backdrop-sepia:  ;\\n  --tw-contain-size:  ;\\n  --tw-contain-layout:  ;\\n  --tw-contain-paint:  ;\\n  --tw-contain-style:  ;\\n}\\n\\n::backdrop {\\n  --tw-border-spacing-x: 0;\\n  --tw-border-spacing-y: 0;\\n  --tw-translate-x: 0;\\n  --tw-translate-y: 0;\\n  --tw-rotate: 0;\\n  --tw-skew-x: 0;\\n  --tw-skew-y: 0;\\n  --tw-scale-x: 1;\\n  --tw-scale-y: 1;\\n  --tw-pan-x:  ;\\n  --tw-pan-y:  ;\\n  --tw-pinch-zoom:  ;\\n  --tw-scroll-snap-strictness: proximity;\\n  --tw-gradient-from-position:  ;\\n  --tw-gradient-via-position:  ;\\n  --tw-gradient-to-position:  ;\\n  --tw-ordinal:  ;\\n  --tw-slashed-zero:  ;\\n  --tw-numeric-figure:  ;\\n  --tw-numeric-spacing:  ;\\n  --tw-numeric-fraction:  ;\\n  --tw-ring-inset:  ;\\n  --tw-ring-offset-width: 0px;\\n  --tw-ring-offset-color: #fff;\\n  --tw-ring-color: rgb(59 130 246 / 0.5);\\n  --tw-ring-offset-shadow: 0 0 #0000;\\n  --tw-ring-shadow: 0 0 #0000;\\n  --tw-shadow: 0 0 #0000;\\n  --tw-shadow-colored: 0 0 #0000;\\n  --tw-blur:  ;\\n  --tw-brightness:  ;\\n  --tw-contrast:  ;\\n  --tw-grayscale:  ;\\n  --tw-hue-rotate:  ;\\n  --tw-invert:  ;\\n  --tw-saturate:  ;\\n  --tw-sepia:  ;\\n  --tw-drop-shadow:  ;\\n  --tw-backdrop-blur:  ;\\n  --tw-backdrop-brightness:  ;\\n  --tw-backdrop-contrast:  ;\\n  --tw-backdrop-grayscale:  ;\\n  --tw-backdrop-hue-rotate:  ;\\n  --tw-backdrop-invert:  ;\\n  --tw-backdrop-opacity:  ;\\n  --tw-backdrop-saturate:  ;\\n  --tw-backdrop-sepia:  ;\\n  --tw-contain-size:  ;\\n  --tw-contain-layout:  ;\\n  --tw-contain-paint:  ;\\n  --tw-contain-style:  ;\\n}/*\\n! tailwindcss v3.4.17 | MIT License | https://tailwindcss.com\\n*//*\\n1. Prevent padding and border from affecting element width. (https://github.com/mozdevs/cssremedy/issues/4)\\n2. Allow adding a border to an element by just adding a border-width. (https://github.com/tailwindcss/tailwindcss/pull/116)\\n*/\\n\\n*,\\n::before,\\n::after {\\n  box-sizing: border-box; /* 1 */\\n  border-width: 0; /* 2 */\\n  border-style: solid; /* 2 */\\n  border-color: #e5e7eb; /* 2 */\\n}\\n\\n::before,\\n::after {\\n  --tw-content: \\'\\';\\n}\\n\\n/*\\n1. Use a consistent sensible line-height in all browsers.\\n2. Prevent adjustments of font size after orientation changes in iOS.\\n3. Use a more readable tab size.\\n4. Use the user\\'s configured \`sans\` font-family by default.\\n5. Use the user\\'s configured \`sans\` font-feature-settings by default.\\n6. Use the user\\'s configured \`sans\` font-variation-settings by default.\\n7. Disable tap highlights on iOS\\n*/\\n\\nhtml,\\n:host {\\n  line-height: 1.5; /* 1 */\\n  -webkit-text-size-adjust: 100%; /* 2 */\\n  -moz-tab-size: 4; /* 3 */\\n  tab-size: 4; /* 3 */\\n  font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"; /* 4 */\\n  font-feature-settings: normal; /* 5 */\\n  font-variation-settings: normal; /* 6 */\\n  -webkit-tap-highlight-color: transparent; /* 7 */\\n}\\n\\n/*\\n1. Remove the margin in all browsers.\\n2. Inherit line-height from \`html\` so users can set them as a class directly on the \`html\` element.\\n*/\\n\\nbody {\\n  margin: 0; /* 1 */\\n  line-height: inherit; /* 2 */\\n}\\n\\n/*\\n1. Add the correct height in Firefox.\\n2. Correct the inheritance of border color in Firefox. (https://bugzilla.mozilla.org/show_bug.cgi?id=190655)\\n3. Ensure horizontal rules are visible by default.\\n*/\\n\\nhr {\\n  height: 0; /* 1 */\\n  color: inherit; /* 2 */\\n  border-top-width: 1px; /* 3 */\\n}\\n\\n/*\\nAdd the correct text decoration in Chrome, Edge, and Safari.\\n*/\\n\\nabbr:where([title]) {\\n  text-decoration: underline dotted;\\n}\\n\\n/*\\nRemove the default font size and weight for headings.\\n*/\\n\\nh1,\\nh2,\\nh3,\\nh4,\\nh5,\\nh6 {\\n  font-size: inherit;\\n  font-weight: inherit;\\n}\\n\\n/*\\nReset links to optimize for opt-in styling instead of opt-out.\\n*/\\n\\na {\\n  color: inherit;\\n  text-decoration: inherit;\\n}\\n\\n/*\\nAdd the correct font weight in Edge and Safari.\\n*/\\n\\nb,\\nstrong {\\n  font-weight: bolder;\\n}\\n\\n/*\\n1. Use the user\\'s configured \`mono\` font-family by default.\\n2. Use the user\\'s configured \`mono\` font-feature-settings by default.\\n3. Use the user\\'s configured \`mono\` font-variation-settings by default.\\n4. Correct the odd \`em\` font sizing in all browsers.\\n*/\\n\\ncode,\\nkbd,\\nsamp,\\npre {\\n  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; /* 1 */\\n  font-feature-settings: normal; /* 2 */\\n  font-variation-settings: normal; /* 3 */\\n  font-size: 1em; /* 4 */\\n}\\n\\n/*\\nAdd the correct font size in all browsers.\\n*/\\n\\nsmall {\\n  font-size: 80%;\\n}\\n\\n/*\\nPrevent \`sub\` and \`sup\` elements from affecting the line height in all browsers.\\n*/\\n\\nsub,\\nsup {\\n  font-size: 75%;\\n  line-height: 0;\\n  position: relative;\\n  vertical-align: baseline;\\n}\\n\\nsub {\\n  bottom: -0.25em;\\n}\\n\\nsup {\\n  top: -0.5em;\\n}\\n\\n/*\\n1. Remove text indentation from table contents in Chrome and Safari. (https://bugs.chromium.org/p/chromium/issues/detail?id=999088, https://bugs.webkit.org/show_bug.cgi?id=201297)\\n2. Correct table border color inheritance in all Chrome and Safari. (https://bugs.chromium.org/p/chromium/issues/detail?id=935729, https://bugs.webkit.org/show_bug.cgi?id=195016)\\n3. Remove gaps between table borders by default.\\n*/\\n\\ntable {\\n  text-indent: 0; /* 1 */\\n  border-color: inherit; /* 2 */\\n  border-collapse: collapse; /* 3 */\\n}\\n\\n/*\\n1. Change the font styles in all browsers.\\n2. Remove the margin in Firefox and Safari.\\n3. Remove default padding in all browsers.\\n*/\\n\\nbutton,\\ninput,\\noptgroup,\\nselect,\\ntextarea {\\n  font-family: inherit; /* 1 */\\n  font-feature-settings: inherit; /* 1 */\\n  font-variation-settings: inherit; /* 1 */\\n  font-size: 100%; /* 1 */\\n  font-weight: inherit; /* 1 */\\n  line-height: inherit; /* 1 */\\n  letter-spacing: inherit; /* 1 */\\n  color: inherit; /* 1 */\\n  margin: 0; /* 2 */\\n  padding: 0; /* 3 */\\n}\\n\\n/*\\nRemove the inheritance of text transform in Edge and Firefox.\\n*/\\n\\nbutton,\\nselect {\\n  text-transform: none;\\n}\\n\\n/*\\n1. Correct the inability to style clickable types in iOS and Safari.\\n2. Remove default button styles.\\n*/\\n\\nbutton,\\ninput:where([type=\\'button\\']),\\ninput:where([type=\\'reset\\']),\\ninput:where([type=\\'submit\\']) {\\n  -webkit-appearance: button; /* 1 */\\n  background-color: transparent; /* 2 */\\n  background-image: none; /* 2 */\\n}\\n\\n/*\\nUse the modern Firefox focus style for all focusable elements.\\n*/\\n\\n:-moz-focusring {\\n  outline: auto;\\n}\\n\\n/*\\nRemove the additional \`:invalid\` styles in Firefox. (https://github.com/mozilla/gecko-dev/blob/2f9eacd9d3d995c937b4251a5557d95d494c9be1/layout/style/res/forms.css#L728-L737)\\n*/\\n\\n:-moz-ui-invalid {\\n  box-shadow: none;\\n}\\n\\n/*\\nAdd the correct vertical alignment in Chrome and Firefox.\\n*/\\n\\nprogress {\\n  vertical-align: baseline;\\n}\\n\\n/*\\nCorrect the cursor style of increment and decrement buttons in Safari.\\n*/\\n\\n::-webkit-inner-spin-button,\\n::-webkit-outer-spin-button {\\n  height: auto;\\n}\\n\\n/*\\n1. Correct the odd appearance in Chrome and Safari.\\n2. Correct the outline style in Safari.\\n*/\\n\\n[type=\\'search\\'] {\\n  -webkit-appearance: textfield; /* 1 */\\n  outline-offset: -2px; /* 2 */\\n}\\n\\n/*\\nRemove the inner padding in Chrome and Safari on macOS.\\n*/\\n\\n::-webkit-search-decoration {\\n  -webkit-appearance: none;\\n}\\n\\n/*\\n1. Correct the inability to style clickable types in iOS and Safari.\\n2. Change font properties to \`inherit\` in Safari.\\n*/\\n\\n::-webkit-file-upload-button {\\n  -webkit-appearance: button; /* 1 */\\n  font: inherit; /* 2 */\\n}\\n\\n/*\\nAdd the correct display in Chrome and Safari.\\n*/\\n\\nsummary {\\n  display: list-item;\\n}\\n\\n/*\\nRemoves the default spacing and border for appropriate elements.\\n*/\\n\\nblockquote,\\ndl,\\ndd,\\nh1,\\nh2,\\nh3,\\nh4,\\nh5,\\nh6,\\nhr,\\nfigure,\\np,\\npre {\\n  margin: 0;\\n}\\n\\nfieldset {\\n  margin: 0;\\n  padding: 0;\\n}\\n\\nlegend {\\n  padding: 0;\\n}\\n\\nol,\\nul,\\nmenu {\\n  list-style: none;\\n  margin: 0;\\n  padding: 0;\\n}\\n\\n/*\\nReset default styling for dialogs.\\n*/\\ndialog {\\n  padding: 0;\\n}\\n\\n/*\\nPrevent resizing textareas horizontally by default.\\n*/\\n\\ntextarea {\\n  resize: vertical;\\n}\\n\\n/*\\n1. Reset the default placeholder opacity in Firefox. (https://github.com/tailwindlabs/tailwindcss/issues/3300)\\n2. Set the default placeholder color to the user\\'s configured gray 400 color.\\n*/\\n\\ninput::placeholder,\\ntextarea::placeholder {\\n  opacity: 1; /* 1 */\\n  color: #9ca3af; /* 2 */\\n}\\n\\n/*\\nSet the default cursor for buttons.\\n*/\\n\\nbutton,\\n[role="button"] {\\n  cursor: pointer;\\n}\\n\\n/*\\nMake sure disabled buttons don\\'t get the pointer cursor.\\n*/\\n:disabled {\\n  cursor: default;\\n}\\n\\n/*\\n1. Make replaced elements \`display: block\` by default. (https://github.com/mozdevs/cssremedy/issues/14)\\n2. Add \`vertical-align: middle\` to align replaced elements more sensibly by default. (https://github.com/jensimmons/cssremedy/issues/14#issuecomment-634934210)\\n   This can trigger a poorly considered lint error in some tools but is included by design.\\n*/\\n\\nimg,\\nsvg,\\nvideo,\\ncanvas,\\naudio,\\niframe,\\nembed,\\nobject {\\n  display: block; /* 1 */\\n  vertical-align: middle; /* 2 */\\n}\\n\\n/*\\nConstrain images and videos to the parent width and preserve their intrinsic aspect ratio. (https://github.com/mozdevs/cssremedy/issues/14)\\n*/\\n\\nimg,\\nvideo {\\n  max-width: 100%;\\n  height: auto;\\n}\\n\\n/* Make elements with the HTML hidden attribute stay hidden by default */\\n[hidden]:where(:not([hidden="until-found"])) {\\n  display: none;\\n} .\\\\!container {\\n  width: 100% !important;\\n} .container {\\n  width: 100%;\\n} @media (min-width: 640px) {\\n\\n  .\\\\!container {\\n    max-width: 640px !important;\\n  }\\n\\n  .container {\\n    max-width: 640px;\\n  }\\n} @media (min-width: 768px) {\\n\\n  .\\\\!container {\\n    max-width: 768px !important;\\n  }\\n\\n  .container {\\n    max-width: 768px;\\n  }\\n} @media (min-width: 1024px) {\\n\\n  .\\\\!container {\\n    max-width: 1024px !important;\\n  }\\n\\n  .container {\\n    max-width: 1024px;\\n  }\\n} @media (min-width: 1280px) {\\n\\n  .\\\\!container {\\n    max-width: 1280px !important;\\n  }\\n\\n  .container {\\n    max-width: 1280px;\\n  }\\n} @media (min-width: 1536px) {\\n\\n  .\\\\!container {\\n    max-width: 1536px !important;\\n  }\\n\\n  .container {\\n    max-width: 1536px;\\n  }\\n} #scenario-test-root .sr-only {\\n  position: absolute;\\n  width: 1px;\\n  height: 1px;\\n  padding: 0;\\n  margin: -1px;\\n  overflow: hidden;\\n  clip: rect(0, 0, 0, 0);\\n  white-space: nowrap;\\n  border-width: 0;\\n} #scenario-test-root .visible {\\n  visibility: visible;\\n} #scenario-test-root .fixed {\\n  position: fixed;\\n} #scenario-test-root .relative {\\n  position: relative;\\n} #scenario-test-root .sticky {\\n  position: sticky;\\n} #scenario-test-root .inset-0 {\\n  inset: 0px;\\n} #scenario-test-root .top-0 {\\n  top: 0px;\\n} #scenario-test-root .z-10 {\\n  z-index: 10;\\n} #scenario-test-root .z-30 {\\n  z-index: 30;\\n} #scenario-test-root .z-40 {\\n  z-index: 40;\\n} #scenario-test-root .col-span-2 {\\n  grid-column: span 2 / span 2;\\n} #scenario-test-root .mx-1 {\\n  margin-left: 0.25rem;\\n  margin-right: 0.25rem;\\n} #scenario-test-root .mx-auto {\\n  margin-left: auto;\\n  margin-right: auto;\\n} #scenario-test-root .my-2 {\\n  margin-top: 0.5rem;\\n  margin-bottom: 0.5rem;\\n} #scenario-test-root .my-8 {\\n  margin-top: 2rem;\\n  margin-bottom: 2rem;\\n} #scenario-test-root .mb-1 {\\n  margin-bottom: 0.25rem;\\n} #scenario-test-root .mb-1\\\\.5 {\\n  margin-bottom: 0.375rem;\\n} #scenario-test-root .mb-2 {\\n  margin-bottom: 0.5rem;\\n} #scenario-test-root .mb-3 {\\n  margin-bottom: 0.75rem;\\n} #scenario-test-root .ml-0\\\\.5 {\\n  margin-left: 0.125rem;\\n} #scenario-test-root .ml-1 {\\n  margin-left: 0.25rem;\\n} #scenario-test-root .mr-1 {\\n  margin-right: 0.25rem;\\n} #scenario-test-root .mr-1\\\\.5 {\\n  margin-right: 0.375rem;\\n} #scenario-test-root .mr-2 {\\n  margin-right: 0.5rem;\\n} #scenario-test-root .mt-0\\\\.5 {\\n  margin-top: 0.125rem;\\n} #scenario-test-root .mt-1 {\\n  margin-top: 0.25rem;\\n} #scenario-test-root .mt-2 {\\n  margin-top: 0.5rem;\\n} #scenario-test-root .mt-3 {\\n  margin-top: 0.75rem;\\n} #scenario-test-root .mt-4 {\\n  margin-top: 1rem;\\n} #scenario-test-root .block {\\n  display: block;\\n} #scenario-test-root .inline {\\n  display: inline;\\n} #scenario-test-root .flex {\\n  display: flex;\\n} #scenario-test-root .grid {\\n  display: grid;\\n} #scenario-test-root .hidden {\\n  display: none;\\n} #scenario-test-root .h-1\\\\.5 {\\n  height: 0.375rem;\\n} #scenario-test-root .h-2 {\\n  height: 0.5rem;\\n} #scenario-test-root .h-28 {\\n  height: 7rem;\\n} #scenario-test-root .h-3 {\\n  height: 0.75rem;\\n} #scenario-test-root .h-3\\\\.5 {\\n  height: 0.875rem;\\n} #scenario-test-root .h-4 {\\n  height: 1rem;\\n} #scenario-test-root .h-40 {\\n  height: 10rem;\\n} #scenario-test-root .h-5 {\\n  height: 1.25rem;\\n} #scenario-test-root .max-h-48 {\\n  max-height: 12rem;\\n} #scenario-test-root .max-h-\\\\[85vh\\\\] {\\n  max-height: 85vh;\\n} #scenario-test-root .w-1 {\\n  width: 0.25rem;\\n} #scenario-test-root .w-1\\\\.5 {\\n  width: 0.375rem;\\n} #scenario-test-root .w-1\\\\/3 {\\n  width: 33.333333%;\\n} #scenario-test-root .w-16 {\\n  width: 4rem;\\n} #scenario-test-root .w-2 {\\n  width: 0.5rem;\\n} #scenario-test-root .w-3 {\\n  width: 0.75rem;\\n} #scenario-test-root .w-3\\\\.5 {\\n  width: 0.875rem;\\n} #scenario-test-root .w-4 {\\n  width: 1rem;\\n} #scenario-test-root .w-44 {\\n  width: 11rem;\\n} #scenario-test-root .w-5 {\\n  width: 1.25rem;\\n} #scenario-test-root .w-\\\\[70\\\\%\\\\] {\\n  width: 70%;\\n} #scenario-test-root .w-full {\\n  width: 100%;\\n} #scenario-test-root .min-w-0 {\\n  min-width: 0px;\\n} #scenario-test-root .max-w-3xl {\\n  max-width: 48rem;\\n} #scenario-test-root .max-w-\\\\[280px\\\\] {\\n  max-width: 280px;\\n} #scenario-test-root .max-w-\\\\[50\\\\%\\\\] {\\n  max-width: 50%;\\n} #scenario-test-root .max-w-\\\\[55\\\\%\\\\] {\\n  max-width: 55%;\\n} #scenario-test-root .max-w-full {\\n  max-width: 100%;\\n} #scenario-test-root .flex-1 {\\n  flex: 1 1 0%;\\n} #scenario-test-root .flex-shrink-0 {\\n  flex-shrink: 0;\\n} #scenario-test-root .rotate-180 {\\n  --tw-rotate: 180deg;\\n  transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));\\n} #scenario-test-root .scale-90 {\\n  --tw-scale-x: .9;\\n  --tw-scale-y: .9;\\n  transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));\\n} #scenario-test-root .cursor-pointer {\\n  cursor: pointer;\\n} #scenario-test-root .select-none {\\n  user-select: none;\\n} #scenario-test-root .select-text {\\n  user-select: text;\\n} #scenario-test-root .appearance-none {\\n  appearance: none;\\n} #scenario-test-root .grid-cols-1 {\\n  grid-template-columns: repeat(1, minmax(0, 1fr));\\n} #scenario-test-root .flex-col {\\n  flex-direction: column;\\n} #scenario-test-root .flex-wrap {\\n  flex-wrap: wrap;\\n} #scenario-test-root .items-start {\\n  align-items: flex-start;\\n} #scenario-test-root .items-center {\\n  align-items: center;\\n} #scenario-test-root .justify-end {\\n  justify-content: flex-end;\\n} #scenario-test-root .justify-center {\\n  justify-content: center;\\n} #scenario-test-root .justify-between {\\n  justify-content: space-between;\\n} #scenario-test-root .gap-1 {\\n  gap: 0.25rem;\\n} #scenario-test-root .gap-1\\\\.5 {\\n  gap: 0.375rem;\\n} #scenario-test-root .gap-2 {\\n  gap: 0.5rem;\\n} #scenario-test-root .gap-3 {\\n  gap: 0.75rem;\\n} #scenario-test-root .gap-4 {\\n  gap: 1rem;\\n} #scenario-test-root :is(.space-x-1 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-x-reverse: 0;\\n  margin-right: calc(0.25rem * var(--tw-space-x-reverse));\\n  margin-left: calc(0.25rem * calc(1 - var(--tw-space-x-reverse)));\\n} #scenario-test-root :is(.space-x-1\\\\.5 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-x-reverse: 0;\\n  margin-right: calc(0.375rem * var(--tw-space-x-reverse));\\n  margin-left: calc(0.375rem * calc(1 - var(--tw-space-x-reverse)));\\n} #scenario-test-root :is(.space-x-2 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-x-reverse: 0;\\n  margin-right: calc(0.5rem * var(--tw-space-x-reverse));\\n  margin-left: calc(0.5rem * calc(1 - var(--tw-space-x-reverse)));\\n} #scenario-test-root :is(.space-x-2\\\\.5 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-x-reverse: 0;\\n  margin-right: calc(0.625rem * var(--tw-space-x-reverse));\\n  margin-left: calc(0.625rem * calc(1 - var(--tw-space-x-reverse)));\\n} #scenario-test-root :is(.space-x-3 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-x-reverse: 0;\\n  margin-right: calc(0.75rem * var(--tw-space-x-reverse));\\n  margin-left: calc(0.75rem * calc(1 - var(--tw-space-x-reverse)));\\n} #scenario-test-root :is(.space-x-4 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-x-reverse: 0;\\n  margin-right: calc(1rem * var(--tw-space-x-reverse));\\n  margin-left: calc(1rem * calc(1 - var(--tw-space-x-reverse)));\\n} #scenario-test-root :is(.space-x-6 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-x-reverse: 0;\\n  margin-right: calc(1.5rem * var(--tw-space-x-reverse));\\n  margin-left: calc(1.5rem * calc(1 - var(--tw-space-x-reverse)));\\n} #scenario-test-root :is(.space-x-8 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-x-reverse: 0;\\n  margin-right: calc(2rem * var(--tw-space-x-reverse));\\n  margin-left: calc(2rem * calc(1 - var(--tw-space-x-reverse)));\\n} #scenario-test-root :is(.space-y-0\\\\.5 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-y-reverse: 0;\\n  margin-top: calc(0.125rem * calc(1 - var(--tw-space-y-reverse)));\\n  margin-bottom: calc(0.125rem * var(--tw-space-y-reverse));\\n} #scenario-test-root :is(.space-y-1 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-y-reverse: 0;\\n  margin-top: calc(0.25rem * calc(1 - var(--tw-space-y-reverse)));\\n  margin-bottom: calc(0.25rem * var(--tw-space-y-reverse));\\n} #scenario-test-root :is(.space-y-2 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-y-reverse: 0;\\n  margin-top: calc(0.5rem * calc(1 - var(--tw-space-y-reverse)));\\n  margin-bottom: calc(0.5rem * var(--tw-space-y-reverse));\\n} #scenario-test-root :is(.space-y-3 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-y-reverse: 0;\\n  margin-top: calc(0.75rem * calc(1 - var(--tw-space-y-reverse)));\\n  margin-bottom: calc(0.75rem * var(--tw-space-y-reverse));\\n} #scenario-test-root :is(.space-y-4 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-y-reverse: 0;\\n  margin-top: calc(1rem * calc(1 - var(--tw-space-y-reverse)));\\n  margin-bottom: calc(1rem * var(--tw-space-y-reverse));\\n} #scenario-test-root :is(.divide-y > :not([hidden]) ~ :not([hidden])) {\\n  --tw-divide-y-reverse: 0;\\n  border-top-width: calc(1px * calc(1 - var(--tw-divide-y-reverse)));\\n  border-bottom-width: calc(1px * var(--tw-divide-y-reverse));\\n} #scenario-test-root :is(.divide-slate-100 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-divide-opacity: 1;\\n  border-color: rgb(241 245 249 / var(--tw-divide-opacity, 1));\\n} #scenario-test-root :is(.divide-slate-200 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-divide-opacity: 1;\\n  border-color: rgb(226 232 240 / var(--tw-divide-opacity, 1));\\n} #scenario-test-root .overflow-hidden {\\n  overflow: hidden;\\n} #scenario-test-root .overflow-x-auto {\\n  overflow-x: auto;\\n} #scenario-test-root .overflow-y-auto {\\n  overflow-y: auto;\\n} #scenario-test-root .truncate {\\n  overflow: hidden;\\n  text-overflow: ellipsis;\\n  white-space: nowrap;\\n} #scenario-test-root .whitespace-nowrap {\\n  white-space: nowrap;\\n} #scenario-test-root .break-all {\\n  word-break: break-all;\\n} #scenario-test-root .rounded {\\n  border-radius: 0.25rem;\\n} #scenario-test-root .rounded-full {\\n  border-radius: 9999px;\\n} #scenario-test-root .rounded-lg {\\n  border-radius: 0.5rem;\\n} #scenario-test-root .rounded-md {\\n  border-radius: 0.375rem;\\n} #scenario-test-root .rounded-xl {\\n  border-radius: 0.75rem;\\n} #scenario-test-root .border {\\n  border-width: 1px;\\n} #scenario-test-root .border-b {\\n  border-bottom-width: 1px;\\n} #scenario-test-root .border-l {\\n  border-left-width: 1px;\\n} #scenario-test-root .border-t {\\n  border-top-width: 1px;\\n} #scenario-test-root .border-blue-200 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(191 219 254 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-emerald-100 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(209 250 229 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-emerald-100\\\\/50 {\\n  border-color: rgb(209 250 229 / 0.5);\\n} #scenario-test-root .border-emerald-200 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(167 243 208 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-indigo-100 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(224 231 255 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-rose-100 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(255 228 230 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-rose-100\\\\/50 {\\n  border-color: rgb(255 228 230 / 0.5);\\n} #scenario-test-root .border-rose-200 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(254 205 211 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-slate-100 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(241 245 249 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-slate-100\\\\/80 {\\n  border-color: rgb(241 245 249 / 0.8);\\n} #scenario-test-root .border-slate-200 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(226 232 240 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-slate-200\\\\/50 {\\n  border-color: rgb(226 232 240 / 0.5);\\n} #scenario-test-root .border-slate-200\\\\/60 {\\n  border-color: rgb(226 232 240 / 0.6);\\n} #scenario-test-root .border-slate-300 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(203 213 225 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-slate-600 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(71 85 105 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-slate-700 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(51 65 85 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-slate-700\\\\/50 {\\n  border-color: rgb(51 65 85 / 0.5);\\n} #scenario-test-root .border-transparent {\\n  border-color: transparent;\\n} #scenario-test-root .border-zinc-200 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(228 228 231 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .bg-\\\\[\\\\#1e293b\\\\] {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(30 41 59 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-emerald-400 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(52 211 153 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-emerald-50 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(236 253 245 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-emerald-500 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(16 185 129 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-emerald-600 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(5 150 105 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-indigo-50 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(238 242 255 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-rose-100 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(255 228 230 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-rose-400 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(251 113 133 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-rose-50 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(255 241 242 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-rose-50\\\\/20 {\\n  background-color: rgb(255 241 242 / 0.2);\\n} #scenario-test-root .bg-rose-500 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(244 63 94 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-100 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(241 245 249 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-100\\\\/70 {\\n  background-color: rgb(241 245 249 / 0.7);\\n} #scenario-test-root .bg-slate-200 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(226 232 240 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-200\\\\/60 {\\n  background-color: rgb(226 232 240 / 0.6);\\n} #scenario-test-root .bg-slate-300 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(203 213 225 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-400 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(148 163 184 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-50 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(248 250 252 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-50\\\\/30 {\\n  background-color: rgb(248 250 252 / 0.3);\\n} #scenario-test-root .bg-slate-50\\\\/50 {\\n  background-color: rgb(248 250 252 / 0.5);\\n} #scenario-test-root .bg-slate-50\\\\/70 {\\n  background-color: rgb(248 250 252 / 0.7);\\n} #scenario-test-root .bg-slate-700 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(51 65 85 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-800 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(30 41 59 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-900 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(15 23 42 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-950\\\\/20 {\\n  background-color: rgb(2 6 23 / 0.2);\\n} #scenario-test-root .bg-slate-950\\\\/40 {\\n  background-color: rgb(2 6 23 / 0.4);\\n} #scenario-test-root .bg-transparent {\\n  background-color: transparent;\\n} #scenario-test-root .bg-white {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(255 255 255 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-zinc-100 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(244 244 245 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .p-1 {\\n  padding: 0.25rem;\\n} #scenario-test-root .p-2 {\\n  padding: 0.5rem;\\n} #scenario-test-root .p-2\\\\.5 {\\n  padding: 0.625rem;\\n} #scenario-test-root .p-3 {\\n  padding: 0.75rem;\\n} #scenario-test-root .p-3\\\\.5 {\\n  padding: 0.875rem;\\n} #scenario-test-root .p-4 {\\n  padding: 1rem;\\n} #scenario-test-root .p-5 {\\n  padding: 1.25rem;\\n} #scenario-test-root .p-8 {\\n  padding: 2rem;\\n} #scenario-test-root .px-1 {\\n  padding-left: 0.25rem;\\n  padding-right: 0.25rem;\\n} #scenario-test-root .px-1\\\\.5 {\\n  padding-left: 0.375rem;\\n  padding-right: 0.375rem;\\n} #scenario-test-root .px-2 {\\n  padding-left: 0.5rem;\\n  padding-right: 0.5rem;\\n} #scenario-test-root .px-2\\\\.5 {\\n  padding-left: 0.625rem;\\n  padding-right: 0.625rem;\\n} #scenario-test-root .px-3 {\\n  padding-left: 0.75rem;\\n  padding-right: 0.75rem;\\n} #scenario-test-root .px-4 {\\n  padding-left: 1rem;\\n  padding-right: 1rem;\\n} #scenario-test-root .px-5 {\\n  padding-left: 1.25rem;\\n  padding-right: 1.25rem;\\n} #scenario-test-root .py-0\\\\.5 {\\n  padding-top: 0.125rem;\\n  padding-bottom: 0.125rem;\\n} #scenario-test-root .py-1 {\\n  padding-top: 0.25rem;\\n  padding-bottom: 0.25rem;\\n} #scenario-test-root .py-1\\\\.5 {\\n  padding-top: 0.375rem;\\n  padding-bottom: 0.375rem;\\n} #scenario-test-root .py-2 {\\n  padding-top: 0.5rem;\\n  padding-bottom: 0.5rem;\\n} #scenario-test-root .py-2\\\\.5 {\\n  padding-top: 0.625rem;\\n  padding-bottom: 0.625rem;\\n} #scenario-test-root .py-3 {\\n  padding-top: 0.75rem;\\n  padding-bottom: 0.75rem;\\n} #scenario-test-root .py-4 {\\n  padding-top: 1rem;\\n  padding-bottom: 1rem;\\n} #scenario-test-root .pb-3 {\\n  padding-bottom: 0.75rem;\\n} #scenario-test-root .pl-2 {\\n  padding-left: 0.5rem;\\n} #scenario-test-root .pl-6 {\\n  padding-left: 1.5rem;\\n} #scenario-test-root .pr-4 {\\n  padding-right: 1rem;\\n} #scenario-test-root .pr-5 {\\n  padding-right: 1.25rem;\\n} #scenario-test-root .pt-4 {\\n  padding-top: 1rem;\\n} #scenario-test-root .text-left {\\n  text-align: left;\\n} #scenario-test-root .text-center {\\n  text-align: center;\\n} #scenario-test-root .text-right {\\n  text-align: right;\\n} #scenario-test-root .font-mono {\\n  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;\\n} #scenario-test-root .text-\\\\[10px\\\\] {\\n  font-size: 10px;\\n} #scenario-test-root .text-\\\\[11px\\\\] {\\n  font-size: 11px;\\n} #scenario-test-root .text-\\\\[12px\\\\] {\\n  font-size: 12px;\\n} #scenario-test-root .text-\\\\[13px\\\\] {\\n  font-size: 13px;\\n} #scenario-test-root .text-sm {\\n  font-size: 0.875rem;\\n  line-height: 1.25rem;\\n} #scenario-test-root .text-xl {\\n  font-size: 1.25rem;\\n  line-height: 1.75rem;\\n} #scenario-test-root .text-xs {\\n  font-size: 0.75rem;\\n  line-height: 1rem;\\n} #scenario-test-root .font-bold {\\n  font-weight: 700;\\n} #scenario-test-root .font-extrabold {\\n  font-weight: 800;\\n} #scenario-test-root .font-medium {\\n  font-weight: 500;\\n} #scenario-test-root .font-normal {\\n  font-weight: 400;\\n} #scenario-test-root .font-semibold {\\n  font-weight: 600;\\n} #scenario-test-root .uppercase {\\n  text-transform: uppercase;\\n} #scenario-test-root .normal-case {\\n  text-transform: none;\\n} #scenario-test-root .leading-relaxed {\\n  line-height: 1.625;\\n} #scenario-test-root .leading-tight {\\n  line-height: 1.25;\\n} #scenario-test-root .tracking-tight {\\n  letter-spacing: -0.025em;\\n} #scenario-test-root .tracking-wider {\\n  letter-spacing: 0.05em;\\n} #scenario-test-root .text-amber-400 {\\n  --tw-text-opacity: 1;\\n  color: rgb(251 191 36 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-amber-600 {\\n  --tw-text-opacity: 1;\\n  color: rgb(217 119 6 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-blue-700 {\\n  --tw-text-opacity: 1;\\n  color: rgb(29 78 216 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-emerald-400 {\\n  --tw-text-opacity: 1;\\n  color: rgb(52 211 153 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-emerald-500 {\\n  --tw-text-opacity: 1;\\n  color: rgb(16 185 129 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-emerald-600 {\\n  --tw-text-opacity: 1;\\n  color: rgb(5 150 105 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-emerald-600\\\\/70 {\\n  color: rgb(5 150 105 / 0.7);\\n} #scenario-test-root .text-emerald-700 {\\n  --tw-text-opacity: 1;\\n  color: rgb(4 120 87 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-indigo-500 {\\n  --tw-text-opacity: 1;\\n  color: rgb(99 102 241 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-indigo-700 {\\n  --tw-text-opacity: 1;\\n  color: rgb(67 56 202 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-orange-500 {\\n  --tw-text-opacity: 1;\\n  color: rgb(249 115 22 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-purple-600 {\\n  --tw-text-opacity: 1;\\n  color: rgb(147 51 234 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-rose-400 {\\n  --tw-text-opacity: 1;\\n  color: rgb(251 113 133 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-rose-500 {\\n  --tw-text-opacity: 1;\\n  color: rgb(244 63 94 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-rose-500\\\\/70 {\\n  color: rgb(244 63 94 / 0.7);\\n} #scenario-test-root .text-rose-600 {\\n  --tw-text-opacity: 1;\\n  color: rgb(225 29 72 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-rose-700 {\\n  --tw-text-opacity: 1;\\n  color: rgb(190 18 60 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-rose-800 {\\n  --tw-text-opacity: 1;\\n  color: rgb(159 18 57 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-slate-200 {\\n  --tw-text-opacity: 1;\\n  color: rgb(226 232 240 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-slate-300 {\\n  --tw-text-opacity: 1;\\n  color: rgb(203 213 225 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-slate-400 {\\n  --tw-text-opacity: 1;\\n  color: rgb(148 163 184 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-slate-500 {\\n  --tw-text-opacity: 1;\\n  color: rgb(100 116 139 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-slate-600 {\\n  --tw-text-opacity: 1;\\n  color: rgb(71 85 105 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-slate-700 {\\n  --tw-text-opacity: 1;\\n  color: rgb(51 65 85 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-slate-800 {\\n  --tw-text-opacity: 1;\\n  color: rgb(30 41 59 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-slate-900 {\\n  --tw-text-opacity: 1;\\n  color: rgb(15 23 42 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-white {\\n  --tw-text-opacity: 1;\\n  color: rgb(255 255 255 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-zinc-700 {\\n  --tw-text-opacity: 1;\\n  color: rgb(63 63 70 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .placeholder-slate-400::placeholder {\\n  --tw-placeholder-opacity: 1;\\n  color: rgb(148 163 184 / var(--tw-placeholder-opacity, 1));\\n} #scenario-test-root .placeholder-slate-500::placeholder {\\n  --tw-placeholder-opacity: 1;\\n  color: rgb(100 116 139 / var(--tw-placeholder-opacity, 1));\\n} #scenario-test-root .shadow-inner {\\n  --tw-shadow: inset 0 2px 4px 0 rgb(0 0 0 / 0.05);\\n  --tw-shadow-colored: inset 0 2px 4px 0 var(--tw-shadow-color);\\n  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);\\n} #scenario-test-root .shadow-sm {\\n  --tw-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);\\n  --tw-shadow-colored: 0 1px 2px 0 var(--tw-shadow-color);\\n  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);\\n} #scenario-test-root .shadow-xl {\\n  --tw-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);\\n  --tw-shadow-colored: 0 20px 25px -5px var(--tw-shadow-color), 0 8px 10px -6px var(--tw-shadow-color);\\n  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);\\n} #scenario-test-root .outline-none {\\n  outline: 2px solid transparent;\\n  outline-offset: 2px;\\n} #scenario-test-root .filter {\\n  filter: var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow);\\n} #scenario-test-root .transition-all {\\n  transition-property: all;\\n  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);\\n  transition-duration: 150ms;\\n} #scenario-test-root .transition-colors {\\n  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;\\n  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);\\n  transition-duration: 150ms;\\n} #scenario-test-root .transition-transform {\\n  transition-property: transform;\\n  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);\\n  transition-duration: 150ms;\\n} #scenario-test-root .duration-150 {\\n  transition-duration: 150ms;\\n} #scenario-test-root .duration-200 {\\n  transition-duration: 200ms;\\n} #scenario-test-root .placeholder\\\\:text-slate-300::placeholder {\\n  --tw-text-opacity: 1;\\n  color: rgb(203 213 225 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .hover\\\\:border-emerald-300:hover {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(110 231 183 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .hover\\\\:border-slate-200:hover {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(226 232 240 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .hover\\\\:bg-emerald-600:hover {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(5 150 105 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .hover\\\\:bg-emerald-700:hover {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(4 120 87 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .hover\\\\:bg-indigo-100:hover {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(224 231 255 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .hover\\\\:bg-slate-100:hover {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(241 245 249 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .hover\\\\:bg-slate-50:hover {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(248 250 252 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .hover\\\\:bg-slate-50\\\\/50:hover {\\n  background-color: rgb(248 250 252 / 0.5);\\n} #scenario-test-root .hover\\\\:bg-slate-50\\\\/60:hover {\\n  background-color: rgb(248 250 252 / 0.6);\\n} #scenario-test-root .hover\\\\:bg-slate-600:hover {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(71 85 105 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .hover\\\\:bg-slate-700:hover {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(51 65 85 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .hover\\\\:bg-white:hover {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(255 255 255 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .hover\\\\:text-emerald-700:hover {\\n  --tw-text-opacity: 1;\\n  color: rgb(4 120 87 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .hover\\\\:text-rose-600:hover {\\n  --tw-text-opacity: 1;\\n  color: rgb(225 29 72 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .hover\\\\:text-slate-700:hover {\\n  --tw-text-opacity: 1;\\n  color: rgb(51 65 85 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .hover\\\\:text-slate-900:hover {\\n  --tw-text-opacity: 1;\\n  color: rgb(15 23 42 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .hover\\\\:text-white:hover {\\n  --tw-text-opacity: 1;\\n  color: rgb(255 255 255 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .focus\\\\:border-emerald-500:focus {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(16 185 129 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .focus\\\\:outline-none:focus {\\n  outline: 2px solid transparent;\\n  outline-offset: 2px;\\n} #scenario-test-root .focus\\\\:ring-1:focus {\\n  --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);\\n  --tw-ring-shadow: var(--tw-ring-inset) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color);\\n  box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000);\\n} #scenario-test-root .focus\\\\:ring-emerald-500:focus {\\n  --tw-ring-opacity: 1;\\n  --tw-ring-color: rgb(16 185 129 / var(--tw-ring-opacity, 1));\\n} #scenario-test-root :is(.group:hover .group-hover\\\\:text-emerald-700) {\\n  --tw-text-opacity: 1;\\n  color: rgb(4 120 87 / var(--tw-text-opacity, 1));\\n} #scenario-test-root :is(.group:hover .group-hover\\\\:text-slate-500) {\\n  --tw-text-opacity: 1;\\n  color: rgb(100 116 139 / var(--tw-text-opacity, 1));\\n} #scenario-test-root :is(.group:hover .group-hover\\\\:text-slate-600) {\\n  --tw-text-opacity: 1;\\n  color: rgb(71 85 105 / var(--tw-text-opacity, 1));\\n} #scenario-test-root :is(.group:hover .group-hover\\\\:text-slate-950) {\\n  --tw-text-opacity: 1;\\n  color: rgb(2 6 23 / var(--tw-text-opacity, 1));\\n} @media (min-width: 640px) {\\n\\n  #scenario-test-root .sm\\\\:mt-0 {\\n    margin-top: 0px;\\n  }\\n\\n  #scenario-test-root .sm\\\\:flex {\\n    display: flex;\\n  }\\n\\n  #scenario-test-root .sm\\\\:hidden {\\n    display: none;\\n  }\\n\\n  #scenario-test-root .sm\\\\:max-w-xl {\\n    max-width: 36rem;\\n  }\\n\\n  #scenario-test-root .sm\\\\:grid-cols-\\\\[120px_1fr\\\\] {\\n    grid-template-columns: 120px 1fr;\\n  }\\n} @media (min-width: 768px) {\\n\\n  #scenario-test-root .md\\\\:mt-0 {\\n    margin-top: 0px;\\n  }\\n\\n  #scenario-test-root .md\\\\:w-auto {\\n    width: auto;\\n  }\\n\\n  #scenario-test-root .md\\\\:grid-cols-2 {\\n    grid-template-columns: repeat(2, minmax(0, 1fr));\\n  }\\n\\n  #scenario-test-root .md\\\\:gap-0 {\\n    gap: 0px;\\n  }\\n\\n  #scenario-test-root :is(.md\\\\:divide-x > :not([hidden]) ~ :not([hidden])) {\\n    --tw-divide-x-reverse: 0;\\n    border-right-width: calc(1px * var(--tw-divide-x-reverse));\\n    border-left-width: calc(1px * calc(1 - var(--tw-divide-x-reverse)));\\n  }\\n\\n  #scenario-test-root .md\\\\:pl-6 {\\n    padding-left: 1.5rem;\\n  }\\n\\n  #scenario-test-root .md\\\\:pr-6 {\\n    padding-right: 1.5rem;\\n  }\\n} @media (min-width: 1024px) {\\n\\n  #scenario-test-root .lg\\\\:w-\\\\[80\\\\%\\\\] {\\n    width: 80%;\\n  }\\n} @media (min-width: 1280px) {\\n\\n  #scenario-test-root .xl\\\\:max-h-\\\\[calc\\\\(100vh-52px\\\\)\\\\] {\\n    max-height: calc(100vh - 52px);\\n  }\\n\\n  #scenario-test-root .xl\\\\:grid-cols-\\\\[minmax\\\\(164px\\\\2c 1fr\\\\)_minmax\\\\(500px\\\\2c 3\\\\.18fr\\\\)_minmax\\\\(280px\\\\2c 1\\\\.75fr\\\\)\\\\] {\\n    grid-template-columns: minmax(164px,1fr) minmax(500px,3.18fr) minmax(280px,1.75fr);\\n  }\\n}';
+  var TAILWIND_CSS = '*, ::before, ::after {\\n  --tw-border-spacing-x: 0;\\n  --tw-border-spacing-y: 0;\\n  --tw-translate-x: 0;\\n  --tw-translate-y: 0;\\n  --tw-rotate: 0;\\n  --tw-skew-x: 0;\\n  --tw-skew-y: 0;\\n  --tw-scale-x: 1;\\n  --tw-scale-y: 1;\\n  --tw-pan-x:  ;\\n  --tw-pan-y:  ;\\n  --tw-pinch-zoom:  ;\\n  --tw-scroll-snap-strictness: proximity;\\n  --tw-gradient-from-position:  ;\\n  --tw-gradient-via-position:  ;\\n  --tw-gradient-to-position:  ;\\n  --tw-ordinal:  ;\\n  --tw-slashed-zero:  ;\\n  --tw-numeric-figure:  ;\\n  --tw-numeric-spacing:  ;\\n  --tw-numeric-fraction:  ;\\n  --tw-ring-inset:  ;\\n  --tw-ring-offset-width: 0px;\\n  --tw-ring-offset-color: #fff;\\n  --tw-ring-color: rgb(59 130 246 / 0.5);\\n  --tw-ring-offset-shadow: 0 0 #0000;\\n  --tw-ring-shadow: 0 0 #0000;\\n  --tw-shadow: 0 0 #0000;\\n  --tw-shadow-colored: 0 0 #0000;\\n  --tw-blur:  ;\\n  --tw-brightness:  ;\\n  --tw-contrast:  ;\\n  --tw-grayscale:  ;\\n  --tw-hue-rotate:  ;\\n  --tw-invert:  ;\\n  --tw-saturate:  ;\\n  --tw-sepia:  ;\\n  --tw-drop-shadow:  ;\\n  --tw-backdrop-blur:  ;\\n  --tw-backdrop-brightness:  ;\\n  --tw-backdrop-contrast:  ;\\n  --tw-backdrop-grayscale:  ;\\n  --tw-backdrop-hue-rotate:  ;\\n  --tw-backdrop-invert:  ;\\n  --tw-backdrop-opacity:  ;\\n  --tw-backdrop-saturate:  ;\\n  --tw-backdrop-sepia:  ;\\n  --tw-contain-size:  ;\\n  --tw-contain-layout:  ;\\n  --tw-contain-paint:  ;\\n  --tw-contain-style:  ;\\n}\\n\\n::backdrop {\\n  --tw-border-spacing-x: 0;\\n  --tw-border-spacing-y: 0;\\n  --tw-translate-x: 0;\\n  --tw-translate-y: 0;\\n  --tw-rotate: 0;\\n  --tw-skew-x: 0;\\n  --tw-skew-y: 0;\\n  --tw-scale-x: 1;\\n  --tw-scale-y: 1;\\n  --tw-pan-x:  ;\\n  --tw-pan-y:  ;\\n  --tw-pinch-zoom:  ;\\n  --tw-scroll-snap-strictness: proximity;\\n  --tw-gradient-from-position:  ;\\n  --tw-gradient-via-position:  ;\\n  --tw-gradient-to-position:  ;\\n  --tw-ordinal:  ;\\n  --tw-slashed-zero:  ;\\n  --tw-numeric-figure:  ;\\n  --tw-numeric-spacing:  ;\\n  --tw-numeric-fraction:  ;\\n  --tw-ring-inset:  ;\\n  --tw-ring-offset-width: 0px;\\n  --tw-ring-offset-color: #fff;\\n  --tw-ring-color: rgb(59 130 246 / 0.5);\\n  --tw-ring-offset-shadow: 0 0 #0000;\\n  --tw-ring-shadow: 0 0 #0000;\\n  --tw-shadow: 0 0 #0000;\\n  --tw-shadow-colored: 0 0 #0000;\\n  --tw-blur:  ;\\n  --tw-brightness:  ;\\n  --tw-contrast:  ;\\n  --tw-grayscale:  ;\\n  --tw-hue-rotate:  ;\\n  --tw-invert:  ;\\n  --tw-saturate:  ;\\n  --tw-sepia:  ;\\n  --tw-drop-shadow:  ;\\n  --tw-backdrop-blur:  ;\\n  --tw-backdrop-brightness:  ;\\n  --tw-backdrop-contrast:  ;\\n  --tw-backdrop-grayscale:  ;\\n  --tw-backdrop-hue-rotate:  ;\\n  --tw-backdrop-invert:  ;\\n  --tw-backdrop-opacity:  ;\\n  --tw-backdrop-saturate:  ;\\n  --tw-backdrop-sepia:  ;\\n  --tw-contain-size:  ;\\n  --tw-contain-layout:  ;\\n  --tw-contain-paint:  ;\\n  --tw-contain-style:  ;\\n}/*\\n! tailwindcss v3.4.17 | MIT License | https://tailwindcss.com\\n*//*\\n1. Prevent padding and border from affecting element width. (https://github.com/mozdevs/cssremedy/issues/4)\\n2. Allow adding a border to an element by just adding a border-width. (https://github.com/tailwindcss/tailwindcss/pull/116)\\n*/\\n\\n*,\\n::before,\\n::after {\\n  box-sizing: border-box; /* 1 */\\n  border-width: 0; /* 2 */\\n  border-style: solid; /* 2 */\\n  border-color: #e5e7eb; /* 2 */\\n}\\n\\n::before,\\n::after {\\n  --tw-content: \\'\\';\\n}\\n\\n/*\\n1. Use a consistent sensible line-height in all browsers.\\n2. Prevent adjustments of font size after orientation changes in iOS.\\n3. Use a more readable tab size.\\n4. Use the user\\'s configured \`sans\` font-family by default.\\n5. Use the user\\'s configured \`sans\` font-feature-settings by default.\\n6. Use the user\\'s configured \`sans\` font-variation-settings by default.\\n7. Disable tap highlights on iOS\\n*/\\n\\nhtml,\\n:host {\\n  line-height: 1.5; /* 1 */\\n  -webkit-text-size-adjust: 100%; /* 2 */\\n  -moz-tab-size: 4; /* 3 */\\n  tab-size: 4; /* 3 */\\n  font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"; /* 4 */\\n  font-feature-settings: normal; /* 5 */\\n  font-variation-settings: normal; /* 6 */\\n  -webkit-tap-highlight-color: transparent; /* 7 */\\n}\\n\\n/*\\n1. Remove the margin in all browsers.\\n2. Inherit line-height from \`html\` so users can set them as a class directly on the \`html\` element.\\n*/\\n\\nbody {\\n  margin: 0; /* 1 */\\n  line-height: inherit; /* 2 */\\n}\\n\\n/*\\n1. Add the correct height in Firefox.\\n2. Correct the inheritance of border color in Firefox. (https://bugzilla.mozilla.org/show_bug.cgi?id=190655)\\n3. Ensure horizontal rules are visible by default.\\n*/\\n\\nhr {\\n  height: 0; /* 1 */\\n  color: inherit; /* 2 */\\n  border-top-width: 1px; /* 3 */\\n}\\n\\n/*\\nAdd the correct text decoration in Chrome, Edge, and Safari.\\n*/\\n\\nabbr:where([title]) {\\n  text-decoration: underline dotted;\\n}\\n\\n/*\\nRemove the default font size and weight for headings.\\n*/\\n\\nh1,\\nh2,\\nh3,\\nh4,\\nh5,\\nh6 {\\n  font-size: inherit;\\n  font-weight: inherit;\\n}\\n\\n/*\\nReset links to optimize for opt-in styling instead of opt-out.\\n*/\\n\\na {\\n  color: inherit;\\n  text-decoration: inherit;\\n}\\n\\n/*\\nAdd the correct font weight in Edge and Safari.\\n*/\\n\\nb,\\nstrong {\\n  font-weight: bolder;\\n}\\n\\n/*\\n1. Use the user\\'s configured \`mono\` font-family by default.\\n2. Use the user\\'s configured \`mono\` font-feature-settings by default.\\n3. Use the user\\'s configured \`mono\` font-variation-settings by default.\\n4. Correct the odd \`em\` font sizing in all browsers.\\n*/\\n\\ncode,\\nkbd,\\nsamp,\\npre {\\n  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; /* 1 */\\n  font-feature-settings: normal; /* 2 */\\n  font-variation-settings: normal; /* 3 */\\n  font-size: 1em; /* 4 */\\n}\\n\\n/*\\nAdd the correct font size in all browsers.\\n*/\\n\\nsmall {\\n  font-size: 80%;\\n}\\n\\n/*\\nPrevent \`sub\` and \`sup\` elements from affecting the line height in all browsers.\\n*/\\n\\nsub,\\nsup {\\n  font-size: 75%;\\n  line-height: 0;\\n  position: relative;\\n  vertical-align: baseline;\\n}\\n\\nsub {\\n  bottom: -0.25em;\\n}\\n\\nsup {\\n  top: -0.5em;\\n}\\n\\n/*\\n1. Remove text indentation from table contents in Chrome and Safari. (https://bugs.chromium.org/p/chromium/issues/detail?id=999088, https://bugs.webkit.org/show_bug.cgi?id=201297)\\n2. Correct table border color inheritance in all Chrome and Safari. (https://bugs.chromium.org/p/chromium/issues/detail?id=935729, https://bugs.webkit.org/show_bug.cgi?id=195016)\\n3. Remove gaps between table borders by default.\\n*/\\n\\ntable {\\n  text-indent: 0; /* 1 */\\n  border-color: inherit; /* 2 */\\n  border-collapse: collapse; /* 3 */\\n}\\n\\n/*\\n1. Change the font styles in all browsers.\\n2. Remove the margin in Firefox and Safari.\\n3. Remove default padding in all browsers.\\n*/\\n\\nbutton,\\ninput,\\noptgroup,\\nselect,\\ntextarea {\\n  font-family: inherit; /* 1 */\\n  font-feature-settings: inherit; /* 1 */\\n  font-variation-settings: inherit; /* 1 */\\n  font-size: 100%; /* 1 */\\n  font-weight: inherit; /* 1 */\\n  line-height: inherit; /* 1 */\\n  letter-spacing: inherit; /* 1 */\\n  color: inherit; /* 1 */\\n  margin: 0; /* 2 */\\n  padding: 0; /* 3 */\\n}\\n\\n/*\\nRemove the inheritance of text transform in Edge and Firefox.\\n*/\\n\\nbutton,\\nselect {\\n  text-transform: none;\\n}\\n\\n/*\\n1. Correct the inability to style clickable types in iOS and Safari.\\n2. Remove default button styles.\\n*/\\n\\nbutton,\\ninput:where([type=\\'button\\']),\\ninput:where([type=\\'reset\\']),\\ninput:where([type=\\'submit\\']) {\\n  -webkit-appearance: button; /* 1 */\\n  background-color: transparent; /* 2 */\\n  background-image: none; /* 2 */\\n}\\n\\n/*\\nUse the modern Firefox focus style for all focusable elements.\\n*/\\n\\n:-moz-focusring {\\n  outline: auto;\\n}\\n\\n/*\\nRemove the additional \`:invalid\` styles in Firefox. (https://github.com/mozilla/gecko-dev/blob/2f9eacd9d3d995c937b4251a5557d95d494c9be1/layout/style/res/forms.css#L728-L737)\\n*/\\n\\n:-moz-ui-invalid {\\n  box-shadow: none;\\n}\\n\\n/*\\nAdd the correct vertical alignment in Chrome and Firefox.\\n*/\\n\\nprogress {\\n  vertical-align: baseline;\\n}\\n\\n/*\\nCorrect the cursor style of increment and decrement buttons in Safari.\\n*/\\n\\n::-webkit-inner-spin-button,\\n::-webkit-outer-spin-button {\\n  height: auto;\\n}\\n\\n/*\\n1. Correct the odd appearance in Chrome and Safari.\\n2. Correct the outline style in Safari.\\n*/\\n\\n[type=\\'search\\'] {\\n  -webkit-appearance: textfield; /* 1 */\\n  outline-offset: -2px; /* 2 */\\n}\\n\\n/*\\nRemove the inner padding in Chrome and Safari on macOS.\\n*/\\n\\n::-webkit-search-decoration {\\n  -webkit-appearance: none;\\n}\\n\\n/*\\n1. Correct the inability to style clickable types in iOS and Safari.\\n2. Change font properties to \`inherit\` in Safari.\\n*/\\n\\n::-webkit-file-upload-button {\\n  -webkit-appearance: button; /* 1 */\\n  font: inherit; /* 2 */\\n}\\n\\n/*\\nAdd the correct display in Chrome and Safari.\\n*/\\n\\nsummary {\\n  display: list-item;\\n}\\n\\n/*\\nRemoves the default spacing and border for appropriate elements.\\n*/\\n\\nblockquote,\\ndl,\\ndd,\\nh1,\\nh2,\\nh3,\\nh4,\\nh5,\\nh6,\\nhr,\\nfigure,\\np,\\npre {\\n  margin: 0;\\n}\\n\\nfieldset {\\n  margin: 0;\\n  padding: 0;\\n}\\n\\nlegend {\\n  padding: 0;\\n}\\n\\nol,\\nul,\\nmenu {\\n  list-style: none;\\n  margin: 0;\\n  padding: 0;\\n}\\n\\n/*\\nReset default styling for dialogs.\\n*/\\ndialog {\\n  padding: 0;\\n}\\n\\n/*\\nPrevent resizing textareas horizontally by default.\\n*/\\n\\ntextarea {\\n  resize: vertical;\\n}\\n\\n/*\\n1. Reset the default placeholder opacity in Firefox. (https://github.com/tailwindlabs/tailwindcss/issues/3300)\\n2. Set the default placeholder color to the user\\'s configured gray 400 color.\\n*/\\n\\ninput::placeholder,\\ntextarea::placeholder {\\n  opacity: 1; /* 1 */\\n  color: #9ca3af; /* 2 */\\n}\\n\\n/*\\nSet the default cursor for buttons.\\n*/\\n\\nbutton,\\n[role="button"] {\\n  cursor: pointer;\\n}\\n\\n/*\\nMake sure disabled buttons don\\'t get the pointer cursor.\\n*/\\n:disabled {\\n  cursor: default;\\n}\\n\\n/*\\n1. Make replaced elements \`display: block\` by default. (https://github.com/mozdevs/cssremedy/issues/14)\\n2. Add \`vertical-align: middle\` to align replaced elements more sensibly by default. (https://github.com/jensimmons/cssremedy/issues/14#issuecomment-634934210)\\n   This can trigger a poorly considered lint error in some tools but is included by design.\\n*/\\n\\nimg,\\nsvg,\\nvideo,\\ncanvas,\\naudio,\\niframe,\\nembed,\\nobject {\\n  display: block; /* 1 */\\n  vertical-align: middle; /* 2 */\\n}\\n\\n/*\\nConstrain images and videos to the parent width and preserve their intrinsic aspect ratio. (https://github.com/mozdevs/cssremedy/issues/14)\\n*/\\n\\nimg,\\nvideo {\\n  max-width: 100%;\\n  height: auto;\\n}\\n\\n/* Make elements with the HTML hidden attribute stay hidden by default */\\n[hidden]:where(:not([hidden="until-found"])) {\\n  display: none;\\n} .\\\\!container {\\n  width: 100% !important;\\n} .container {\\n  width: 100%;\\n} @media (min-width: 640px) {\\n\\n  .\\\\!container {\\n    max-width: 640px !important;\\n  }\\n\\n  .container {\\n    max-width: 640px;\\n  }\\n} @media (min-width: 768px) {\\n\\n  .\\\\!container {\\n    max-width: 768px !important;\\n  }\\n\\n  .container {\\n    max-width: 768px;\\n  }\\n} @media (min-width: 1024px) {\\n\\n  .\\\\!container {\\n    max-width: 1024px !important;\\n  }\\n\\n  .container {\\n    max-width: 1024px;\\n  }\\n} @media (min-width: 1280px) {\\n\\n  .\\\\!container {\\n    max-width: 1280px !important;\\n  }\\n\\n  .container {\\n    max-width: 1280px;\\n  }\\n} @media (min-width: 1536px) {\\n\\n  .\\\\!container {\\n    max-width: 1536px !important;\\n  }\\n\\n  .container {\\n    max-width: 1536px;\\n  }\\n} #scenario-test-root .sr-only {\\n  position: absolute;\\n  width: 1px;\\n  height: 1px;\\n  padding: 0;\\n  margin: -1px;\\n  overflow: hidden;\\n  clip: rect(0, 0, 0, 0);\\n  white-space: nowrap;\\n  border-width: 0;\\n} #scenario-test-root .visible {\\n  visibility: visible;\\n} #scenario-test-root .fixed {\\n  position: fixed;\\n} #scenario-test-root .relative {\\n  position: relative;\\n} #scenario-test-root .sticky {\\n  position: sticky;\\n} #scenario-test-root .inset-0 {\\n  inset: 0px;\\n} #scenario-test-root .top-0 {\\n  top: 0px;\\n} #scenario-test-root .z-10 {\\n  z-index: 10;\\n} #scenario-test-root .z-30 {\\n  z-index: 30;\\n} #scenario-test-root .z-40 {\\n  z-index: 40;\\n} #scenario-test-root .col-span-2 {\\n  grid-column: span 2 / span 2;\\n} #scenario-test-root .mx-1 {\\n  margin-left: 0.25rem;\\n  margin-right: 0.25rem;\\n} #scenario-test-root .mx-auto {\\n  margin-left: auto;\\n  margin-right: auto;\\n} #scenario-test-root .my-2 {\\n  margin-top: 0.5rem;\\n  margin-bottom: 0.5rem;\\n} #scenario-test-root .my-8 {\\n  margin-top: 2rem;\\n  margin-bottom: 2rem;\\n} #scenario-test-root .mb-1 {\\n  margin-bottom: 0.25rem;\\n} #scenario-test-root .mb-1\\\\.5 {\\n  margin-bottom: 0.375rem;\\n} #scenario-test-root .mb-2 {\\n  margin-bottom: 0.5rem;\\n} #scenario-test-root .mb-3 {\\n  margin-bottom: 0.75rem;\\n} #scenario-test-root .ml-0\\\\.5 {\\n  margin-left: 0.125rem;\\n} #scenario-test-root .ml-1 {\\n  margin-left: 0.25rem;\\n} #scenario-test-root .mr-1 {\\n  margin-right: 0.25rem;\\n} #scenario-test-root .mr-1\\\\.5 {\\n  margin-right: 0.375rem;\\n} #scenario-test-root .mr-2 {\\n  margin-right: 0.5rem;\\n} #scenario-test-root .mt-0\\\\.5 {\\n  margin-top: 0.125rem;\\n} #scenario-test-root .mt-1 {\\n  margin-top: 0.25rem;\\n} #scenario-test-root .mt-2 {\\n  margin-top: 0.5rem;\\n} #scenario-test-root .mt-3 {\\n  margin-top: 0.75rem;\\n} #scenario-test-root .mt-4 {\\n  margin-top: 1rem;\\n} #scenario-test-root .block {\\n  display: block;\\n} #scenario-test-root .inline {\\n  display: inline;\\n} #scenario-test-root .flex {\\n  display: flex;\\n} #scenario-test-root .grid {\\n  display: grid;\\n} #scenario-test-root .hidden {\\n  display: none;\\n} #scenario-test-root .h-1\\\\.5 {\\n  height: 0.375rem;\\n} #scenario-test-root .h-2 {\\n  height: 0.5rem;\\n} #scenario-test-root .h-28 {\\n  height: 7rem;\\n} #scenario-test-root .h-3 {\\n  height: 0.75rem;\\n} #scenario-test-root .h-3\\\\.5 {\\n  height: 0.875rem;\\n} #scenario-test-root .h-4 {\\n  height: 1rem;\\n} #scenario-test-root .h-40 {\\n  height: 10rem;\\n} #scenario-test-root .h-5 {\\n  height: 1.25rem;\\n} #scenario-test-root .max-h-48 {\\n  max-height: 12rem;\\n} #scenario-test-root .max-h-\\\\[85vh\\\\] {\\n  max-height: 85vh;\\n} #scenario-test-root .w-1 {\\n  width: 0.25rem;\\n} #scenario-test-root .w-1\\\\.5 {\\n  width: 0.375rem;\\n} #scenario-test-root .w-1\\\\/3 {\\n  width: 33.333333%;\\n} #scenario-test-root .w-16 {\\n  width: 4rem;\\n} #scenario-test-root .w-2 {\\n  width: 0.5rem;\\n} #scenario-test-root .w-3 {\\n  width: 0.75rem;\\n} #scenario-test-root .w-3\\\\.5 {\\n  width: 0.875rem;\\n} #scenario-test-root .w-4 {\\n  width: 1rem;\\n} #scenario-test-root .w-44 {\\n  width: 11rem;\\n} #scenario-test-root .w-5 {\\n  width: 1.25rem;\\n} #scenario-test-root .w-\\\\[70\\\\%\\\\] {\\n  width: 70%;\\n} #scenario-test-root .w-full {\\n  width: 100%;\\n} #scenario-test-root .min-w-0 {\\n  min-width: 0px;\\n} #scenario-test-root .max-w-3xl {\\n  max-width: 48rem;\\n} #scenario-test-root .max-w-\\\\[280px\\\\] {\\n  max-width: 280px;\\n} #scenario-test-root .max-w-\\\\[50\\\\%\\\\] {\\n  max-width: 50%;\\n} #scenario-test-root .max-w-\\\\[55\\\\%\\\\] {\\n  max-width: 55%;\\n} #scenario-test-root .max-w-full {\\n  max-width: 100%;\\n} #scenario-test-root .flex-1 {\\n  flex: 1 1 0%;\\n} #scenario-test-root .flex-shrink-0 {\\n  flex-shrink: 0;\\n} #scenario-test-root .rotate-180 {\\n  --tw-rotate: 180deg;\\n  transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));\\n} #scenario-test-root .scale-90 {\\n  --tw-scale-x: .9;\\n  --tw-scale-y: .9;\\n  transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));\\n} #scenario-test-root .cursor-pointer {\\n  cursor: pointer;\\n} #scenario-test-root .select-none {\\n  user-select: none;\\n} #scenario-test-root .select-text {\\n  user-select: text;\\n} #scenario-test-root .appearance-none {\\n  appearance: none;\\n} #scenario-test-root .grid-cols-1 {\\n  grid-template-columns: repeat(1, minmax(0, 1fr));\\n} #scenario-test-root .flex-col {\\n  flex-direction: column;\\n} #scenario-test-root .flex-wrap {\\n  flex-wrap: wrap;\\n} #scenario-test-root .items-start {\\n  align-items: flex-start;\\n} #scenario-test-root .items-center {\\n  align-items: center;\\n} #scenario-test-root .justify-end {\\n  justify-content: flex-end;\\n} #scenario-test-root .justify-center {\\n  justify-content: center;\\n} #scenario-test-root .justify-between {\\n  justify-content: space-between;\\n} #scenario-test-root .gap-1 {\\n  gap: 0.25rem;\\n} #scenario-test-root .gap-1\\\\.5 {\\n  gap: 0.375rem;\\n} #scenario-test-root .gap-2 {\\n  gap: 0.5rem;\\n} #scenario-test-root .gap-3 {\\n  gap: 0.75rem;\\n} #scenario-test-root .gap-4 {\\n  gap: 1rem;\\n} #scenario-test-root :is(.space-x-1 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-x-reverse: 0;\\n  margin-right: calc(0.25rem * var(--tw-space-x-reverse));\\n  margin-left: calc(0.25rem * calc(1 - var(--tw-space-x-reverse)));\\n} #scenario-test-root :is(.space-x-1\\\\.5 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-x-reverse: 0;\\n  margin-right: calc(0.375rem * var(--tw-space-x-reverse));\\n  margin-left: calc(0.375rem * calc(1 - var(--tw-space-x-reverse)));\\n} #scenario-test-root :is(.space-x-2 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-x-reverse: 0;\\n  margin-right: calc(0.5rem * var(--tw-space-x-reverse));\\n  margin-left: calc(0.5rem * calc(1 - var(--tw-space-x-reverse)));\\n} #scenario-test-root :is(.space-x-2\\\\.5 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-x-reverse: 0;\\n  margin-right: calc(0.625rem * var(--tw-space-x-reverse));\\n  margin-left: calc(0.625rem * calc(1 - var(--tw-space-x-reverse)));\\n} #scenario-test-root :is(.space-x-3 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-x-reverse: 0;\\n  margin-right: calc(0.75rem * var(--tw-space-x-reverse));\\n  margin-left: calc(0.75rem * calc(1 - var(--tw-space-x-reverse)));\\n} #scenario-test-root :is(.space-x-4 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-x-reverse: 0;\\n  margin-right: calc(1rem * var(--tw-space-x-reverse));\\n  margin-left: calc(1rem * calc(1 - var(--tw-space-x-reverse)));\\n} #scenario-test-root :is(.space-x-6 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-x-reverse: 0;\\n  margin-right: calc(1.5rem * var(--tw-space-x-reverse));\\n  margin-left: calc(1.5rem * calc(1 - var(--tw-space-x-reverse)));\\n} #scenario-test-root :is(.space-x-8 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-x-reverse: 0;\\n  margin-right: calc(2rem * var(--tw-space-x-reverse));\\n  margin-left: calc(2rem * calc(1 - var(--tw-space-x-reverse)));\\n} #scenario-test-root :is(.space-y-0\\\\.5 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-y-reverse: 0;\\n  margin-top: calc(0.125rem * calc(1 - var(--tw-space-y-reverse)));\\n  margin-bottom: calc(0.125rem * var(--tw-space-y-reverse));\\n} #scenario-test-root :is(.space-y-1 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-y-reverse: 0;\\n  margin-top: calc(0.25rem * calc(1 - var(--tw-space-y-reverse)));\\n  margin-bottom: calc(0.25rem * var(--tw-space-y-reverse));\\n} #scenario-test-root :is(.space-y-2 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-y-reverse: 0;\\n  margin-top: calc(0.5rem * calc(1 - var(--tw-space-y-reverse)));\\n  margin-bottom: calc(0.5rem * var(--tw-space-y-reverse));\\n} #scenario-test-root :is(.space-y-3 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-y-reverse: 0;\\n  margin-top: calc(0.75rem * calc(1 - var(--tw-space-y-reverse)));\\n  margin-bottom: calc(0.75rem * var(--tw-space-y-reverse));\\n} #scenario-test-root :is(.space-y-4 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-space-y-reverse: 0;\\n  margin-top: calc(1rem * calc(1 - var(--tw-space-y-reverse)));\\n  margin-bottom: calc(1rem * var(--tw-space-y-reverse));\\n} #scenario-test-root :is(.divide-y > :not([hidden]) ~ :not([hidden])) {\\n  --tw-divide-y-reverse: 0;\\n  border-top-width: calc(1px * calc(1 - var(--tw-divide-y-reverse)));\\n  border-bottom-width: calc(1px * var(--tw-divide-y-reverse));\\n} #scenario-test-root :is(.divide-slate-100 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-divide-opacity: 1;\\n  border-color: rgb(241 245 249 / var(--tw-divide-opacity, 1));\\n} #scenario-test-root :is(.divide-slate-200 > :not([hidden]) ~ :not([hidden])) {\\n  --tw-divide-opacity: 1;\\n  border-color: rgb(226 232 240 / var(--tw-divide-opacity, 1));\\n} #scenario-test-root .overflow-hidden {\\n  overflow: hidden;\\n} #scenario-test-root .overflow-x-auto {\\n  overflow-x: auto;\\n} #scenario-test-root .overflow-y-auto {\\n  overflow-y: auto;\\n} #scenario-test-root .truncate {\\n  overflow: hidden;\\n  text-overflow: ellipsis;\\n  white-space: nowrap;\\n} #scenario-test-root .whitespace-nowrap {\\n  white-space: nowrap;\\n} #scenario-test-root .break-all {\\n  word-break: break-all;\\n} #scenario-test-root .rounded {\\n  border-radius: 0.25rem;\\n} #scenario-test-root .rounded-full {\\n  border-radius: 9999px;\\n} #scenario-test-root .rounded-lg {\\n  border-radius: 0.5rem;\\n} #scenario-test-root .rounded-md {\\n  border-radius: 0.375rem;\\n} #scenario-test-root .rounded-xl {\\n  border-radius: 0.75rem;\\n} #scenario-test-root .border {\\n  border-width: 1px;\\n} #scenario-test-root .border-b {\\n  border-bottom-width: 1px;\\n} #scenario-test-root .border-l {\\n  border-left-width: 1px;\\n} #scenario-test-root .border-t {\\n  border-top-width: 1px;\\n} #scenario-test-root .border-blue-200 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(191 219 254 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-emerald-100 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(209 250 229 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-emerald-100\\\\/50 {\\n  border-color: rgb(209 250 229 / 0.5);\\n} #scenario-test-root .border-emerald-200 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(167 243 208 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-indigo-100 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(224 231 255 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-rose-100 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(255 228 230 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-rose-100\\\\/50 {\\n  border-color: rgb(255 228 230 / 0.5);\\n} #scenario-test-root .border-rose-200 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(254 205 211 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-slate-100 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(241 245 249 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-slate-100\\\\/80 {\\n  border-color: rgb(241 245 249 / 0.8);\\n} #scenario-test-root .border-slate-200 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(226 232 240 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-slate-200\\\\/50 {\\n  border-color: rgb(226 232 240 / 0.5);\\n} #scenario-test-root .border-slate-200\\\\/60 {\\n  border-color: rgb(226 232 240 / 0.6);\\n} #scenario-test-root .border-slate-300 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(203 213 225 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-slate-600 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(71 85 105 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-slate-700 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(51 65 85 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .border-slate-700\\\\/50 {\\n  border-color: rgb(51 65 85 / 0.5);\\n} #scenario-test-root .border-transparent {\\n  border-color: transparent;\\n} #scenario-test-root .border-zinc-200 {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(228 228 231 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .bg-\\\\[\\\\#1e293b\\\\] {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(30 41 59 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-emerald-400 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(52 211 153 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-emerald-50 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(236 253 245 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-emerald-500 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(16 185 129 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-emerald-600 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(5 150 105 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-indigo-50 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(238 242 255 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-rose-100 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(255 228 230 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-rose-400 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(251 113 133 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-rose-50 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(255 241 242 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-rose-50\\\\/20 {\\n  background-color: rgb(255 241 242 / 0.2);\\n} #scenario-test-root .bg-rose-500 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(244 63 94 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-100 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(241 245 249 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-100\\\\/70 {\\n  background-color: rgb(241 245 249 / 0.7);\\n} #scenario-test-root .bg-slate-200 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(226 232 240 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-200\\\\/60 {\\n  background-color: rgb(226 232 240 / 0.6);\\n} #scenario-test-root .bg-slate-300 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(203 213 225 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-400 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(148 163 184 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-50 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(248 250 252 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-50\\\\/30 {\\n  background-color: rgb(248 250 252 / 0.3);\\n} #scenario-test-root .bg-slate-50\\\\/50 {\\n  background-color: rgb(248 250 252 / 0.5);\\n} #scenario-test-root .bg-slate-50\\\\/70 {\\n  background-color: rgb(248 250 252 / 0.7);\\n} #scenario-test-root .bg-slate-700 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(51 65 85 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-800 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(30 41 59 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-900 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(15 23 42 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-slate-950\\\\/20 {\\n  background-color: rgb(2 6 23 / 0.2);\\n} #scenario-test-root .bg-slate-950\\\\/40 {\\n  background-color: rgb(2 6 23 / 0.4);\\n} #scenario-test-root .bg-transparent {\\n  background-color: transparent;\\n} #scenario-test-root .bg-white {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(255 255 255 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .bg-zinc-100 {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(244 244 245 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .p-1 {\\n  padding: 0.25rem;\\n} #scenario-test-root .p-2 {\\n  padding: 0.5rem;\\n} #scenario-test-root .p-2\\\\.5 {\\n  padding: 0.625rem;\\n} #scenario-test-root .p-3 {\\n  padding: 0.75rem;\\n} #scenario-test-root .p-3\\\\.5 {\\n  padding: 0.875rem;\\n} #scenario-test-root .p-4 {\\n  padding: 1rem;\\n} #scenario-test-root .p-5 {\\n  padding: 1.25rem;\\n} #scenario-test-root .p-8 {\\n  padding: 2rem;\\n} #scenario-test-root .px-1 {\\n  padding-left: 0.25rem;\\n  padding-right: 0.25rem;\\n} #scenario-test-root .px-1\\\\.5 {\\n  padding-left: 0.375rem;\\n  padding-right: 0.375rem;\\n} #scenario-test-root .px-2 {\\n  padding-left: 0.5rem;\\n  padding-right: 0.5rem;\\n} #scenario-test-root .px-2\\\\.5 {\\n  padding-left: 0.625rem;\\n  padding-right: 0.625rem;\\n} #scenario-test-root .px-3 {\\n  padding-left: 0.75rem;\\n  padding-right: 0.75rem;\\n} #scenario-test-root .px-4 {\\n  padding-left: 1rem;\\n  padding-right: 1rem;\\n} #scenario-test-root .px-5 {\\n  padding-left: 1.25rem;\\n  padding-right: 1.25rem;\\n} #scenario-test-root .py-0\\\\.5 {\\n  padding-top: 0.125rem;\\n  padding-bottom: 0.125rem;\\n} #scenario-test-root .py-1 {\\n  padding-top: 0.25rem;\\n  padding-bottom: 0.25rem;\\n} #scenario-test-root .py-1\\\\.5 {\\n  padding-top: 0.375rem;\\n  padding-bottom: 0.375rem;\\n} #scenario-test-root .py-2 {\\n  padding-top: 0.5rem;\\n  padding-bottom: 0.5rem;\\n} #scenario-test-root .py-2\\\\.5 {\\n  padding-top: 0.625rem;\\n  padding-bottom: 0.625rem;\\n} #scenario-test-root .py-3 {\\n  padding-top: 0.75rem;\\n  padding-bottom: 0.75rem;\\n} #scenario-test-root .py-4 {\\n  padding-top: 1rem;\\n  padding-bottom: 1rem;\\n} #scenario-test-root .pb-3 {\\n  padding-bottom: 0.75rem;\\n} #scenario-test-root .pl-2 {\\n  padding-left: 0.5rem;\\n} #scenario-test-root .pl-6 {\\n  padding-left: 1.5rem;\\n} #scenario-test-root .pr-4 {\\n  padding-right: 1rem;\\n} #scenario-test-root .pr-5 {\\n  padding-right: 1.25rem;\\n} #scenario-test-root .pt-4 {\\n  padding-top: 1rem;\\n} #scenario-test-root .text-left {\\n  text-align: left;\\n} #scenario-test-root .text-center {\\n  text-align: center;\\n} #scenario-test-root .text-right {\\n  text-align: right;\\n} #scenario-test-root .font-mono {\\n  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;\\n} #scenario-test-root .text-\\\\[10px\\\\] {\\n  font-size: 10px;\\n} #scenario-test-root .text-\\\\[11px\\\\] {\\n  font-size: 11px;\\n} #scenario-test-root .text-\\\\[12px\\\\] {\\n  font-size: 12px;\\n} #scenario-test-root .text-\\\\[13px\\\\] {\\n  font-size: 13px;\\n} #scenario-test-root .text-sm {\\n  font-size: 0.875rem;\\n  line-height: 1.25rem;\\n} #scenario-test-root .text-xl {\\n  font-size: 1.25rem;\\n  line-height: 1.75rem;\\n} #scenario-test-root .text-xs {\\n  font-size: 0.75rem;\\n  line-height: 1rem;\\n} #scenario-test-root .font-bold {\\n  font-weight: 700;\\n} #scenario-test-root .font-extrabold {\\n  font-weight: 800;\\n} #scenario-test-root .font-medium {\\n  font-weight: 500;\\n} #scenario-test-root .font-normal {\\n  font-weight: 400;\\n} #scenario-test-root .font-semibold {\\n  font-weight: 600;\\n} #scenario-test-root .uppercase {\\n  text-transform: uppercase;\\n} #scenario-test-root .normal-case {\\n  text-transform: none;\\n} #scenario-test-root .leading-relaxed {\\n  line-height: 1.625;\\n} #scenario-test-root .leading-tight {\\n  line-height: 1.25;\\n} #scenario-test-root .tracking-tight {\\n  letter-spacing: -0.025em;\\n} #scenario-test-root .tracking-wider {\\n  letter-spacing: 0.05em;\\n} #scenario-test-root .text-amber-400 {\\n  --tw-text-opacity: 1;\\n  color: rgb(251 191 36 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-amber-600 {\\n  --tw-text-opacity: 1;\\n  color: rgb(217 119 6 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-blue-700 {\\n  --tw-text-opacity: 1;\\n  color: rgb(29 78 216 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-emerald-400 {\\n  --tw-text-opacity: 1;\\n  color: rgb(52 211 153 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-emerald-500 {\\n  --tw-text-opacity: 1;\\n  color: rgb(16 185 129 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-emerald-600 {\\n  --tw-text-opacity: 1;\\n  color: rgb(5 150 105 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-emerald-600\\\\/70 {\\n  color: rgb(5 150 105 / 0.7);\\n} #scenario-test-root .text-emerald-700 {\\n  --tw-text-opacity: 1;\\n  color: rgb(4 120 87 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-indigo-500 {\\n  --tw-text-opacity: 1;\\n  color: rgb(99 102 241 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-indigo-700 {\\n  --tw-text-opacity: 1;\\n  color: rgb(67 56 202 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-orange-500 {\\n  --tw-text-opacity: 1;\\n  color: rgb(249 115 22 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-purple-600 {\\n  --tw-text-opacity: 1;\\n  color: rgb(147 51 234 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-rose-400 {\\n  --tw-text-opacity: 1;\\n  color: rgb(251 113 133 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-rose-500 {\\n  --tw-text-opacity: 1;\\n  color: rgb(244 63 94 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-rose-500\\\\/70 {\\n  color: rgb(244 63 94 / 0.7);\\n} #scenario-test-root .text-rose-600 {\\n  --tw-text-opacity: 1;\\n  color: rgb(225 29 72 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-rose-700 {\\n  --tw-text-opacity: 1;\\n  color: rgb(190 18 60 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-rose-800 {\\n  --tw-text-opacity: 1;\\n  color: rgb(159 18 57 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-slate-200 {\\n  --tw-text-opacity: 1;\\n  color: rgb(226 232 240 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-slate-300 {\\n  --tw-text-opacity: 1;\\n  color: rgb(203 213 225 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-slate-400 {\\n  --tw-text-opacity: 1;\\n  color: rgb(148 163 184 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-slate-400\\\\/80 {\\n  color: rgb(148 163 184 / 0.8);\\n} #scenario-test-root .text-slate-500 {\\n  --tw-text-opacity: 1;\\n  color: rgb(100 116 139 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-slate-600 {\\n  --tw-text-opacity: 1;\\n  color: rgb(71 85 105 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-slate-700 {\\n  --tw-text-opacity: 1;\\n  color: rgb(51 65 85 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-slate-800 {\\n  --tw-text-opacity: 1;\\n  color: rgb(30 41 59 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-slate-900 {\\n  --tw-text-opacity: 1;\\n  color: rgb(15 23 42 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-white {\\n  --tw-text-opacity: 1;\\n  color: rgb(255 255 255 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .text-zinc-700 {\\n  --tw-text-opacity: 1;\\n  color: rgb(63 63 70 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .placeholder-slate-400::placeholder {\\n  --tw-placeholder-opacity: 1;\\n  color: rgb(148 163 184 / var(--tw-placeholder-opacity, 1));\\n} #scenario-test-root .placeholder-slate-500::placeholder {\\n  --tw-placeholder-opacity: 1;\\n  color: rgb(100 116 139 / var(--tw-placeholder-opacity, 1));\\n} #scenario-test-root .shadow-inner {\\n  --tw-shadow: inset 0 2px 4px 0 rgb(0 0 0 / 0.05);\\n  --tw-shadow-colored: inset 0 2px 4px 0 var(--tw-shadow-color);\\n  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);\\n} #scenario-test-root .shadow-sm {\\n  --tw-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);\\n  --tw-shadow-colored: 0 1px 2px 0 var(--tw-shadow-color);\\n  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);\\n} #scenario-test-root .shadow-xl {\\n  --tw-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);\\n  --tw-shadow-colored: 0 20px 25px -5px var(--tw-shadow-color), 0 8px 10px -6px var(--tw-shadow-color);\\n  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);\\n} #scenario-test-root .outline-none {\\n  outline: 2px solid transparent;\\n  outline-offset: 2px;\\n} #scenario-test-root .filter {\\n  filter: var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow);\\n} #scenario-test-root .transition-all {\\n  transition-property: all;\\n  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);\\n  transition-duration: 150ms;\\n} #scenario-test-root .transition-colors {\\n  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;\\n  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);\\n  transition-duration: 150ms;\\n} #scenario-test-root .transition-transform {\\n  transition-property: transform;\\n  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);\\n  transition-duration: 150ms;\\n} #scenario-test-root .duration-150 {\\n  transition-duration: 150ms;\\n} #scenario-test-root .duration-200 {\\n  transition-duration: 200ms;\\n} #scenario-test-root .placeholder\\\\:text-slate-300::placeholder {\\n  --tw-text-opacity: 1;\\n  color: rgb(203 213 225 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .hover\\\\:border-emerald-300:hover {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(110 231 183 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .hover\\\\:border-slate-200:hover {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(226 232 240 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .hover\\\\:bg-emerald-600:hover {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(5 150 105 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .hover\\\\:bg-emerald-700:hover {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(4 120 87 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .hover\\\\:bg-indigo-100:hover {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(224 231 255 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .hover\\\\:bg-slate-100:hover {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(241 245 249 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .hover\\\\:bg-slate-50:hover {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(248 250 252 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .hover\\\\:bg-slate-50\\\\/50:hover {\\n  background-color: rgb(248 250 252 / 0.5);\\n} #scenario-test-root .hover\\\\:bg-slate-50\\\\/60:hover {\\n  background-color: rgb(248 250 252 / 0.6);\\n} #scenario-test-root .hover\\\\:bg-slate-600:hover {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(71 85 105 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .hover\\\\:bg-slate-700:hover {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(51 65 85 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .hover\\\\:bg-white:hover {\\n  --tw-bg-opacity: 1;\\n  background-color: rgb(255 255 255 / var(--tw-bg-opacity, 1));\\n} #scenario-test-root .hover\\\\:text-emerald-700:hover {\\n  --tw-text-opacity: 1;\\n  color: rgb(4 120 87 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .hover\\\\:text-rose-600:hover {\\n  --tw-text-opacity: 1;\\n  color: rgb(225 29 72 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .hover\\\\:text-slate-700:hover {\\n  --tw-text-opacity: 1;\\n  color: rgb(51 65 85 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .hover\\\\:text-slate-900:hover {\\n  --tw-text-opacity: 1;\\n  color: rgb(15 23 42 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .hover\\\\:text-white:hover {\\n  --tw-text-opacity: 1;\\n  color: rgb(255 255 255 / var(--tw-text-opacity, 1));\\n} #scenario-test-root .focus\\\\:border-emerald-500:focus {\\n  --tw-border-opacity: 1;\\n  border-color: rgb(16 185 129 / var(--tw-border-opacity, 1));\\n} #scenario-test-root .focus\\\\:outline-none:focus {\\n  outline: 2px solid transparent;\\n  outline-offset: 2px;\\n} #scenario-test-root .focus\\\\:ring-1:focus {\\n  --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);\\n  --tw-ring-shadow: var(--tw-ring-inset) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color);\\n  box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000);\\n} #scenario-test-root .focus\\\\:ring-emerald-500:focus {\\n  --tw-ring-opacity: 1;\\n  --tw-ring-color: rgb(16 185 129 / var(--tw-ring-opacity, 1));\\n} #scenario-test-root :is(.group:hover .group-hover\\\\:text-emerald-700) {\\n  --tw-text-opacity: 1;\\n  color: rgb(4 120 87 / var(--tw-text-opacity, 1));\\n} #scenario-test-root :is(.group:hover .group-hover\\\\:text-slate-500) {\\n  --tw-text-opacity: 1;\\n  color: rgb(100 116 139 / var(--tw-text-opacity, 1));\\n} #scenario-test-root :is(.group:hover .group-hover\\\\:text-slate-600) {\\n  --tw-text-opacity: 1;\\n  color: rgb(71 85 105 / var(--tw-text-opacity, 1));\\n} #scenario-test-root :is(.group:hover .group-hover\\\\:text-slate-950) {\\n  --tw-text-opacity: 1;\\n  color: rgb(2 6 23 / var(--tw-text-opacity, 1));\\n} @media (min-width: 640px) {\\n\\n  #scenario-test-root .sm\\\\:mt-0 {\\n    margin-top: 0px;\\n  }\\n\\n  #scenario-test-root .sm\\\\:flex {\\n    display: flex;\\n  }\\n\\n  #scenario-test-root .sm\\\\:hidden {\\n    display: none;\\n  }\\n\\n  #scenario-test-root .sm\\\\:max-w-xl {\\n    max-width: 36rem;\\n  }\\n\\n  #scenario-test-root .sm\\\\:grid-cols-\\\\[120px_1fr\\\\] {\\n    grid-template-columns: 120px 1fr;\\n  }\\n} @media (min-width: 768px) {\\n\\n  #scenario-test-root .md\\\\:mt-0 {\\n    margin-top: 0px;\\n  }\\n\\n  #scenario-test-root .md\\\\:w-auto {\\n    width: auto;\\n  }\\n\\n  #scenario-test-root .md\\\\:grid-cols-2 {\\n    grid-template-columns: repeat(2, minmax(0, 1fr));\\n  }\\n\\n  #scenario-test-root .md\\\\:gap-0 {\\n    gap: 0px;\\n  }\\n\\n  #scenario-test-root :is(.md\\\\:divide-x > :not([hidden]) ~ :not([hidden])) {\\n    --tw-divide-x-reverse: 0;\\n    border-right-width: calc(1px * var(--tw-divide-x-reverse));\\n    border-left-width: calc(1px * calc(1 - var(--tw-divide-x-reverse)));\\n  }\\n\\n  #scenario-test-root .md\\\\:pl-6 {\\n    padding-left: 1.5rem;\\n  }\\n\\n  #scenario-test-root .md\\\\:pr-6 {\\n    padding-right: 1.5rem;\\n  }\\n} @media (min-width: 1024px) {\\n\\n  #scenario-test-root .lg\\\\:w-\\\\[80\\\\%\\\\] {\\n    width: 80%;\\n  }\\n} @media (min-width: 1280px) {\\n\\n  #scenario-test-root .xl\\\\:max-h-\\\\[calc\\\\(100vh-52px\\\\)\\\\] {\\n    max-height: calc(100vh - 52px);\\n  }\\n\\n  #scenario-test-root .xl\\\\:grid-cols-\\\\[minmax\\\\(164px\\\\2c 1fr\\\\)_minmax\\\\(500px\\\\2c 3\\\\.18fr\\\\)_minmax\\\\(280px\\\\2c 1\\\\.75fr\\\\)\\\\] {\\n    grid-template-columns: minmax(164px,1fr) minmax(500px,3.18fr) minmax(280px,1.75fr);\\n  }\\n}';
 
   // src/browser/app.js
   function resolveMount(mount) {
@@ -76953,8 +77721,13 @@ async function runCommand(args) {
   const config = loadConfigFile(configPath, node_exports);
   const envGlobals = parseGlobalsEnv();
   const environment = selectEnvironment(config, args.env);
-  const entries = args.all ? config.scenarios : config.scenarios.filter((item) => [item.id, item.name, item.url].includes(args.scenario || config.scenarios[0]?.id));
-  if (!entries.length) throw new Error(args.scenario ? `\u672A\u627E\u5230\u573A\u666F: ${args.scenario}` : "\u914D\u7F6E\u4E2D\u6CA1\u6709\u573A\u666F");
+  const entries = args.all ? config.scenarios.filter((item) => !item.manual) : config.scenarios.filter((item) => [item.id, item.name, item.url].includes(args.scenario || config.scenarios[0]?.id));
+  if (!entries.length) {
+    if (args.all && config.scenarios.length > 0 && config.scenarios.every((item) => item.manual)) {
+      throw new Error("\u914D\u7F6E\u4E2D\u7684\u573A\u666F\u5168\u90E8\u6807\u8BB0\u4E3A manual:true\uFF0C--all \u9ED8\u8BA4\u6392\u9664\u624B\u52A8\u573A\u666F\uFF1B\u8BF7\u4F7F\u7528 --scenario <id> \u663E\u5F0F\u6267\u884C");
+    }
+    throw new Error(args.scenario ? `\u672A\u627E\u5230\u573A\u666F: ${args.scenario}` : "\u914D\u7F6E\u4E2D\u6CA1\u6709\u53EF\u81EA\u52A8\u6267\u884C\u7684\u573A\u666F");
+  }
   const plugins = await loadPlugins(config, configDir, { allowExternalPlugins: args.allowExternalPlugins });
   const adapters = { xlsx: createXlsxAdapter({ workspace: configDir }) };
   for (const plugin of plugins) Object.assign(adapters, plugin?.adapters || {});
@@ -76971,7 +77744,9 @@ async function runCommand(args) {
   };
   if (!baseOptions.baseUrl) throw new Error("\u7F3A\u5C11 Base URL\uFF0C\u8BF7\u914D\u7F6E\u73AF\u5883\u6216\u4F20\u5165 --base-url");
   let total = 0;
-  let failed = 0;
+  let passedTotal = 0;
+  let failedTotal = 0;
+  let skippedTotal = 0;
   for (const entry of entries) {
     if (!entry.url) throw new Error(`\u573A\u666F ${entry.id} \u7F3A\u5C11 url`);
     const scenarioPath = import_node_path5.default.isAbsolute(entry.url) ? entry.url : import_node_path5.default.resolve(configDir, entry.url);
@@ -76982,8 +77757,11 @@ async function runCommand(args) {
     const report = await createEngine(baseOptions).runScenario(scenario, {
       ...baseOptions,
       async onStep(result) {
-        const mark = result.passed ? "PASS" : "FAIL";
+        const mark = result.skipped ? "SKIP" : result.passed ? "PASS" : "FAIL";
         console.log(`[${mark}] ${result.name} ${result.method} ${result.path} -> ${result.status} (${formatDuration(result.duration)})`);
+        for (const warning of result.warnings || []) {
+          console.log(`  [WARN] ${warning}`);
+        }
         for (const assertion of result.assertions.filter((item) => !item.passed)) {
           console.log(`  - ${assertion.name}: expected=${JSON.stringify(assertion.expected)} actual=${JSON.stringify(assertion.actual)}`);
         }
@@ -76993,12 +77771,19 @@ async function runCommand(args) {
       await plugin?.afterScenario?.(report, { config, configDir, entry, environment, scenario });
     }
     total += report.planned;
-    failed += report.failed + (report.planned - report.executed);
-    console.log(`Summary: ${report.executed - report.failed}/${report.executed} executed steps passed (${report.executed}/${report.planned} executed)`);
+    passedTotal += report.passedSteps;
+    failedTotal += report.failed + (report.planned - report.executed - report.skipped);
+    skippedTotal += report.skipped;
+    console.log(`Summary: passed=${report.passedSteps} failed=${report.failed} skipped=${report.skipped} executed=${report.executed}/${report.planned} planned (\u72B6\u6001 ${report.status})`);
   }
   console.log(`
-Overall: ${total - failed}/${total} passed`);
-  if (failed) process.exitCode = 1;
+Overall: ${passedTotal}/${total} passed`);
+  if (failedTotal) process.exitCode = 1;
+  if (args.failOnSkip && skippedTotal > 0) {
+    console.log(`
+--fail-on-skip \u5DF2\u5F00\u542F\uFF0C\u5B58\u5728 ${skippedTotal} \u4E2A SKIP \u6B65\u9AA4\uFF0C\u9000\u51FA\u7801\u7F6E\u4E3A 1`);
+    process.exitCode = 1;
+  }
 }
 function safeFile(root, relativePath) {
   const candidate = import_node_path5.default.resolve(root, relativePath);
@@ -77024,7 +77809,9 @@ async function serveCommand(args) {
       const pathname = decodeURIComponent(new URL(request.url, "http://127.0.0.1").pathname);
       let filePath;
       if (pathname === "/__scenario-test__/scenario-test.umd.js") filePath = import_node_path5.default.join(libraryDist, "scenario-test.umd.js");
-      else {
+      else if (pathname === "/dist/scenario-test.umd.js") {
+        filePath = import_node_path5.default.join(libraryDist, "scenario-test.umd.js");
+      } else {
         const relativePath = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
         filePath = safeFile(workspace, relativePath);
       }

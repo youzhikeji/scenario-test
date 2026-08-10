@@ -235,7 +235,31 @@ const legacyCore = (function (globalRoot) {
     // 断言定义（assertions 数组元素）支持以下取值：
     //   target: 'status' | header: 'X-Foo' | from: 'vars' | 'headers' | 'bodyText' | 'body'(默认)
     //   path:   按 getByPath 语法定位字段，如 'data.list[0].id'
-    //   判定:   exists / equals / includes / matches / oneOf
+    //   判定:   exists / equals / notEquals / includes / matches / oneOf / gt / gte / lt / lte
+    //   元数据: name / path / from / target / header / implicit
+    // 操作符名单与 Node src/core.js 保持语义一致，禁止单端新增操作符。
+
+    var ASSERTION_OPERATORS = ['exists', 'equals', 'includes', 'matches', 'oneOf', 'notEquals', 'gt', 'gte', 'lt', 'lte'];
+    var ASSERTION_META_KEYS = ['name', 'path', 'from', 'target', 'header', 'implicit'];
+
+    function validateAssertion(def, context) {
+        var where = context || '';
+        var prefix = where ? where + '断言无效' : '断言无效';
+        if (!isPlainObject(def)) throw new TypeError(prefix + ': 断言必须是对象');
+        var keys = Object.keys(def);
+        var operators = keys.filter(function (key) { return ASSERTION_OPERATORS.indexOf(key) >= 0; });
+        var unknown = keys.filter(function (key) {
+            return ASSERTION_OPERATORS.indexOf(key) < 0 && ASSERTION_META_KEYS.indexOf(key) < 0;
+        });
+        if (unknown.length) {
+            throw new TypeError(prefix + ': 包含未知键 ' + unknown.map(function (key) { return '"' + key + '"'; }).join(', ') +
+                '，允许的元数据键为 ' + ASSERTION_META_KEYS.join('/') + '，操作符为 ' + ASSERTION_OPERATORS.join('/'));
+        }
+        if (!operators.length) {
+            throw new TypeError(prefix + ': 必须至少包含一个操作符（' + ASSERTION_OPERATORS.join('/') + '）');
+        }
+        return def;
+    }
 
     function assertionActual(def, response, runtime) {
         if (def.target === 'status') return response.status;
@@ -246,7 +270,9 @@ const legacyCore = (function (globalRoot) {
         return def.path ? getByPath(response.body, def.path) : response.body;
     }
 
-    function evaluateAssertion(def, response, runtime) {
+    function evaluateAssertion(def, response, runtime, context) {
+        // 执行期也校验：防止插件 transform 之后产生非法断言定义
+        validateAssertion(def, context);
         var actual = assertionActual(def, response, runtime);
         var expected;
         var passed = true;
@@ -260,6 +286,10 @@ const legacyCore = (function (globalRoot) {
         if (def.equals !== undefined) {
             expected = resolve(clone(def.equals), runtime);
             passed = passed && deepEqual(actual, expected);
+        }
+        if (def.notEquals !== undefined) {
+            expected = resolve(clone(def.notEquals), runtime);
+            passed = passed && !deepEqual(actual, expected);
         }
         if (def.includes !== undefined) {
             expected = resolve(def.includes, runtime);
@@ -277,16 +307,28 @@ const legacyCore = (function (globalRoot) {
             expected = resolve(clone(def.oneOf), runtime);
             passed = passed && expected.some(function (item) { return deepEqual(actual, item); });
         }
+        ['gt', 'gte', 'lt', 'lte'].forEach(function (op) {
+            if (!Object.prototype.hasOwnProperty.call(def, op)) return;
+            expected = resolve(def[op], runtime);
+            // 只接受有限 number，不做字符串隐式转换；类型不符时断言失败而非抛异常
+            var comparable = typeof actual === 'number' && isFinite(actual)
+                && typeof expected === 'number' && isFinite(expected);
+            if (!comparable) { passed = false; return; }
+            if (op === 'gt') passed = passed && actual > expected;
+            else if (op === 'gte') passed = passed && actual >= expected;
+            else if (op === 'lt') passed = passed && actual < expected;
+            else passed = passed && actual <= expected;
+        });
 
         return {
-            name: def.name || '断言',
+            name: def.name || def.path || '断言',
             passed: !!passed,
             actual: actual,
             expected: expected
         };
     }
 
-    function buildAssertions(step, response, runtime) {
+    function buildAssertions(step, response, runtime, context) {
         var defs = Array.isArray(step.assertions) ? step.assertions.slice() : [];
         // step.status 是简写：等价于一条 target=status 的断言
         if (step.status !== undefined && !defs.some(function (item) {
@@ -296,7 +338,13 @@ const legacyCore = (function (globalRoot) {
         } else if (step.status === undefined && defs.length === 0) {
             defs.push({ name: '返回 HTTP 2xx', target: 'status', matches: '^2\\d\\d$', implicit: true });
         }
-        return defs.map(function (def) { return evaluateAssertion(def, response, runtime); });
+        return defs.map(function (def, index) {
+            var stepContext = context || {};
+            return evaluateAssertion(def, response, runtime, {
+                stepName: stepContext.stepName,
+                assertionNo: index + 1
+            });
+        });
     }
 
     // ===== 提取 =====
@@ -304,20 +352,52 @@ const legacyCore = (function (globalRoot) {
     // 将响应中的字段写入 runtime.vars，供后续步骤通过 {{vars.xxx}} 引用
     // 提取定义（extract 数组元素）支持：
     //   target: 'status' | header: 'X-Foo' | path: 'data.id'（默认从 body 提取）
+    //   required: true 且路径不存在时当前步骤失败（failures 由调用方并入步骤断言）
+    //   required 默认 false：路径不存在保持兼容（变量为 undefined），产生 warning
+
+    var RESERVED_VARS = ['runId', 'runNo'];
+
+    function assertNotReservedVar(name, label) {
+        if (RESERVED_VARS.indexOf(name) >= 0) {
+            throw new Error((label || '变量') + ' "' + name + '" 是运行时自动生成的保留变量，禁止声明或覆盖');
+        }
+    }
+
+    function assertNoReservedVars(source, label) {
+        Object.keys(source || {}).forEach(function (name) {
+            assertNotReservedVar(name, label);
+        });
+    }
 
     function applyExtract(step, response, runtime) {
+        var warnings = [];
+        var failures = [];
         (step.extract || []).forEach(function (item) {
             if (!item || !item.name) return;
+            assertNotReservedVar(item.name, 'extract 变量');
+            var source;
             if (item.target === 'status') {
-                runtime.vars[item.name] = response.status;
-                return;
+                source = response.status;
+            } else if (item.header) {
+                source = headerValue(response.headers, item.header);
+            } else {
+                source = item.path ? getByPath(response.body, item.path) : response.body;
             }
-            if (item.header) {
-                runtime.vars[item.name] = headerValue(response.headers, item.header);
-                return;
+            if (source === undefined) {
+                if (item.required === true) {
+                    failures.push({
+                        name: '提取 ' + item.name + '（路径不存在）',
+                        passed: false,
+                        actual: undefined,
+                        expected: '路径 ' + (item.path || '(整个响应)') + ' 存在'
+                    });
+                } else {
+                    warnings.push('提取变量 ' + item.name + '：路径 ' + (item.path || '(整个响应)') + ' 不存在，变量值为 undefined（required 未开启，不影响执行）');
+                }
             }
-            runtime.vars[item.name] = item.path ? getByPath(response.body, item.path) : response.body;
+            runtime.vars[item.name] = source;
         });
+        return { warnings: warnings, failures: failures };
     }
 
     // ===== MD5 哈希 =====
@@ -459,9 +539,13 @@ const legacyCore = (function (globalRoot) {
         buildUrl: buildUrl,
         parseBody: parseBody,
         assertionActual: assertionActual,
+        validateAssertion: validateAssertion,
         evaluateAssertion: evaluateAssertion,
         buildAssertions: buildAssertions,
         applyExtract: applyExtract,
+        RESERVED_VARS: RESERVED_VARS,
+        assertNotReservedVar: assertNotReservedVar,
+        assertNoReservedVars: assertNoReservedVars,
         esc: esc,
         fmt: fmt,
         safeJson: safeJson,

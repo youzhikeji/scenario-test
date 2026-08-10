@@ -1,5 +1,7 @@
 import {
     applyExtract,
+    assertNoReservedVars,
+    assertNotReservedVar,
     buildAssertions,
     buildUrl,
     clone,
@@ -62,12 +64,16 @@ function createRunIdentifiers() {
 
 function buildGeneratedVars(scenario, baseVars, environmentVariables, options = {}) {
     const identifiers = createRunIdentifiers();
+    // 保留变量冲突在使用前尽早报错：config/options vars 不得声明 runId/runNo
+    assertNoReservedVars(scenario.vars, "场景 vars");
+    assertNoReservedVars(baseVars, "配置/选项 vars");
     const vars = { ...(scenario.vars || {}), ...(baseVars || {}), ...identifiers };
 
     // ✅ 是否在错误消息中显示详细信息（仅开发模式）
     const verboseErrors = options.verboseErrors || process.env.SCENARIO_VERBOSE_ERRORS === "true";
 
     for (const [name, environmentName] of Object.entries(scenario.envVars || {})) {
+        assertNotReservedVar(name, `场景 envVars`);
         const value = environmentVariables?.[environmentName] ?? vars[name];
         if (value === undefined || value === null || value === "") {
             // ✅ 生产模式不泄露环境变量名
@@ -89,6 +95,7 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables, options = 
     }
     for (const definition of scenario.generatedVars || []) {
         if (!definition?.name) continue;
+        assertNotReservedVar(definition.name, "generatedVars");
         if (definition.type === "timestamp") vars[definition.name] = Date.now();
         else if (definition.type === "uuidHex") {
             if (!globalThis.crypto?.randomUUID) throw new Error("当前环境不支持 crypto.randomUUID");
@@ -314,7 +321,7 @@ export function createEngine(engineOptions = {}) {
         };
         if (step.when !== undefined) {
             const shouldRun = typeof step.when === "object"
-                ? evaluateAssertion(step.when, { status: 0, headers: {}, body: null, bodyText: "" }, runtime).passed
+                ? evaluateAssertion(step.when, { status: 0, headers: {}, body: null, bodyText: "" }, runtime, { stepName: step.name }).passed
                 : Boolean(resolve(step.when, runtime));
             if (!shouldRun) {
                 return {
@@ -326,6 +333,7 @@ export function createEngine(engineOptions = {}) {
                     passed: true,
                     skipped: true,
                     error: "",
+                    warnings: [],
                     assertions: [],
                     request: null,
                     response: null
@@ -334,6 +342,7 @@ export function createEngine(engineOptions = {}) {
         }
         let lastExecution;
         let assertions = [];
+        let stepWarnings = [];
         const retry = step.retryUntil || null;
         const totalAttempts = retry ? Number(retry.maxAttempts || 10) + 1 : 1;
         // ✅ 添加重试超时保护
@@ -357,8 +366,11 @@ export function createEngine(engineOptions = {}) {
                     : await executeHttp(step, runtime, options);
                 runtime.lastResponse = lastExecution.response;
                 runtime.lastResponseBody = lastExecution.response.body;
-                applyExtract(step, lastExecution.response, runtime);
-                assertions = buildAssertions(step, lastExecution.response, runtime);
+                const extractResult = applyExtract(step, lastExecution.response, runtime);
+                stepWarnings = extractResult.warnings;
+                assertions = buildAssertions(step, lastExecution.response, runtime, { stepName: step.name });
+                // required: true 且路径不存在 → 当前步骤失败
+                if (extractResult.failures.length) assertions.push(...extractResult.failures);
                 if (assertions.every((item) => item.passed) || attempt === totalAttempts) break;
 
                 // ✅ 确保最小重试间隔
@@ -374,6 +386,7 @@ export function createEngine(engineOptions = {}) {
                 duration: now() - startedAt,
                 passed: !failed,
                 error: failed?.name || "",
+                warnings: stepWarnings,
                 assertions,
                 request: lastExecution.request,
                 response: lastExecution.response
@@ -387,6 +400,7 @@ export function createEngine(engineOptions = {}) {
                 duration: now() - startedAt,
                 passed: false,
                 error: error?.message || String(error),
+                warnings: [],
                 assertions: [{ name: "步骤执行成功", passed: false, actual: error?.message || String(error), expected: "无异常" }],
                 request: null,
                 response: null
@@ -411,13 +425,21 @@ export function createEngine(engineOptions = {}) {
             if (!result.passed && scenario.failurePolicy !== "continue") break;
             if (runOptions.signal?.aborted) break;
         }
-        const failed = results.filter((item) => !item.passed).length;
+        // SKIP 可观测性：skipped 优先于 passed，绝不把 SKIP 计入 passedSteps/executed
+        const skipped = results.filter((item) => item.skipped).length;
+        const executed = results.length - skipped;
+        const failed = results.filter((item) => !item.skipped && !item.passed).length;
+        const passedSteps = results.filter((item) => !item.skipped && item.passed).length;
+        const status = failed > 0 ? "FAILED" : (executed === 0 ? "SKIPPED" : "PASSED");
         return {
             scenarioName: scenario.name,
             passed: failed === 0 && results.length === scenario.steps.length,
+            status,
             planned: scenario.steps.length,
-            executed: results.length,
+            executed,
+            passedSteps,
             failed,
+            skipped,
             results,
             vars: runtime.vars
         };
