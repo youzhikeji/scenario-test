@@ -15,6 +15,7 @@ import {
     resolve,
     resolveString
 } from "./core.js";
+import { contract } from "./contract.js";
 import { defineScenario, listAdapters } from "./registry.js";
 
 function now() {
@@ -96,6 +97,10 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables, options = 
     for (const definition of scenario.generatedVars || []) {
         if (!definition?.name) continue;
         assertNotReservedVar(definition.name, "generatedVars");
+        // 定义期（defineScenario）已校验类型枚举；这里防御性复查，防止插件 transform 后漂移
+        if (!contract.generatedVars.types.includes(definition.type)) {
+            throw new Error(`不支持的 generatedVars 类型: ${definition.type}`);
+        }
         if (definition.type === "timestamp") vars[definition.name] = Date.now();
         else if (definition.type === "uuidHex") {
             if (!globalThis.crypto?.randomUUID) throw new Error("当前环境不支持 crypto.randomUUID");

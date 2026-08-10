@@ -1,10 +1,14 @@
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
+import crypto from "node:crypto";
 import { pathToFileURL } from "node:url";
 import * as ScenarioTest from "./node.js";
 import { createXlsxAdapter, readWorkbookRows } from "./adapters/xlsx.js";
 import { DEFAULT_LIBRARY_URL, createProjectFiles } from "./init-templates.js";
+import { contract, CONTRACT_VERSION } from "./contract.js";
+import { buildCapabilities, renderCapabilitiesText } from "./capabilities.js";
+import { buildDoctorReport, renderDoctorText } from "./doctor.js";
 import { VERSION } from "./version.generated.js";
 import { validatePath } from "./utils/path-validator.js";
 import { mergeGlobals } from "./core.js";
@@ -15,31 +19,38 @@ function argumentValue(argv, index, option) {
     return value;
 }
 
+// 选项名单来自 contract.cli.options（唯一真相），避免 cli.js 手写第二份名单
+const FLAG_OPTIONS = new Map();
+const VALUE_OPTIONS = new Map();
+for (const [name, spec] of Object.entries(contract.cli.options)) {
+    const target = `--${name}`;
+    if (spec.kind === "flag") {
+        FLAG_OPTIONS.set(target, spec.prop);
+    } else {
+        VALUE_OPTIONS.set(target, { prop: spec.prop, spec });
+        for (const alias of spec.aliases || []) VALUE_OPTIONS.set(`--${alias}`, { prop: spec.prop, spec });
+    }
+}
+
 function parseArgs(argv) {
-    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", port: 4300, project: "", dir: "", libraryUrl: "", force: false, allowExternalPlugins: false, failOnSkip: false };
+    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", port: 4300, project: "", dir: "", libraryUrl: "", force: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false };
     let start = 0;
-    if (["run", "serve", "init"].includes(argv[0])) { args.command = argv[0]; start = 1; }
+    // 命令名单来自 contract.cli.commands
+    if (contract.cli.commands.includes(argv[0])) { args.command = argv[0]; start = 1; }
     let deprecatedAuthUsed = false;
     for (let index = start; index < argv.length; index += 1) {
         const item = argv[index];
-        if (item === "--config") args.config = argumentValue(argv, index++, item);
-        else if (item === "--scenario") args.scenario = argumentValue(argv, index++, item);
-        else if (item === "--env") args.env = argumentValue(argv, index++, item);
-        else if (item === "--base-url") args.baseUrl = argumentValue(argv, index++, item);
-        else if (["--token", "--authorization"].includes(item)) {
-            args.authorization = argumentValue(argv, index++, item);
-            deprecatedAuthUsed = true;
+        if (item === "--help" || item === "-h") { args.help = true; continue; }
+        const valueOption = VALUE_OPTIONS.get(item);
+        if (valueOption) {
+            const raw = argumentValue(argv, index++, item);
+            args[valueOption.prop] = valueOption.spec.parse === "number" ? Number(raw) : raw;
+            if (item === "--token" || item === "--authorization") deprecatedAuthUsed = true;
+            continue;
         }
-        else if (item === "--port") args.port = Number(argumentValue(argv, index++, item));
-        else if (item === "--project") args.project = argumentValue(argv, index++, item);
-        else if (item === "--dir") args.dir = argumentValue(argv, index++, item);
-        else if (item === "--library-url") args.libraryUrl = argumentValue(argv, index++, item);
-        else if (item === "--force") args.force = true;
-        else if (item === "--all") args.all = true;
-        else if (item === "--fail-on-skip") args.failOnSkip = true;
-        else if (item === "--allow-external-plugins") args.allowExternalPlugins = true;
-        else if (["--help", "-h"].includes(item)) args.help = true;
-        else if (item.startsWith("-")) throw new Error(`未知参数: ${item}`);
+        const flagProp = FLAG_OPTIONS.get(item);
+        if (flagProp) { args[flagProp] = true; continue; }
+        if (item.startsWith("-")) throw new Error(`未知参数: ${item}`);
         else if (!args.scenario && args.command === "run") args.scenario = item;
         else throw new Error(`无法识别的参数: ${item}`);
     }
@@ -76,10 +87,11 @@ function parseGlobalsEnv() {
         throw new Error("SCENARIO_GLOBALS 必须是合法的 JSON 数组，例如 [{\"type\":\"header\",\"name\":\"X-Token\",\"value\":\"abc\"}]");
     }
     if (!Array.isArray(parsed)) throw new Error("SCENARIO_GLOBALS 必须是 JSON 数组");
+    const types = contract.globals.types;
     return parsed.map((item, index) => {
-        if (!item || typeof item !== "object" || !["header", "cookie", "query"].includes(item.type)
+        if (!item || typeof item !== "object" || !types.includes(item.type)
             || typeof item.name !== "string" || !item.name.trim()) {
-            throw new Error(`SCENARIO_GLOBALS 第 ${index + 1} 项无效，格式应为 { type: "header|cookie|query", name, value }`);
+            throw new Error(`SCENARIO_GLOBALS 第 ${index + 1} 项无效，格式应为 { type: "${types.join("|")}", name, value }`);
         }
         return { type: item.type, name: item.name, value: item.value == null ? "" : String(item.value) };
     });
@@ -93,6 +105,8 @@ Usage:
   node scenario-test-cli.cjs run --config ./scenario.config.js --scenario health
   node scenario-test-cli.cjs serve --config ./scenario.config.js --port 4300
   node scenario-test-cli.cjs init --project D:\\project
+  node scenario-test-cli.cjs capabilities [--json]
+  node scenario-test-cli.cjs doctor --config ./scenario.config.js [--json]
 
 Options:
   --config <file>       场景配置文件
@@ -103,10 +117,18 @@ Options:
   --fail-on-skip        存在任何 SKIP 步骤时最终退出码为 1（默认 false）
   --port <number>       浏览器服务端口，默认 4300
   --allow-external-plugins  允许加载外部插件（有安全风险）
+  --json                capabilities/doctor 输出机器可读 JSON（stdout 纯净）
+
+能力发现命令:
+  capabilities          输出 DSL 能力清单（人类文本；--json 输出机器可读 JSON，
+                        内容与 dist/scenario-test-capabilities.json 一致）
+  doctor                项目静态体检：Node 版本、配置/场景加载、DSL 校验、
+                        manual 提示与 CLI/UMD/d.ts/capabilities/版本锁版本握手；
+                        有 FAIL 时退出码 1
 
 认证选项:
   环境变量 SCENARIO_AUTH       推荐方式，设置授权令牌
-  --authorization <v>          （已弃用）命令行传递令牌
+  --authorization <v>          （已弃用，仍兼容）命令行传递令牌
 
 全局参数选项（追加到每个请求）:
   环境变量 SCENARIO_GLOBALS    JSON 数组，如 [{"type":"header","name":"X-Token","value":"abc"}]
@@ -183,6 +205,72 @@ async function copyRuntimeBrowser(projectRoot, directory, libraryUrl, force) {
     return true;
 }
 
+// 框架管理文本产物（d.ts / capabilities.json）：优先复制 CLI 相邻同版文件，
+// 否则使用构建时注入 CLI 的当前版本内容（离线优先，不依赖网络与相邻目录）
+function copyFrameworkTextFile(projectRoot, directory, fileName, inlineContent, force) {
+    const target = path.resolve(projectRoot, directory, fileName);
+    if (fs.existsSync(target) && !force) return false;
+    const candidates = [
+        path.resolve(path.dirname(process.argv[1]), fileName),
+        path.resolve(path.dirname(process.argv[1]), "../dist", fileName)
+    ];
+    const source = candidates.find((candidate) => fs.existsSync(candidate));
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    if (source) {
+        fs.copyFileSync(source, target);
+        return true;
+    }
+    if (typeof inlineContent === "string" && inlineContent) {
+        fs.writeFileSync(target, inlineContent, "utf8");
+        return true;
+    }
+    throw new Error(`无法获得 ${fileName}：请使用构建后的 dist/scenario-test-cli.cjs 执行 init`);
+}
+
+function sha256File(filePath) {
+    return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+}
+
+// 项目版本锁（框架管理文件）：不存在则创建；已存在但版本与当前 CLI 不一致时更新
+// （init 负责维护版本锁，为未来 upgrade 命令建立所有权基础）。source 不写本机路径。
+function writeVersionLock(projectRoot, directory) {
+    const target = path.resolve(projectRoot, directory, ".scenario-test-version.json");
+    if (fs.existsSync(target)) {
+        try {
+            const existing = JSON.parse(fs.readFileSync(target, "utf8"));
+            if (existing.runtimeVersion === VERSION && existing.contractVersion === CONTRACT_VERSION) return false;
+        } catch {
+            // 版本锁损坏：重新生成
+        }
+    }
+    const files = {
+        cli: "scenario-test-cli.cjs",
+        umd: "scenario-test.umd.js",
+        dts: "scenario-test.d.ts",
+        capabilities: "scenario-test-capabilities.json"
+    };
+    const sha256 = {};
+    for (const fileName of Object.values(files)) {
+        const filePath = path.resolve(projectRoot, directory, fileName);
+        if (fs.existsSync(filePath)) sha256[fileName] = sha256File(filePath);
+    }
+    const lock = {
+        runtimeVersion: VERSION,
+        contractVersion: CONTRACT_VERSION,
+        files,
+        sha256,
+        source: {
+            type: "github-release",
+            repository: "youzhikeji/scenario-test",
+            channel: "https://github.com/youzhikeji/scenario-test/releases"
+        },
+        generatedBy: `scenario-test init v${VERSION}`
+    };
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, `${JSON.stringify(lock, null, 2)}\n`, "utf8");
+    return true;
+}
+
 async function initCommand(args) {
     const projectRoot = path.resolve(args.project || process.cwd());
     const directory = resolveInitDirectory(projectRoot, args.dir);
@@ -202,6 +290,21 @@ async function initCommand(args) {
     const runtimeBrowser = await copyRuntimeBrowser(projectRoot, directory, libraryUrl, args.force);
     if (runtimeBrowser === true) created.push(browserPath);
     else if (runtimeBrowser === false) skipped.push(browserPath);
+    const dtsPath = `${directory}/scenario-test.d.ts`;
+    if (copyFrameworkTextFile(projectRoot, directory, "scenario-test.d.ts", typeof __SCENARIO_TEST_DTS__ === "string" ? __SCENARIO_TEST_DTS__ : "", args.force)) {
+        created.push(dtsPath);
+    } else {
+        skipped.push(dtsPath);
+    }
+    const capabilitiesPath = `${directory}/scenario-test-capabilities.json`;
+    if (copyFrameworkTextFile(projectRoot, directory, "scenario-test-capabilities.json", typeof __SCENARIO_TEST_CAPABILITIES__ === "string" ? __SCENARIO_TEST_CAPABILITIES__ : "", args.force)) {
+        created.push(capabilitiesPath);
+    } else {
+        skipped.push(capabilitiesPath);
+    }
+    const lockPath = `${directory}/.scenario-test-version.json`;
+    if (writeVersionLock(projectRoot, directory)) created.push(lockPath);
+    else skipped.push(lockPath);
     console.log(`已初始化项目: ${projectRoot}`);
     if (created.length) console.log(`已创建: ${created.join(", ")}`);
     if (skipped.length) console.log(`已保留现有文件: ${skipped.join(", ")}`);
@@ -398,11 +501,36 @@ async function serveCommand(args) {
     });
 }
 
+function capabilitiesCommand(args) {
+    const capabilities = buildCapabilities(contract);
+    if (args.json) {
+        // JSON 模式 stdout 纯净：只输出合法 JSON，不混入任何日志
+        process.stdout.write(`${JSON.stringify(capabilities, null, 2)}\n`);
+    } else {
+        console.log(renderCapabilitiesText(capabilities));
+    }
+}
+
+function doctorCommand(args) {
+    const configPath = resolveConfigPath(args.config);
+    const configDir = path.dirname(configPath);
+    const report = buildDoctorReport({ configPath, api: ScenarioTest, configDir });
+    if (args.json) {
+        // JSON 模式 stdout 纯净：只输出合法 JSON
+        process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    } else {
+        console.log(renderDoctorText(report));
+    }
+    process.exitCode = report.exitCode;
+}
+
 async function main() {
     const args = parseArgs(process.argv.slice(2));
     if (args.help) { printHelp(); return; }
     if (args.command === "init") await initCommand(args);
     else if (args.command === "serve") await serveCommand(args);
+    else if (args.command === "capabilities") capabilitiesCommand(args);
+    else if (args.command === "doctor") doctorCommand(args);
     else await runCommand(args);
 }
 

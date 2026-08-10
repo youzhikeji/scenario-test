@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
+import { CONTRACT_VERSION } from "../src/index.js";
+import { VERSION } from "../src/version.generated.js";
 
 const root = path.resolve(import.meta.dirname, "..");
 
@@ -20,6 +22,27 @@ test("init 创建项目入口，且默认不覆盖现有文件", () => {
         assert.match(fs.readFileSync(configPath, "utf8"), /scenarios: \[]/);
         assert.equal(fs.existsSync(path.join(project, "scenario-test", "scenarios", "health.js")), false);
         assert.match(fs.readFileSync(path.join(project, "scenario-test", "scenario-test.umd.js"), "utf8"), /ScenarioTest/);
+        // 框架管理产物：d.ts、能力清单、版本锁
+        const dts = fs.readFileSync(path.join(project, "scenario-test", "scenario-test.d.ts"), "utf8");
+        assert.match(dts, /export as namespace ScenarioTest;/);
+        assert.match(dts, /AssertionOperator/);
+        const capabilities = JSON.parse(fs.readFileSync(path.join(project, "scenario-test", "scenario-test-capabilities.json"), "utf8"));
+        assert.equal(capabilities.schema, "scenario-test-capabilities");
+        assert.equal(capabilities.version, VERSION);
+        assert.equal(capabilities.contractVersion, CONTRACT_VERSION);
+        const versionLockPath = path.join(project, "scenario-test", ".scenario-test-version.json");
+        const versionLock = JSON.parse(fs.readFileSync(versionLockPath, "utf8"));
+        assert.equal(typeof versionLock.runtimeVersion, "string");
+        assert.equal(typeof versionLock.contractVersion, "number");
+        assert.deepEqual(Object.keys(versionLock.files).sort(), ["capabilities", "cli", "dts", "umd"]);
+        // src/cli.js 直跑时 CLI 不复制到项目（需 dist CLI），因此 cli 的 SHA256 可能缺失；
+        // 实际写入的产物（umd/dts/capabilities）必须全部记录 SHA256
+        for (const name of ["scenario-test.umd.js", "scenario-test.d.ts", "scenario-test-capabilities.json"]) {
+            assert.equal(typeof versionLock.sha256[name], "string", `版本锁缺少 ${name} 的 SHA256`);
+        }
+        assert.equal(versionLock.source.type, "github-release");
+        assert.equal(versionLock.source.repository, "youzhikeji/scenario-test");
+        assert.doesNotMatch(JSON.stringify(versionLock.source), /^[A-Za-z]:[\\/]|[\\/]workspace[\\/]/, "版本锁 source 不得包含本机路径");
         const aiPrompt = fs.readFileSync(path.join(project, "scenario-test", "AI_SCENARIO_PROMPT.md"), "utf8");
         assert.match(aiPrompt, /AI 场景生成 Prompt/);
         assert.match(aiPrompt, /required: true/);
@@ -76,6 +99,51 @@ test("init 支持自定义项目内场景目录", () => {
         assert.equal(result.status, 0, result.stderr);
         assert.equal(fs.existsSync(path.join(project, "scenario-test", "index.html")), true);
         assert.equal(fs.existsSync(path.join(project, "dev", "场景测试", "index.html")), false);
+    } finally {
+        fs.rmSync(project, { recursive: true, force: true });
+    }
+});
+
+test("init 重跑：版本锁版本一致时保留，不覆盖项目配置/场景", () => {
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-init-lock-"));
+    try {
+        const first = spawnSync(process.execPath, [path.join(root, "src/cli.js"), "init", "--project", project], { encoding: "utf8" });
+        assert.equal(first.status, 0, first.stderr);
+        const dir = path.join(project, "scenario-test");
+        const lockPath = path.join(dir, ".scenario-test-version.json");
+        const lockBefore = fs.readFileSync(lockPath, "utf8");
+        const configPath = path.join(dir, "scenario.config.js");
+        fs.writeFileSync(configPath, "// 用户配置\n", "utf8");
+        fs.mkdirSync(path.join(dir, "scenarios"), { recursive: true });
+        fs.writeFileSync(path.join(dir, "scenarios/user.js"), "// 用户场景\n", "utf8");
+        const second = spawnSync(process.execPath, [path.join(root, "src/cli.js"), "init", "--project", project], { encoding: "utf8" });
+        assert.equal(second.status, 0, second.stderr);
+        assert.equal(fs.readFileSync(lockPath, "utf8"), lockBefore, "版本一致时版本锁不应被重写");
+        assert.equal(fs.readFileSync(configPath, "utf8"), "// 用户配置\n", "项目配置不得被覆盖");
+        assert.equal(fs.readFileSync(path.join(dir, "scenarios/user.js"), "utf8"), "// 用户场景\n", "项目场景不得被覆盖");
+    } finally {
+        fs.rmSync(project, { recursive: true, force: true });
+    }
+});
+
+test("init 重跑：版本锁版本不一致时更新（框架管理文件），项目文件仍保留", () => {
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-init-lockup-"));
+    try {
+        const first = spawnSync(process.execPath, [path.join(root, "src/cli.js"), "init", "--project", project], { encoding: "utf8" });
+        assert.equal(first.status, 0, first.stderr);
+        const dir = path.join(project, "scenario-test");
+        const lockPath = path.join(dir, ".scenario-test-version.json");
+        const lock = JSON.parse(fs.readFileSync(lockPath, "utf8"));
+        lock.runtimeVersion = "0.4.0";
+        fs.writeFileSync(lockPath, JSON.stringify(lock, null, 2), "utf8");
+        const configPath = path.join(dir, "scenario.config.js");
+        fs.writeFileSync(configPath, "// 用户配置\n", "utf8");
+        const second = spawnSync(process.execPath, [path.join(root, "src/cli.js"), "init", "--project", project], { encoding: "utf8" });
+        assert.equal(second.status, 0, second.stderr);
+        const updated = JSON.parse(fs.readFileSync(lockPath, "utf8"));
+        assert.equal(updated.runtimeVersion, VERSION);
+        assert.equal(updated.contractVersion, CONTRACT_VERSION);
+        assert.equal(fs.readFileSync(configPath, "utf8"), "// 用户配置\n", "项目配置不得被覆盖");
     } finally {
         fs.rmSync(project, { recursive: true, force: true });
     }

@@ -2,6 +2,63 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0] - 2026-08-10
+
+### ✨ 三方能力发现闭环
+
+1. **DSL Contract 单一真相（`src/contract.js`）**
+   - 新增不可变机器可读 `contract`（contractVersion 从 1 开始；runtimeVersion 复用 `version.generated.js` 的 VERSION）。
+   - 断言元数据键与操作符（含说明与类型约束，数值比较操作符 `gt/gte/lt/lte` 标注 `finiteNumber`）、when 来源（仅 vars）、extract 字段/来源/required 语义、保留变量 `runId/runNo`、generatedVars 类型、config/scenario 关键字段（含 manual）、CLI 命令与参数均收敛到 contract。
+   - `core.js` / `registry.js` / `engine.js` / `cli.js` 改为消费 contract，不再手写操作符、保留变量、when 来源等名单。
+   - `defineScenario` 新增 generatedVars 类型定义期校验（原为运行期报错，合法场景行为不变）。
+   - browser legacy 因架构自包含无法直接共享名单，已暴露 `ASSERTION_OPERATORS / ASSERTION_META_KEYS / RESERVED_VARS` 并新增一致性测试，禁止静默漂移。
+   - 不引入 JSON Schema（本项目配置/场景是可执行 JS）。
+
+2. **CLI `capabilities` 命令**
+   - `node scenario-test-cli.cjs capabilities` 输出人类文本能力清单；`capabilities --json` stdout 纯净输出合法 JSON。
+   - 构建产物 `dist/scenario-test-capabilities.json` 与 `capabilities --json` 同源（同一份 contract 投影），不维护第二套 JSON 源。
+   - `--help` 更新展示 capabilities 与 doctor。
+
+3. **CLI `doctor` 命令 + 项目版本锁**
+   - `node scenario-test-cli.cjs doctor --config scenario.config.js [--json]`：复用现有 loader/defineConfig/defineScenario/path validation，不另写 DSL 校验器。
+   - 检查 Node 版本（engines）、配置加载、场景清单 id/url 与文件存在性、场景文件加载与注册 id 匹配、manual 信息提示、CLI/UMD/d.ts/capabilities/版本锁版本一致性。
+   - 汇总所有可继续检查的错误；有 FAIL 退出码 1，仅 WARN/INFO 退出码 0；每条 FAIL/WARN 给出“在哪里、为什么、如何修”。
+   - init 新增框架管理文件 `.scenario-test-version.json`：记录 runtimeVersion、contractVersion、CLI/UMD/d.ts/capabilities 预期文件名、产物 SHA256、source/release 信息（不写本机路径）。
+   - 新项目 init 写入版本锁；既有项目缺版本锁时 doctor 仅 WARN 并给出补齐提示；doctor 只校验本地固定版本，不联网检查最新版本。
+   - 不实现 upgrade 命令，仅建立所有权与版本锁基础。
+
+4. **`scenario-test.d.ts` 零安装类型声明**
+   - 从 contract 投影生成 `dist/scenario-test.d.ts`（操作符/保留变量/类型名单由脚本生成，禁止手工复制漂移；构建/测试校验一致）。
+   - 覆盖 ScenarioConfig / Environment / ScenarioListItem(manual) / ScenarioDefinition / Step / RetryUntil / Assertion / ExtractDefinition / WhenDefinition 与 createApp / createEngine / defineConfig / defineScenario / registerConfig / registerScenario 等公共导出；UMD 全局通过 `export as namespace ScenarioTest` 声明。
+   - init 复制 d.ts 到项目场景测试目录，纯 JS 项目可通过 `// @ts-check` + `/** @type {import('./scenario-test').ScenarioDefinition} */` 获得 IDE 提示；消费者无需 npm install。
+   - package.json 增加 `types` 指向 dist，不新增破坏深层导入的 `exports` 字段。
+
+5. **文档与 init 投影**
+   - `docs/AI_INSTALL_PROMPT.md` 更新到 v0.5.0 固定版本 URL；examples 索引版本标记同步；GitLab 文档标注内部/历史，明确 GitHub Release 是对外正式渠道。
+   - 澄清 `--authorization` 仍兼容但已弃用（不宣称 0.4.0 已移除）。
+   - init 生成 AI_SCENARIO_PROMPT.md / SCENARIO_PATTERNS.md / README.md 的能力名单从 contract 投影，不再手抄操作符名单。
+   - 文件所有权：runtime / d.ts / capabilities / 版本锁 / AI Prompt / Patterns 属框架管理；scenario.config.js、scenarios/*.js 属项目管理（init 默认不覆盖，本轮不新增覆盖升级行为）。
+
+6. **发布资产**
+   - 未来 Release 文件清单新增 `scenario-test.d.ts` 与 `scenario-test-capabilities.json`（共 7 个产物；版本锁由 init 生成，非独立发布产物）。
+
+### 🧪 Tests
+
+- `tests/contract.test.js`：contract 与 core/legacy 操作符、保留变量、元数据键一致；contract.engines 与 package.json engines 一致。
+- `tests/capabilities.test.js`：capabilities 文本与 JSON 输出；`--json` stdout 可解析且纯净；与 build 产物 `dist/scenario-test-capabilities.json` 一致。
+- `tests/doctor.test.js`：健康项目全 PASS；未知操作符场景 FAIL；多文件错误汇总；无版本锁 WARN；版本不一致 FAIL；manual INFO；退出码语义。
+- `tests/dts.test.js`：d.ts 包含 contract 全部操作符/保留变量/类型名单；用全局 `tsc --noEmit` 验证最小 JS/TS 用例（不新增 devDependency）。
+- `tests/init.test.js`：init 写入 d.ts/capabilities/版本锁；重跑默认不覆盖项目配置/场景；版本锁在版本一致时保留、不一致时更新。
+
+### Migration Guide: v0.4.x → v0.5.0
+
+1. 无 breaking changes；0.4.0 的 DSL 与 CLI 行为保持不变（`--authorization` 仍兼容）。
+2. 新项目 init 会自动写入 d.ts / capabilities.json / `.scenario-test-version.json`。
+3. 既有项目升级：使用新版 CLI 对项目执行 `init`（不传 `--force`，不会覆盖项目文件），再运行 `doctor` 验证；缺少版本锁时 doctor 会 WARN 并提示补齐。
+4. `defineScenario` 对 generatedVars 的未知 type 报错时机从运行期提前到定义期（非法配置更早暴露）。
+
+---
+
 ## [0.4.0] - 2026-08-10
 
 ### ⚠️ Breaking Changes

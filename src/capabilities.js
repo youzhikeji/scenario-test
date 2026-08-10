@@ -1,0 +1,108 @@
+// capabilities 构建与渲染 —— 唯一 JSON 源是 src/contract.js
+//
+// - buildCapabilities(contract) 产出稳定、可序列化的能力清单对象；
+//   文本输出与 dist/scenario-test-capabilities.json 均从该对象投影。
+// - JSON 结构直接来自 contract，不维护第二套 JSON 源。
+import { contract, CONTRACT_VERSION } from "./contract.js";
+
+export function buildCapabilities(inputContract = contract) {
+    const { assertions, when, extract, reservedVars, generatedVars, globals, config, scenario, cli } = inputContract;
+    return {
+        schema: "scenario-test-capabilities",
+        version: inputContract.runtimeVersion,
+        contractVersion: inputContract.contractVersion,
+        assertions: {
+            operators: Object.fromEntries(
+                Object.entries(assertions.operators).map(([name, meta]) => [name, { description: meta.description, valueType: meta.valueType }])
+            ),
+            metaKeys: [...assertions.metaKeys],
+            numericOperators: [...assertions.numericOperators]
+        },
+        when: {
+            sources: [...when.sources],
+            note: when.note
+        },
+        extract: {
+            from: [...extract.from],
+            required: extract.required,
+            note: extract.note
+        },
+        reservedVars: [...reservedVars],
+        generatedVars: {
+            types: [...generatedVars.types]
+        },
+        globals: {
+            types: [...globals.types],
+            note: globals.note
+        },
+        config: {
+            scenarioItemKeys: [...config.scenarioItemKeys],
+            environmentKeys: [...config.environmentKeys],
+            variableKeys: [...config.variableKeys],
+            manual: { ...config.manual }
+        },
+        scenario: {
+            keys: [...scenario.keys],
+            stepKeys: [...scenario.stepKeys],
+            failurePolicies: [...scenario.failurePolicies]
+        },
+        cli: {
+            commands: [...cli.commands],
+            options: Object.fromEntries(
+                Object.entries(cli.options).map(([name, spec]) => [
+                    name,
+                    { kind: spec.kind, description: spec.description, ...(spec.aliases ? { aliases: [...spec.aliases] } : {}) }
+                ])
+            )
+        }
+    };
+}
+
+function operatorLine(name, meta) {
+    const typeHint = meta.valueType === "finiteNumber" ? "（仅有限 number）" : meta.valueType === "any" ? "" : `（${meta.valueType}）`;
+    return `  ${name.padEnd(10)}${meta.description}${typeHint}`;
+}
+
+export function renderCapabilitiesText(capabilities) {
+    const lines = [];
+    lines.push(`scenario-test v${capabilities.version} — 能力清单（contract v${capabilities.contractVersion}）`);
+    lines.push("");
+    lines.push("断言操作符（assertions.operators）:");
+    for (const [name, meta] of Object.entries(capabilities.assertions.operators)) {
+        lines.push(operatorLine(name, meta));
+    }
+    lines.push(`  元数据键: ${capabilities.assertions.metaKeys.join(" / ")}`);
+    lines.push("");
+    lines.push(`when 条件来源: ${capabilities.when.sources.join(" / ")}`);
+    lines.push(`  ${capabilities.when.note}`);
+    lines.push("");
+    lines.push(`extract: from = ${capabilities.extract.from.join(" | ")}（默认 body）, required: ${capabilities.extract.required}`);
+    lines.push(`  ${capabilities.extract.note}`);
+    lines.push("");
+    lines.push(`保留变量: ${capabilities.reservedVars.join(" / ")}`);
+    lines.push("");
+    lines.push(`generatedVars 类型: ${capabilities.generatedVars.types.join(" / ")}`);
+    lines.push("");
+    lines.push(`globals 类型: ${capabilities.globals.types.join(" / ")}`);
+    lines.push("");
+    lines.push(`config.scenarios 项字段: ${capabilities.config.scenarioItemKeys.join(" / ")}`);
+    lines.push(`  manual（${capabilities.config.manual.type}）: ${capabilities.config.manual.note}`);
+    lines.push("");
+    lines.push(`场景结构: ${capabilities.scenario.keys.join(" / ")}；步骤字段: ${capabilities.scenario.stepKeys.join(" / ")}`);
+    lines.push(`failurePolicy: ${capabilities.scenario.failurePolicies.join(" / ")}`);
+    lines.push("");
+    lines.push("CLI 命令:");
+    for (const command of capabilities.cli.commands) {
+        lines.push(`  node scenario-test-cli.cjs ${command}`);
+    }
+    lines.push("关键选项:");
+    for (const [name, spec] of Object.entries(capabilities.cli.options)) {
+        const flags = [`--${name}`, ...(spec.aliases || []).map((alias) => `--${alias}`)].join(" / ");
+        lines.push(`  ${flags.padEnd(36)}${spec.description}`);
+    }
+    return lines.join("\n");
+}
+
+// 供 index.js 导出（三方可通过 import { contract, CONTRACT_VERSION } 或 capabilities 相关 API 消费）
+export const CAPABILITIES_SCHEMA = "scenario-test-capabilities";
+export { contract, CONTRACT_VERSION };

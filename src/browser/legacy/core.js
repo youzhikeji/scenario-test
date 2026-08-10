@@ -543,6 +543,10 @@ const legacyCore = (function (globalRoot) {
         evaluateAssertion: evaluateAssertion,
         buildAssertions: buildAssertions,
         applyExtract: applyExtract,
+        // 暴露名单供一致性测试：browser legacy 与 Node contract 的操作符/元数据键/保留变量
+        // 必须完全一致，禁止单端新增
+        ASSERTION_OPERATORS: ASSERTION_OPERATORS,
+        ASSERTION_META_KEYS: ASSERTION_META_KEYS,
         RESERVED_VARS: RESERVED_VARS,
         assertNotReservedVar: assertNotReservedVar,
         assertNoReservedVars: assertNoReservedVars,

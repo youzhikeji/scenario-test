@@ -1,7 +1,10 @@
 import md5Impl from "blueimp-md5";
+import { contract } from "./contract.js";
 
-// 全局参数支持的类型：追加到每个请求的 header / cookie / query
-export const GLOBAL_TYPES = ["header", "cookie", "query"];
+export { contract, CONTRACT_VERSION } from "./contract.js";
+
+// 全局参数支持的类型：追加到每个请求的 header / cookie / query（来自 contract）
+export const GLOBAL_TYPES = [...contract.globals.types];
 
 export function isGlobalParam(item) {
     return Boolean(item && GLOBAL_TYPES.includes(item.type) && typeof item.name === "string" && item.name.trim());
@@ -138,9 +141,9 @@ export function parseBody(text, contentType) {
     return value;
 }
 
-// ===== 断言 schema（唯一操作符名单，registry 定义期与执行期共用）=====
-export const ASSERTION_OPERATORS = ["exists", "equals", "includes", "matches", "oneOf", "notEquals", "gt", "gte", "lt", "lte"];
-export const ASSERTION_META_KEYS = ["name", "path", "from", "target", "header", "implicit"];
+// ===== 断言 schema（唯一操作符名单来自 contract，registry 定义期与执行期共用）=====
+export const ASSERTION_OPERATORS = Object.keys(contract.assertions.operators);
+export const ASSERTION_META_KEYS = [...contract.assertions.metaKeys];
 
 export function formatAssertionContext(context) {
     if (!context) return "";
@@ -250,8 +253,8 @@ export function buildAssertions(step, response, runtime, context) {
     return definitions.map((definition, index) => evaluateAssertion(definition, response, runtime, { ...(context || {}), assertionNo: index + 1 }));
 }
 
-// ===== 保留变量 =====
-export const RESERVED_VARS = ["runId", "runNo"];
+// ===== 保留变量（来自 contract）=====
+export const RESERVED_VARS = [...contract.reservedVars];
 
 export function assertNotReservedVar(name, label) {
     if (RESERVED_VARS.includes(name)) {

@@ -7,16 +7,17 @@
 将下列 Prompt 粘贴给当前项目的 AI 助手，即可安装到默认的 `scenario-test` 目录。将 `scenario-test` 替换为团队约定的项目内相对目录，例如 `dev/场景测试`；不要使用绝对路径。
 
 ```text
-请在当前项目根目录安装 scenario-test v0.4.0，目标目录为 scenario-test。
+请在当前项目根目录安装 scenario-test v0.5.0，目标目录为 scenario-test。
 
 1. 确认 Node.js 版本不低于 18；不满足时停止并说明原因。
 2. 不克隆公共库源码，不执行 npm install，不修改业务代码、构建配置或已有场景文件。
 3. 仅从以下固定版本地址下载 CLI 到系统临时目录：
-   https://github.com/youzhikeji/scenario-test/releases/download/v0.4.0/scenario-test-cli.cjs
+   https://github.com/youzhikeji/scenario-test/releases/download/v0.5.0/scenario-test-cli.cjs
 4. 使用 node <临时 CLI 路径> init --project . --dir "scenario-test" 执行初始化；不要传 --force。
-5. 检查并报告 scenario-test/index.html、scenario-test/scenario.config.js、scenario-test/AI_SCENARIO_PROMPT.md、scenario-test/SCENARIO_PATTERNS.md、scenario-test/scenario-test.umd.js 和 scenario-test/scenario-test-cli.cjs 是已创建还是已保留。初始场景清单应为空，由 AI 根据当前项目真实接口生成。
-6. 不启动服务、不调用任何业务接口、不写入 Token、Secret 或真实测试数据。
-7. 最后只给出安装结果，以及后续运行命令：
+5. 检查并报告 scenario-test/index.html、scenario-test/scenario.config.js、scenario-test/AI_SCENARIO_PROMPT.md、scenario-test/SCENARIO_PATTERNS.md、scenario-test/scenario-test.umd.js、scenario-test/scenario-test-cli.cjs、scenario-test/scenario-test.d.ts、scenario-test/scenario-test-capabilities.json 和 scenario-test/.scenario-test-version.json 是已创建还是已保留。初始场景清单应为空，由 AI 根据当前项目真实接口生成。
+6. 运行 doctor 确认安装完整：node scenario-test/scenario-test-cli.cjs doctor --config scenario-test/scenario.config.js；有 FAIL 时停止并报告。
+7. 不启动服务、不调用任何业务接口、不写入 Token、Secret 或真实测试数据。
+8. 最后只给出安装结果、doctor 结果，以及后续运行命令：
    node scenario-test/scenario-test-cli.cjs --config scenario-test/scenario.config.js --env local --all
 
 如果下载、Node.js 检查或初始化失败，停止后报告具体失败原因，不尝试替代安装方式。
@@ -49,7 +50,21 @@ npm run test:browser
 | `dist/scenario-test.esm.js` | 前端 ESM 引用 |
 | `dist/scenario-test.cjs` | Node.js 程序调用 |
 | `dist/scenario-test-cli.cjs` | CLI 与本地浏览器服务 |
+| `dist/scenario-test.d.ts` | 类型声明（零安装：纯 JS 项目用 JSDoc/IDE 补全） |
+| `dist/scenario-test-capabilities.json` | 机器可读 DSL 能力清单（与 `capabilities --json` 同源） |
 | `dist/adapters/xlsx.cjs` | 可选 Excel 适配器 |
+
+## 三方能力发现
+
+三方（或 AI）不应靠猜或手工比对多份文档。本项目以 `src/contract.js` 的不可变 DSL Contract 为唯一能力真相，投影到以下入口：
+
+- **`capabilities` 命令**：`node scenario-test-cli.cjs capabilities` 输出人类可读能力清单（版本、contractVersion、断言操作符及简述、when、extract、保留变量、manual、CLI 命令与参数）；`capabilities --json` 输出机器可读 JSON，内容与 `dist/scenario-test-capabilities.json` 完全一致。
+- **`doctor` 命令**：`node scenario-test-cli.cjs doctor --config scenario.config.js [--json]` 对项目做静态体检（Node 版本、配置/场景加载、DSL 校验、manual 提示、CLI/UMD/d.ts/capabilities/版本锁版本握手），汇总所有可继续检查的错误；有 FAIL 退出码 1。
+- **`scenario-test.d.ts`**：init 会复制到项目场景测试目录；纯 JS 项目通过 `// @ts-check` + `/** @type {import('./scenario-test').ScenarioDefinition} */` 获得 IDE 补全，无需 npm install。
+- **`.scenario-test-version.json`（项目版本锁）**：init 生成的框架管理文件，记录 runtimeVersion、contractVersion、预期文件名、产物 SHA256 与 source/release 信息；doctor 据此做本地固定版本握手。
+- **固定版本升级原则**：只使用已发布 Tag 的固定版本产物，不使用 `master`/latest；升级时用新版 CLI 重新执行 `init`（不传 `--force`，不会覆盖项目配置与场景），随后运行 `doctor` 验证版本一致。`upgrade` 命令尚未实现，版本锁仅建立未来升级所需的所有权基础。
+
+GitHub Release（https://github.com/youzhikeji/scenario-test/releases）是对外正式安装渠道；仓库内 GitLab 相关文档与脚本仅用于内部/历史发布流程，不作为对外安装指引。
 
 ## 浏览器接入
 
@@ -181,6 +196,19 @@ CLI 从变量定义的 `env` 字段读取环境变量。私有项目可将联调
 - 使用环境变量传递敏感信息
 
 ## 升级指南
+
+### 升级到 v0.5.0
+
+v0.5.0 建立“三方能力发现闭环”，无破坏性变更。请参考 [CHANGELOG.md](CHANGELOG.md)。
+
+**主要变更**:
+- 新增 DSL Contract 单一真相（`src/contract.js`），断言操作符、when 来源、保留变量、generatedVars 类型等名单全部收敛到 contract。
+- 新增 `capabilities` 命令与 `dist/scenario-test-capabilities.json`（机器可读能力清单）。
+- 新增 `doctor` 命令（静态体检 + 版本握手）与 `.scenario-test-version.json` 项目版本锁。
+- 新增 `scenario-test.d.ts` 类型声明（零安装，纯 JS 项目可用 JSDoc/IDE 补全）。
+- init 生成的 AI Prompt / Patterns / README 能力名单改为从 contract 投影，不再手抄。
+- `--authorization` 仍兼容（会显示弃用警告），未在 0.5.0 移除；推荐使用 `SCENARIO_AUTH` 环境变量。
+- 既有项目升级：用新版 CLI 执行 `init`（不传 `--force`，不覆盖项目文件）补齐 d.ts / capabilities.json / 版本锁，再运行 `doctor` 验证。
 
 ### 升级到 v0.4.0
 

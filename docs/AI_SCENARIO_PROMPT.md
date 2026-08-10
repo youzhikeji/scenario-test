@@ -43,3 +43,15 @@
 - 每个场景应可独立运行，不能依赖上一次场景留下的 ID、Token 或数据。
 - 用 `extract` 串联步骤，用 `when` 保护可选清理，用 `retryUntil` 等待最终一致性。
 - 接口存在不同认证方式时，分别在对应步骤里写 Header、Query 或 Body 引用，不要抽象成框架内置登录能力。
+
+## 能力真相
+
+本文件与 `SCENARIO_PATTERNS.md`、README 中的 DSL 能力名单由 `src/contract.js` 投影生成。
+需要核对操作符、when 来源、保留变量、extract 语义时，以当前版本 CLI 的实际输出为准：
+
+```powershell
+node scenario-test/scenario-test-cli.cjs capabilities          # 人类文本
+node scenario-test/scenario-test-cli.cjs capabilities --json   # 机器可读
+```
+
+不要依据旧版本文档或记忆手抄操作符名单。

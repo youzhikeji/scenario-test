@@ -109,6 +109,7 @@ scenario-test 提供了多个示例帮助您快速上手。
 
 ### 1. 克隆项目
 ```bash
+# 内部开发仓库（GitLab）；对外用户无需克隆源码，直接走 AI 安装 Prompt / GitHub Release
 git clone http://192.168.1.239/zhangqianfeng/scenario-test.git
 cd scenario-test
 ```
@@ -289,5 +290,7 @@ examples/
 
 ---
 
-**更新时间**: 2026-08-08  
-**版本**: v0.3.0
+**更新时间**: 2026-08-10  
+**版本**: v0.5.0
+
+> 内部说明：上文的 `git clone http://192.168.1.239/...` 是团队内网 GitLab 地址，仅适用于内部开发；对外正式安装渠道是 GitHub Release（https://github.com/youzhikeji/scenario-test/releases），见 [README](../README.md) 的“AI 安装 Prompt”。

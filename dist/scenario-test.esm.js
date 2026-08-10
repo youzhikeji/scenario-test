@@ -1,4 +1,4 @@
-/*! scenario-test v0.4.0 */
+/*! scenario-test v0.5.0 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -236,7 +236,146 @@ var require_md5 = __commonJS({
 
 // src/core.js
 var import_blueimp_md5 = __toESM(require_md5(), 1);
-var GLOBAL_TYPES = ["header", "cookie", "query"];
+
+// src/version.generated.js
+var VERSION = "0.5.0";
+
+// src/contract.js
+var CONTRACT_VERSION = 1;
+var contract = Object.freeze({
+  contractVersion: CONTRACT_VERSION,
+  runtimeVersion: VERSION,
+  // 运行时要求（与 package.json engines 保持一致，doctor 据此校验 Node 版本）
+  engines: Object.freeze({ node: ">=18" }),
+  assertions: Object.freeze({
+    // 断言对象允许的元数据键（非操作符键）
+    metaKeys: Object.freeze(["name", "path", "from", "target", "header", "implicit"]),
+    // 断言操作符：键为操作符名；valueType 描述期望值类型约束，
+    // finiteNumber 表示实际值与期望值都必须是有限 number（不做字符串隐式转换）
+    operators: Object.freeze({
+      exists: Object.freeze({
+        description: "\u5B57\u6BB5\u5B58\u5728\u4E14\u975E null/\u7A7A\u4E32\uFF08exists: true\uFF09\uFF0C\u6216\u4E0D\u5B58\u5728\uFF08exists: false\uFF09",
+        valueType: "boolean"
+      }),
+      equals: Object.freeze({
+        description: "\u5B9E\u9645\u503C\u4E0E\u671F\u671B\u503C JSON \u6DF1\u6BD4\u8F83\u76F8\u7B49",
+        valueType: "any"
+      }),
+      notEquals: Object.freeze({
+        description: "\u5B9E\u9645\u503C\u4E0E\u671F\u671B\u503C JSON \u6DF1\u6BD4\u8F83\u540E\u53D6\u53CD",
+        valueType: "any"
+      }),
+      includes: Object.freeze({
+        description: "\u6570\u7EC4\u5305\u542B\u671F\u671B\u9879\uFF0C\u6216\u5B57\u7B26\u4E32\u5305\u542B\u671F\u671B\u5B50\u4E32",
+        valueType: "any"
+      }),
+      matches: Object.freeze({
+        description: "\u6B63\u5219\u8868\u8FBE\u5F0F\u5339\u914D\u5B57\u7B26\u4E32\u5316\u540E\u7684\u5B9E\u9645\u503C",
+        valueType: "string"
+      }),
+      oneOf: Object.freeze({
+        description: "\u5B9E\u9645\u503C\u5C5E\u4E8E\u671F\u671B\u5019\u9009\u6570\u7EC4\u4E4B\u4E00\uFF08\u6DF1\u6BD4\u8F83\uFF09",
+        valueType: "array"
+      }),
+      gt: Object.freeze({
+        description: "\u5B9E\u9645\u503C\u5927\u4E8E\u671F\u671B\u503C",
+        valueType: "finiteNumber"
+      }),
+      gte: Object.freeze({
+        description: "\u5B9E\u9645\u503C\u5927\u4E8E\u7B49\u4E8E\u671F\u671B\u503C",
+        valueType: "finiteNumber"
+      }),
+      lt: Object.freeze({
+        description: "\u5B9E\u9645\u503C\u5C0F\u4E8E\u671F\u671B\u503C",
+        valueType: "finiteNumber"
+      }),
+      lte: Object.freeze({
+        description: "\u5B9E\u9645\u503C\u5C0F\u4E8E\u7B49\u4E8E\u671F\u671B\u503C",
+        valueType: "finiteNumber"
+      })
+    }),
+    // 只接受有限 number 的操作符（与 operators 中 valueType: "finiteNumber" 一致）
+    numericOperators: Object.freeze(["gt", "gte", "lt", "lte"])
+  }),
+  when: Object.freeze({
+    // when 对象形式支持的来源：仅 vars；不允许 body/status/header 条件
+    sources: Object.freeze(["vars"]),
+    note: 'when \u5BF9\u8C61\u5F62\u5F0F\u53EA\u5141\u8BB8 from: "vars"\uFF1B\u975E\u5BF9\u8C61\u5F62\u5F0F\uFF08\u6A21\u677F\u5B57\u7B26\u4E32/\u5E03\u5C14\uFF09\u4FDD\u6301\u771F\u503C\u8BED\u4E49'
+  }),
+  extract: Object.freeze({
+    // extract 支持的来源（默认 body）
+    from: Object.freeze(["body", "headers", "bodyText", "response"]),
+    // required 语义：路径不存在时 required: true 使当前步骤失败，默认缺失产生 warning
+    required: "boolean",
+    note: "required: true \u4E14\u8DEF\u5F84\u4E0D\u5B58\u5728\u65F6\u5F53\u524D\u6B65\u9AA4\u5931\u8D25\uFF1B\u9ED8\u8BA4\u7F3A\u5931\u4EA7\u751F warning\uFF08\u4E0D\u542B\u54CD\u5E94\u5185\u5BB9\uFF09\uFF0C\u53D8\u91CF\u4E3A undefined"
+  }),
+  // 运行时自动生成的保留变量：禁止在 vars/envVars/generatedVars/extract 中声明或覆盖
+  reservedVars: Object.freeze(["runId", "runNo"]),
+  generatedVars: Object.freeze({
+    types: Object.freeze(["timestamp", "uuidHex", "md5", "signature"])
+  }),
+  globals: Object.freeze({
+    // 全局参数类型：追加到每个请求的 header / cookie / query
+    types: Object.freeze(["header", "cookie", "query"]),
+    note: "\u5168\u5C40\u53C2\u6570\u652F\u6301 header / cookie / query \u4E09\u79CD\u7C7B\u578B\uFF0C\u6B65\u9AA4\u663E\u5F0F\u58F0\u660E\u6216 URL \u5DF2\u6709\u540C\u540D\u53C2\u6570\u4F18\u5148"
+  }),
+  config: Object.freeze({
+    // 配置中 scenarios 清单项的字段（file/path 为 url 的兼容回退，不写入契约字段）
+    scenarioItemKeys: Object.freeze(["id", "name", "url", "manual"]),
+    environmentKeys: Object.freeze(["key", "name", "baseUrl", "globals"]),
+    variableKeys: Object.freeze(["name", "label", "env", "required", "defaultValue"]),
+    manual: Object.freeze({
+      type: "boolean",
+      note: "manual: true \u8868\u793A\u573A\u666F\u9700\u8981\u4EBA\u5DE5\u51C6\u5907\u6570\u636E\u6216\u5199\u6570\u636E\uFF0C--all \u9ED8\u8BA4\u6392\u9664\uFF0C--scenario <id> \u53EF\u663E\u5F0F\u6267\u884C"
+    })
+  }),
+  scenario: Object.freeze({
+    keys: Object.freeze(["name", "steps", "vars", "envVars", "generatedVars", "failurePolicy"]),
+    stepKeys: Object.freeze([
+      "name",
+      "method",
+      "path",
+      "params",
+      "request",
+      "status",
+      "assertions",
+      "extract",
+      "when",
+      "retryUntil",
+      "timeoutMs",
+      "saveResponseAs",
+      "adapter"
+    ]),
+    failurePolicies: Object.freeze(["stop", "continue"])
+  }),
+  cli: Object.freeze({
+    commands: Object.freeze(["run", "serve", "init", "capabilities", "doctor"]),
+    options: Object.freeze({
+      config: { kind: "value", prop: "config", description: "\u573A\u666F\u914D\u7F6E\u6587\u4EF6" },
+      env: { kind: "value", prop: "env", description: "\u914D\u7F6E\u4E2D\u7684\u73AF\u5883 key" },
+      "base-url": { kind: "value", prop: "baseUrl", description: "\u4E34\u65F6\u8986\u76D6 Base URL" },
+      scenario: { kind: "value", prop: "scenario", description: "\u6267\u884C\u6307\u5B9A\u573A\u666F\uFF08\u53EF\u6267\u884C manual:true \u573A\u666F\uFF09" },
+      port: { kind: "value", prop: "port", parse: "number", description: "\u6D4F\u89C8\u5668\u670D\u52A1\u7AEF\u53E3\uFF0C\u9ED8\u8BA4 4300" },
+      project: { kind: "value", prop: "project", description: "init \u76EE\u6807\u9879\u76EE\u6839\u76EE\u5F55" },
+      dir: { kind: "value", prop: "dir", description: "init \u573A\u666F\u6D4B\u8BD5\u76EE\u5F55\u540D" },
+      "library-url": { kind: "value", prop: "libraryUrl", description: "init \u65F6 UMD \u4E0B\u8F7D\u5730\u5740" },
+      all: { kind: "flag", prop: "all", description: "\u6267\u884C\u914D\u7F6E\u4E2D\u7684\u5168\u90E8\u81EA\u52A8\u573A\u666F\uFF08\u9ED8\u8BA4\u6392\u9664 manual:true\uFF09" },
+      force: { kind: "flag", prop: "force", description: "init \u5F3A\u5236\u8986\u76D6\u5DF2\u6709\u6587\u4EF6" },
+      "fail-on-skip": { kind: "flag", prop: "failOnSkip", description: "\u5B58\u5728\u4EFB\u4F55 SKIP \u6B65\u9AA4\u65F6\u6700\u7EC8\u9000\u51FA\u7801\u4E3A 1" },
+      "allow-external-plugins": { kind: "flag", prop: "allowExternalPlugins", description: "\u5141\u8BB8\u52A0\u8F7D\u5916\u90E8\u63D2\u4EF6\uFF08\u6709\u5B89\u5168\u98CE\u9669\uFF09" },
+      json: { kind: "flag", prop: "json", description: "capabilities/doctor \u8F93\u51FA\u673A\u5668\u53EF\u8BFB JSON\uFF08stdout \u7EAF\u51C0\uFF09" },
+      token: {
+        kind: "value",
+        prop: "authorization",
+        aliases: ["authorization"],
+        description: "\uFF08\u5DF2\u5F03\u7528\uFF09\u547D\u4EE4\u884C\u4F20\u9012\u6388\u6743\u4EE4\u724C\uFF1B\u63A8\u8350 SCENARIO_AUTH \u73AF\u5883\u53D8\u91CF"
+      }
+    })
+  })
+});
+
+// src/core.js
+var GLOBAL_TYPES = [...contract.globals.types];
 function isGlobalParam(item) {
   return Boolean(item && GLOBAL_TYPES.includes(item.type) && typeof item.name === "string" && item.name.trim());
 }
@@ -357,8 +496,8 @@ function parseBody(text, contentType) {
   }
   return value;
 }
-var ASSERTION_OPERATORS = ["exists", "equals", "includes", "matches", "oneOf", "notEquals", "gt", "gte", "lt", "lte"];
-var ASSERTION_META_KEYS = ["name", "path", "from", "target", "header", "implicit"];
+var ASSERTION_OPERATORS = Object.keys(contract.assertions.operators);
+var ASSERTION_META_KEYS = [...contract.assertions.metaKeys];
 function formatAssertionContext(context) {
   if (!context) return "";
   if (typeof context === "string") return context;
@@ -459,7 +598,7 @@ function buildAssertions(step, response, runtime, context) {
   }
   return definitions.map((definition, index) => evaluateAssertion(definition, response, runtime, { ...context || {}, assertionNo: index + 1 }));
 }
-var RESERVED_VARS = ["runId", "runNo"];
+var RESERVED_VARS = [...contract.reservedVars];
 function assertNotReservedVar(name, label) {
   if (RESERVED_VARS.includes(name)) {
     throw new Error(`${label || "\u53D8\u91CF"} "${name}" \u662F\u8FD0\u884C\u65F6\u81EA\u52A8\u751F\u6210\u7684\u4FDD\u7559\u53D8\u91CF\uFF0C\u7981\u6B62\u58F0\u660E\u6216\u8986\u76D6`);
@@ -572,9 +711,10 @@ function assertUnique(items, field, label) {
   }
 }
 function normalizeGlobals(globals, label) {
+  const types = contract.globals.types;
   const result = Array.isArray(globals) ? globals.map((item, index) => {
     invariant(isPlainObject(item), `${label}\u7B2C ${index + 1} \u4E2A\u5168\u5C40\u53C2\u6570\u5FC5\u987B\u662F\u5BF9\u8C61`);
-    invariant(["header", "cookie", "query"].includes(item.type), `${label}\u7B2C ${index + 1} \u4E2A\u5168\u5C40\u53C2\u6570 type \u5FC5\u987B\u662F header/cookie/query`);
+    invariant(types.includes(item.type), `${label}\u7B2C ${index + 1} \u4E2A\u5168\u5C40\u53C2\u6570 type \u5FC5\u987B\u662F ${types.join("/")}`);
     invariant(nonEmptyString(item.name), `${label}\u7B2C ${index + 1} \u4E2A\u5168\u5C40\u53C2\u6570\u7F3A\u5C11 name`);
     return { type: item.type, name: item.name, value: item.value == null ? "" : String(item.value) };
   }) : [];
@@ -591,6 +731,14 @@ function defineScenario(input) {
   invariant(typeof input.name === "string" && input.name.trim(), "\u573A\u666F\u7F3A\u5C11 name");
   invariant(Array.isArray(input.steps), `\u573A\u666F ${input.name} \u7F3A\u5C11 steps \u6570\u7EC4`);
   assertNoReservedVars(input.vars, `\u573A\u666F ${input.name} \u7684 vars`);
+  for (const definition of input.generatedVars || []) {
+    invariant(isPlainObject(definition), `\u573A\u666F ${input.name} \u7684 generatedVars \u9879\u5FC5\u987B\u662F\u5BF9\u8C61`);
+    invariant(nonEmptyString(definition.name), `\u573A\u666F ${input.name} \u7684 generatedVars \u9879\u7F3A\u5C11 name`);
+    invariant(
+      contract.generatedVars.types.includes(definition.type),
+      `\u573A\u666F ${input.name} \u7684 generatedVars \u7C7B\u578B\u4E0D\u652F\u6301: ${definition.type}\uFF08\u652F\u6301 ${contract.generatedVars.types.join("/")}\uFF09`
+    );
+  }
   input.steps.forEach((step, index) => {
     invariant(isPlainObject(step), `\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\u5FC5\u987B\u662F\u5BF9\u8C61`);
     invariant(nonEmptyString(step.name), `\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\u7F3A\u5C11 name`);
@@ -616,7 +764,7 @@ function defineScenario(input) {
       invariant(Number.isFinite(intervalMs) && intervalMs >= 0, `\u6B65\u9AA4 ${step.name} \u7684 intervalMs \u4E0D\u80FD\u4E3A\u8D1F\u6570`);
     }
     if (step.when !== void 0 && isPlainObject(step.when)) {
-      if (step.when.from !== "vars") {
+      if (!contract.when.sources.includes(step.when.from)) {
         throw new TypeError(
           `\u6B65\u9AA4 ${step.name} \u7684 when \u5BF9\u8C61\u5F62\u5F0F\u53EA\u5141\u8BB8 from: "vars"\uFF08\u5F53\u524D\u4E3A ${JSON.stringify(step.when.from)}\uFF09\uFF0C\u4E0D\u5141\u8BB8\u4ECE\u54CD\u5E94 body/status/header \u53D6\u6761\u4EF6`
         );
@@ -628,7 +776,7 @@ function defineScenario(input) {
     }
   });
   const failurePolicy = input.failurePolicy || "stop";
-  invariant(["stop", "continue"].includes(failurePolicy), "failurePolicy \u53EA\u80FD\u662F stop \u6216 continue");
+  invariant(contract.scenario.failurePolicies.includes(failurePolicy), "failurePolicy \u53EA\u80FD\u662F stop \u6216 continue");
   return { ...input, failurePolicy, steps: [...input.steps] };
 }
 function defineConfig(input) {
@@ -810,6 +958,9 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables, options = 
   for (const definition of scenario.generatedVars || []) {
     if (!definition?.name) continue;
     assertNotReservedVar(definition.name, "generatedVars");
+    if (!contract.generatedVars.types.includes(definition.type)) {
+      throw new Error(`\u4E0D\u652F\u6301\u7684 generatedVars \u7C7B\u578B: ${definition.type}`);
+    }
     if (definition.type === "timestamp") vars[definition.name] = Date.now();
     else if (definition.type === "uuidHex") {
       if (!globalThis.crypto?.randomUUID) throw new Error("\u5F53\u524D\u73AF\u5883\u4E0D\u652F\u6301 crypto.randomUUID");
@@ -1112,6 +1263,103 @@ function createEngine(engineOptions = {}) {
 }
 async function runScenario(scenario, options = {}) {
   return createEngine(options).runScenario(scenario, options);
+}
+
+// src/capabilities.js
+function buildCapabilities(inputContract = contract) {
+  const { assertions, when, extract, reservedVars, generatedVars, globals, config, scenario, cli } = inputContract;
+  return {
+    schema: "scenario-test-capabilities",
+    version: inputContract.runtimeVersion,
+    contractVersion: inputContract.contractVersion,
+    assertions: {
+      operators: Object.fromEntries(
+        Object.entries(assertions.operators).map(([name, meta]) => [name, { description: meta.description, valueType: meta.valueType }])
+      ),
+      metaKeys: [...assertions.metaKeys],
+      numericOperators: [...assertions.numericOperators]
+    },
+    when: {
+      sources: [...when.sources],
+      note: when.note
+    },
+    extract: {
+      from: [...extract.from],
+      required: extract.required,
+      note: extract.note
+    },
+    reservedVars: [...reservedVars],
+    generatedVars: {
+      types: [...generatedVars.types]
+    },
+    globals: {
+      types: [...globals.types],
+      note: globals.note
+    },
+    config: {
+      scenarioItemKeys: [...config.scenarioItemKeys],
+      environmentKeys: [...config.environmentKeys],
+      variableKeys: [...config.variableKeys],
+      manual: { ...config.manual }
+    },
+    scenario: {
+      keys: [...scenario.keys],
+      stepKeys: [...scenario.stepKeys],
+      failurePolicies: [...scenario.failurePolicies]
+    },
+    cli: {
+      commands: [...cli.commands],
+      options: Object.fromEntries(
+        Object.entries(cli.options).map(([name, spec]) => [
+          name,
+          { kind: spec.kind, description: spec.description, ...spec.aliases ? { aliases: [...spec.aliases] } : {} }
+        ])
+      )
+    }
+  };
+}
+function operatorLine(name, meta) {
+  const typeHint = meta.valueType === "finiteNumber" ? "\uFF08\u4EC5\u6709\u9650 number\uFF09" : meta.valueType === "any" ? "" : `\uFF08${meta.valueType}\uFF09`;
+  return `  ${name.padEnd(10)}${meta.description}${typeHint}`;
+}
+function renderCapabilitiesText(capabilities) {
+  const lines = [];
+  lines.push(`scenario-test v${capabilities.version} \u2014 \u80FD\u529B\u6E05\u5355\uFF08contract v${capabilities.contractVersion}\uFF09`);
+  lines.push("");
+  lines.push("\u65AD\u8A00\u64CD\u4F5C\u7B26\uFF08assertions.operators\uFF09:");
+  for (const [name, meta] of Object.entries(capabilities.assertions.operators)) {
+    lines.push(operatorLine(name, meta));
+  }
+  lines.push(`  \u5143\u6570\u636E\u952E: ${capabilities.assertions.metaKeys.join(" / ")}`);
+  lines.push("");
+  lines.push(`when \u6761\u4EF6\u6765\u6E90: ${capabilities.when.sources.join(" / ")}`);
+  lines.push(`  ${capabilities.when.note}`);
+  lines.push("");
+  lines.push(`extract: from = ${capabilities.extract.from.join(" | ")}\uFF08\u9ED8\u8BA4 body\uFF09, required: ${capabilities.extract.required}`);
+  lines.push(`  ${capabilities.extract.note}`);
+  lines.push("");
+  lines.push(`\u4FDD\u7559\u53D8\u91CF: ${capabilities.reservedVars.join(" / ")}`);
+  lines.push("");
+  lines.push(`generatedVars \u7C7B\u578B: ${capabilities.generatedVars.types.join(" / ")}`);
+  lines.push("");
+  lines.push(`globals \u7C7B\u578B: ${capabilities.globals.types.join(" / ")}`);
+  lines.push("");
+  lines.push(`config.scenarios \u9879\u5B57\u6BB5: ${capabilities.config.scenarioItemKeys.join(" / ")}`);
+  lines.push(`  manual\uFF08${capabilities.config.manual.type}\uFF09: ${capabilities.config.manual.note}`);
+  lines.push("");
+  lines.push(`\u573A\u666F\u7ED3\u6784: ${capabilities.scenario.keys.join(" / ")}\uFF1B\u6B65\u9AA4\u5B57\u6BB5: ${capabilities.scenario.stepKeys.join(" / ")}`);
+  lines.push(`failurePolicy: ${capabilities.scenario.failurePolicies.join(" / ")}`);
+  lines.push("");
+  lines.push("CLI \u547D\u4EE4:");
+  for (const command of capabilities.cli.commands) {
+    lines.push(`  node scenario-test-cli.cjs ${command}`);
+  }
+  lines.push("\u5173\u952E\u9009\u9879:");
+  for (const [name, spec] of Object.entries(capabilities.cli.options)) {
+    const flags = [`--${name}`, ...(spec.aliases || []).map((alias) => `--${alias}`)].join(" / ");
+    lines.push(`  ${flags.padEnd(36)}${spec.description}`);
+  }
+  return lines.join("\n");
 }
 
 // src/browser/legacy/core.js
@@ -1576,6 +1824,10 @@ var legacyCore = function(globalRoot) {
     evaluateAssertion: evaluateAssertion2,
     buildAssertions: buildAssertions2,
     applyExtract: applyExtract2,
+    // 暴露名单供一致性测试：browser legacy 与 Node contract 的操作符/元数据键/保留变量
+    // 必须完全一致，禁止单端新增
+    ASSERTION_OPERATORS: ASSERTION_OPERATORS2,
+    ASSERTION_META_KEYS: ASSERTION_META_KEYS2,
     RESERVED_VARS: RESERVED_VARS2,
     assertNotReservedVar: assertNotReservedVar2,
     assertNoReservedVars: assertNoReservedVars2,
@@ -4076,16 +4328,19 @@ function createApp(options = {}) {
 export {
   ASSERTION_META_KEYS,
   ASSERTION_OPERATORS,
+  CONTRACT_VERSION,
   GLOBAL_TYPES,
   RESERVED_VARS,
   applyExtract,
   assertNoReservedVars,
   assertNotReservedVar,
   buildAssertions,
+  buildCapabilities,
   buildUrl,
   clearAdapters,
   clearScenarios,
   clone,
+  contract,
   createApp,
   createEngine,
   createRuntime,
@@ -4115,6 +4370,7 @@ export {
   registerAdapter,
   registerConfig,
   registerScenario,
+  renderCapabilitiesText,
   resolve,
   resolveString,
   runScenario,

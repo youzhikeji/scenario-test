@@ -1,5 +1,10 @@
 # GitLab Release 创建指南
 
+> ⚠️ **内部/历史文档**：本指南描述团队内网 GitLab 的发布流程，仅供维护者内部使用。
+> 对外正式安装渠道是 **GitHub Release**（https://github.com/youzhikeji/scenario-test/releases），
+> 对外安装指引以 [README](README.md) 与 [docs/AI_INSTALL_PROMPT.md](docs/AI_INSTALL_PROMPT.md) 为准，
+> 二者冲突时以对外文档为准。
+
 ## 📍 当前状态
 
 - ✅ 代码已推送到 master

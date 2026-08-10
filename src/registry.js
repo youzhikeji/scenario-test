@@ -1,4 +1,5 @@
 import { isPlainObject, validateAssertion, assertNoReservedVars, assertNotReservedVar } from "./core.js";
+import { contract } from "./contract.js";
 import { validateAdapter } from "./adapter-types.js";
 
 const scenarioRegistry = new Map();
@@ -23,9 +24,10 @@ function assertUnique(items, field, label) {
 }
 
 function normalizeGlobals(globals, label) {
+    const types = contract.globals.types;
     const result = Array.isArray(globals) ? globals.map((item, index) => {
         invariant(isPlainObject(item), `${label}第 ${index + 1} 个全局参数必须是对象`);
-        invariant(["header", "cookie", "query"].includes(item.type), `${label}第 ${index + 1} 个全局参数 type 必须是 header/cookie/query`);
+        invariant(types.includes(item.type), `${label}第 ${index + 1} 个全局参数 type 必须是 ${types.join("/")}`);
         invariant(nonEmptyString(item.name), `${label}第 ${index + 1} 个全局参数缺少 name`);
         return { type: item.type, name: item.name, value: item.value == null ? "" : String(item.value) };
     }) : [];
@@ -44,6 +46,16 @@ export function defineScenario(input) {
     invariant(Array.isArray(input.steps), `场景 ${input.name} 缺少 steps 数组`);
     // 保留变量 runId/runNo 由运行时自动生成，定义期拒绝场景 vars 声明
     assertNoReservedVars(input.vars, `场景 ${input.name} 的 vars`);
+    // generatedVars：定义期校验类型枚举（来源 contract.generatedVars.types）；
+    // 保留变量与字段完整性仍由运行时（engine）校验，保持 0.4.0 报错时机不变
+    for (const definition of input.generatedVars || []) {
+        invariant(isPlainObject(definition), `场景 ${input.name} 的 generatedVars 项必须是对象`);
+        invariant(nonEmptyString(definition.name), `场景 ${input.name} 的 generatedVars 项缺少 name`);
+        invariant(
+            contract.generatedVars.types.includes(definition.type),
+            `场景 ${input.name} 的 generatedVars 类型不支持: ${definition.type}（支持 ${contract.generatedVars.types.join("/")}）`
+        );
+    }
     input.steps.forEach((step, index) => {
         invariant(isPlainObject(step), `场景 ${input.name} 第 ${index + 1} 步必须是对象`);
         invariant(nonEmptyString(step.name), `场景 ${input.name} 第 ${index + 1} 步缺少 name`);
@@ -74,7 +86,7 @@ export function defineScenario(input) {
         // when 对象形式只能从 vars 取值，不允许 body/status/header；
         // 非对象形式（模板字符串/布尔）保持兼容不做校验。
         if (step.when !== undefined && isPlainObject(step.when)) {
-            if (step.when.from !== "vars") {
+            if (!contract.when.sources.includes(step.when.from)) {
                 throw new TypeError(
                     `步骤 ${step.name} 的 when 对象形式只允许 from: "vars"（当前为 ${JSON.stringify(step.when.from)}），` +
                     "不允许从响应 body/status/header 取条件"
@@ -87,7 +99,7 @@ export function defineScenario(input) {
         }
     });
     const failurePolicy = input.failurePolicy || "stop";
-    invariant(["stop", "continue"].includes(failurePolicy), "failurePolicy 只能是 stop 或 continue");
+    invariant(contract.scenario.failurePolicies.includes(failurePolicy), "failurePolicy 只能是 stop 或 continue");
     return { ...input, failurePolicy, steps: [...input.steps] };
 }
 
