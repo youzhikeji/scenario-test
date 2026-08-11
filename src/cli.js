@@ -12,6 +12,7 @@ import { buildDoctorReport, renderDoctorText } from "./doctor.js";
 import { VERSION } from "./version.generated.js";
 import { validatePath } from "./utils/path-validator.js";
 import { mergeGlobals } from "./core.js";
+import { FRAMEWORK_FILES, resolveProjectLayout } from "./project-layout.js";
 
 function argumentValue(argv, index, option) {
     const value = argv[index + 1];
@@ -147,11 +148,7 @@ Options:
 
   # 或从 .env 文件加载
   export $(cat .env | xargs)
-  node scenario-test-cli.cjs --config scenario.config.js --all
-  --project <dir>       初始化业务项目的目标目录
-  --dir <path>          场景测试目录，默认 scenario-test
-  --library-url <url>   初始化时下载 UMD 的 Release 地址
-  --force               覆盖 init 已生成的同名文件`);
+  node scenario-test-cli.cjs --config scenario.config.js --all`);
 }
 
 function writeProjectFile(projectRoot, relativePath, content, force) {
@@ -172,9 +169,9 @@ function resolveInitDirectory(projectRoot, value) {
     return directory;
 }
 
-function copyRuntimeCli(projectRoot, directory, force) {
+function copyRuntimeCli(layout, force) {
     const source = path.resolve(process.argv[1]);
-    const target = path.resolve(projectRoot, directory, "scenario-test-cli.cjs");
+    const target = layout.frameworkPath(FRAMEWORK_FILES.cli);
     if (fs.existsSync(target) && !force) return false;
     if (!source.endsWith(".cjs")) return null;
     fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -182,8 +179,8 @@ function copyRuntimeCli(projectRoot, directory, force) {
     return true;
 }
 
-async function copyRuntimeBrowser(projectRoot, directory, libraryUrl, force) {
-    const target = path.resolve(projectRoot, directory, "scenario-test.umd.js");
+async function copyRuntimeBrowser(layout, libraryUrl, force) {
+    const target = layout.frameworkPath(FRAMEWORK_FILES.umd);
     if (fs.existsSync(target) && !force) return false;
     const candidates = [
         path.resolve(path.dirname(process.argv[1]), "scenario-test.umd.js"),
@@ -207,8 +204,8 @@ async function copyRuntimeBrowser(projectRoot, directory, libraryUrl, force) {
 
 // 框架管理文本产物（d.ts / capabilities.json）：优先复制 CLI 相邻同版文件，
 // 否则使用构建时注入 CLI 的当前版本内容（离线优先，不依赖网络与相邻目录）
-function copyFrameworkTextFile(projectRoot, directory, fileName, inlineContent, force) {
-    const target = path.resolve(projectRoot, directory, fileName);
+function copyFrameworkTextFile(layout, fileName, inlineContent, force) {
+    const target = layout.frameworkPath(fileName);
     if (fs.existsSync(target) && !force) return false;
     const candidates = [
         path.resolve(path.dirname(process.argv[1]), fileName),
@@ -231,21 +228,33 @@ function sha256File(filePath) {
     return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
 }
 
+function shouldRefreshFramework(layout, force) {
+    if (force) return true;
+    const lockPath = layout.frameworkPath(FRAMEWORK_FILES.versionLock);
+    if (!fs.existsSync(lockPath)) return false;
+    try {
+        const lock = JSON.parse(fs.readFileSync(lockPath, "utf8"));
+        return lock.runtimeVersion !== VERSION || lock.contractVersion !== CONTRACT_VERSION;
+    } catch {
+        return true;
+    }
+}
+
 // 项目版本锁（框架管理文件）：不存在则创建；已存在但版本或文件哈希与当前不一致时更新
 // （init 负责维护版本锁，为未来 upgrade 命令建立所有权基础；手工替换过框架文件时，
 //   即使版本号一致也会重算 SHA256 刷新锁，保证 doctor 版本握手能恢复健康）。
 // source 不写本机路径。
-function writeVersionLock(projectRoot, directory) {
-    const target = path.resolve(projectRoot, directory, ".scenario-test-version.json");
+function writeVersionLock(layout) {
+    const target = layout.frameworkPath(FRAMEWORK_FILES.versionLock);
     const files = {
-        cli: "scenario-test-cli.cjs",
-        umd: "scenario-test.umd.js",
-        dts: "scenario-test.d.ts",
-        capabilities: "scenario-test-capabilities.json"
+        cli: FRAMEWORK_FILES.cli,
+        umd: FRAMEWORK_FILES.umd,
+        dts: FRAMEWORK_FILES.dts,
+        capabilities: FRAMEWORK_FILES.capabilities
     };
     const sha256 = {};
     for (const fileName of Object.values(files)) {
-        const filePath = path.resolve(projectRoot, directory, fileName);
+        const filePath = layout.frameworkPath(fileName);
         if (fs.existsSync(filePath)) sha256[fileName] = sha256File(filePath);
     }
     if (fs.existsSync(target)) {
@@ -286,35 +295,44 @@ async function initCommand(args) {
     const libraryUrl = args.libraryUrl || DEFAULT_LIBRARY_URL;
     const projectName = path.basename(projectRoot).trim() || "project";
     const storagePrefix = `scenario-test.${projectName.replace(/[^\p{L}\p{N}._-]+/gu, "-")}`;
+    const layout = resolveProjectLayout(projectRoot, directory);
+    const frameworkDirectory = layout.legacy ? "." : ".scenario-test";
+    const refreshFramework = shouldRefreshFramework(layout, args.force);
+    const frameworkTemplatePaths = new Set([
+        layout.frameworkRelativePath(FRAMEWORK_FILES.authoringPrompt),
+        layout.frameworkRelativePath(FRAMEWORK_FILES.patterns)
+    ]);
     const created = [];
     const skipped = [];
-    for (const [relativePath, content] of Object.entries(createProjectFiles(directory, { storagePrefix }))) {
-        (writeProjectFile(projectRoot, relativePath, content, args.force) ? created : skipped).push(relativePath);
+    for (const [relativePath, content] of Object.entries(createProjectFiles(directory, { storagePrefix, frameworkDirectory }))) {
+        const overwrite = args.force || (refreshFramework && frameworkTemplatePaths.has(relativePath));
+        (writeProjectFile(projectRoot, relativePath, content, overwrite) ? created : skipped).push(relativePath);
     }
-    const cliPath = `${directory}/scenario-test-cli.cjs`;
-    const runtimeCli = copyRuntimeCli(projectRoot, directory, args.force);
+    const cliPath = layout.frameworkRelativePath(FRAMEWORK_FILES.cli);
+    const runtimeCli = copyRuntimeCli(layout, refreshFramework);
     if (runtimeCli === true) created.push(cliPath);
     else if (runtimeCli === false) skipped.push(cliPath);
-    const browserPath = `${directory}/scenario-test.umd.js`;
-    const runtimeBrowser = await copyRuntimeBrowser(projectRoot, directory, libraryUrl, args.force);
+    const browserPath = layout.frameworkRelativePath(FRAMEWORK_FILES.umd);
+    const runtimeBrowser = await copyRuntimeBrowser(layout, libraryUrl, refreshFramework);
     if (runtimeBrowser === true) created.push(browserPath);
     else if (runtimeBrowser === false) skipped.push(browserPath);
-    const dtsPath = `${directory}/scenario-test.d.ts`;
-    if (copyFrameworkTextFile(projectRoot, directory, "scenario-test.d.ts", typeof __SCENARIO_TEST_DTS__ === "string" ? __SCENARIO_TEST_DTS__ : "", args.force)) {
+    const dtsPath = layout.frameworkRelativePath(FRAMEWORK_FILES.dts);
+    if (copyFrameworkTextFile(layout, FRAMEWORK_FILES.dts, typeof __SCENARIO_TEST_DTS__ === "string" ? __SCENARIO_TEST_DTS__ : "", refreshFramework)) {
         created.push(dtsPath);
     } else {
         skipped.push(dtsPath);
     }
-    const capabilitiesPath = `${directory}/scenario-test-capabilities.json`;
-    if (copyFrameworkTextFile(projectRoot, directory, "scenario-test-capabilities.json", typeof __SCENARIO_TEST_CAPABILITIES__ === "string" ? __SCENARIO_TEST_CAPABILITIES__ : "", args.force)) {
+    const capabilitiesPath = layout.frameworkRelativePath(FRAMEWORK_FILES.capabilities);
+    if (copyFrameworkTextFile(layout, FRAMEWORK_FILES.capabilities, typeof __SCENARIO_TEST_CAPABILITIES__ === "string" ? __SCENARIO_TEST_CAPABILITIES__ : "", refreshFramework)) {
         created.push(capabilitiesPath);
     } else {
         skipped.push(capabilitiesPath);
     }
-    const lockPath = `${directory}/.scenario-test-version.json`;
-    if (writeVersionLock(projectRoot, directory)) created.push(lockPath);
+    const lockPath = layout.frameworkRelativePath(FRAMEWORK_FILES.versionLock);
+    if (writeVersionLock(layout)) created.push(lockPath);
     else skipped.push(lockPath);
     console.log(`已初始化项目: ${projectRoot}`);
+    console.log(`项目布局: ${layout.legacy ? "兼容旧版平铺布局" : `内部文件位于 ${layout.frameworkRelativeDir}`}`);
     if (created.length) console.log(`已创建: ${created.join(", ")}`);
     if (skipped.length) console.log(`已保留现有文件: ${skipped.join(", ")}`);
     console.log(`浏览器工作台: ${path.join(projectRoot, directory, "index.html")}`);

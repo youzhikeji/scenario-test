@@ -40,7 +40,7 @@ ScenarioTest.registerScenario("user-query", ScenarioTest.defineScenario({
 
 ```bash
 # 命令行运行
-node scenario-test/scenario-test-cli.cjs --config scenario-test/scenario.config.js --env local --all
+node scenario-test/.scenario-test/scenario-test-cli.cjs --config scenario-test/scenario.config.js --env local --all
 
 # 浏览器运行
 # 打开 scenario-test/index.html

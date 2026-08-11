@@ -12,6 +12,7 @@ import { contract, CONTRACT_VERSION } from "./contract.js";
 import { VERSION } from "./version.generated.js";
 import { validatePath } from "./utils/path-validator.js";
 import { loadConfigFile, loadScenarioFile } from "./node/loader.js";
+import { FRAMEWORK_FILES, resolveLayoutFromConfigDir } from "./project-layout.js";
 
 const UMD_VERSION_PATTERN = /\/\*! scenario-test v(\d+\.\d+\.\d+) \*\//;
 const DTS_VERSION_PATTERN = /scenario-test v(\d+\.\d+\.\d+)/;
@@ -328,11 +329,13 @@ export function buildDoctorReport(options) {
     }
 
     // 6. 版本一致性（不依赖 config，可继续检查）
-    const dir = configDir;
-    const umdPath = path.join(dir, "scenario-test.umd.js");
-    const dtsPath = path.join(dir, "scenario-test.d.ts");
-    const capabilitiesPath = path.join(dir, "scenario-test-capabilities.json");
-    const lockPath = path.join(dir, ".scenario-test-version.json");
+    // 新项目使用 .scenario-test/；旧项目没有该目录时继续校验平铺文件。
+    // 一次只选择一种布局，禁止从两个位置拼接不同版本产物。
+    const layout = resolveLayoutFromConfigDir(configDir);
+    const umdPath = layout.frameworkPath(FRAMEWORK_FILES.umd);
+    const dtsPath = layout.frameworkPath(FRAMEWORK_FILES.dts);
+    const capabilitiesPath = layout.frameworkPath(FRAMEWORK_FILES.capabilities);
+    const lockPath = layout.frameworkPath(FRAMEWORK_FILES.versionLock);
 
     checks.push({
         name: "cli",

@@ -2,6 +2,39 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.2] - 2026-08-10
+
+### ✨ Integration Experience
+
+1. **业务项目只需复制一次接入 Prompt**
+   - AI 自动完成固定版本安装、`init`、`doctor`，随后读取项目内生成的 `AI_SCENARIO_PROMPT.md` 并询问目标业务功能。
+   - 用户不再需要理解两阶段流程、复制第二份 Prompt、学习 DSL 或手工维护 `scenario.config.js`。
+   - 新 AI 会话可用一句短命令读取项目内规则并继续设计场景。
+
+2. **按单个业务功能设计场景矩阵**
+   - 业务功能作为设计和目录边界，场景作为成功、校验、权限、边界、幂等或状态流转等独立验证路径。
+   - 禁止扫描整个项目批量生成，或把多个业务功能串成一个大场景。
+   - 推荐使用 `scenarios/<功能标识>/<验证路径>.js` 和 `<功能标识>-<验证路径>` 场景 id。
+
+3. **更安全、更精简的初始化目录**
+   - 新项目根层只保留 `README.md`、`index.html` 和 `scenario.config.js`；CLI、浏览器运行时、AI 规则、类型声明、能力清单和版本锁集中到 `.scenario-test/`。
+   - 默认 `globals` 改为空，避免项目未配置时发送占位请求头。
+   - 失败分支默认拆为独立场景；`failurePolicy: "continue"` 仅用于同一验证路径内继续收集步骤结果。
+   - README、接入 Prompt、示例索引和 init 生成文档统一为同一使用流程。
+
+4. **旧项目布局兼容**
+   - init 检测到旧平铺框架文件或旧版 `index.html` 引用时继续原位更新，不强制迁移，不生成新旧混合布局。
+   - 版本锁与当前 CLI 版本不一致时，仅刷新框架管理文件；`scenario.config.js`、`scenarios/` 和项目 README 保持不变。
+   - doctor 与 init 共用同一布局判定，一次只选择 `.scenario-test/` 新布局或旧平铺布局。
+
+### Migration Guide: v0.5.1 → v0.5.2
+
+1. 无 DSL 或 CLI breaking changes。
+2. 新项目直接使用 v0.5.2 AI 接入 Prompt。
+3. 既有平铺项目重跑 v0.5.2 `init` 时继续使用原布局，不需要迁移；如需采用隐藏目录，只能在备份并确认项目差异后人工迁移，不能直接使用 `init --force`。
+
+---
+
 ## [0.5.1] - 2026-08-10
 
 ### 🐛 Bug Fixes

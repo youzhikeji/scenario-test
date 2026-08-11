@@ -79,8 +79,8 @@ test("contract.engines 与 package.json engines 一致", () => {
 test("init 模板（AI Prompt/Patterns/README）能力名单从 contract 投影，无手抄名单", async () => {
     const { createProjectFiles } = await import("../src/init-templates.js");
     const files = createProjectFiles("scenario-test");
-    const prompt = files["scenario-test/AI_SCENARIO_PROMPT.md"];
-    const patterns = files["scenario-test/SCENARIO_PATTERNS.md"];
+    const prompt = files["scenario-test/.scenario-test/AI_SCENARIO_PROMPT.md"];
+    const patterns = files["scenario-test/.scenario-test/SCENARIO_PATTERNS.md"];
     const readme = files["scenario-test/README.md"];
     const operators = Object.keys(contract.assertions.operators);
     for (const op of operators) {
@@ -97,12 +97,31 @@ test("init 模板（AI Prompt/Patterns/README）能力名单从 contract 投影�
     assert.ok(patterns.includes("from: 'vars'"));
 });
 
-test("docs 安装 Prompt 已更新到当前版本 URL，不残留旧版本", () => {
+test("对外接入文档使用当前版本且只要求复制一次 Prompt", () => {
     const installPrompt = fs.readFileSync(path.resolve(import.meta.dirname, "../docs/AI_INSTALL_PROMPT.md"), "utf8");
+    const scenarioPrompt = fs.readFileSync(path.resolve(import.meta.dirname, "../docs/AI_SCENARIO_PROMPT.md"), "utf8");
+    const examplesIndex = fs.readFileSync(path.resolve(import.meta.dirname, "../examples/EXAMPLES_INDEX.md"), "utf8");
     assert.match(installPrompt, new RegExp(`releases/download/v${contract.runtimeVersion}/scenario-test-cli\\.cjs`));
     assert.doesNotMatch(installPrompt, /v0\.2\.13|v0\.3\.0|v0\.4\.0/);
-    // README 顶部 AI 安装 Prompt 同步
+    assert.match(installPrompt, /AI 接入 Prompt（只需复制一次）/);
+    assert.match(installPrompt, /不要要求用户复制或粘贴/);
+    assert.match(installPrompt, /scenario-test\/\.scenario-test\/scenario-test-cli\.cjs doctor/);
+    assert.match(installPrompt, /scenario-test\/\.scenario-test\/AI_SCENARIO_PROMPT\.md/);
+    assert.match(installPrompt, /你要测试哪个业务功能/);
+    assert.match(scenarioPrompt, /仓库预览/);
+    assert.match(scenarioPrompt, /业务用户不要直接复制本文件/);
+    // README 只链接唯一的版本化接入 Prompt，不再维护第二份安装命令
     const readme = fs.readFileSync(path.resolve(import.meta.dirname, "../README.md"), "utf8");
-    assert.match(readme, new RegExp(`安装 scenario-test v${contract.runtimeVersion}`));
-    assert.doesNotMatch(readme, /releases\/download\/v0\.[234]\.0\//);
+    assert.match(readme, /复制一次即可/);
+    assert.match(readme, /AI_INSTALL_PROMPT\.md/);
+    assert.match(readme, /用户不需要再次复制/);
+    assert.doesNotMatch(readme, /两次 Prompt|releases\/download\/v/);
+
+    const quickStart = examplesIndex.match(/^##\s+[^\n]*快速开始[^\n]*\n[\s\S]*?(?=^##\s|$(?![\s\S]))/mi)?.[0] ?? "";
+    assert.ok(quickStart, "示例索引缺少业务接入快速开始章节");
+    assert.doesNotMatch(quickStart, /\bgit\s+clone\b|\bnpm\s+install\b|\bnpm\s+run\s+build\b/);
+    assert.match(quickStart, /AI_INSTALL_PROMPT\.md|AI 接入 Prompt/);
+    assert.match(quickStart, /AI_SCENARIO_PROMPT\.md/);
+    assert.match(quickStart, /用户不需要再次复制/);
+    assert.doesNotMatch(examplesIndex, /两次 Prompt/);
 });

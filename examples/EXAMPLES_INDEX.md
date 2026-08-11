@@ -105,26 +105,19 @@ scenario-test 提供了多个示例帮助您快速上手。
 
 ---
 
-## 🚀 快速开始
+## 🚀 业务项目快速开始
 
-### 1. 克隆项目
-```bash
-# 内部开发仓库（GitLab）；对外用户无需克隆源码，直接走 AI 安装 Prompt / GitHub Release
-git clone http://192.168.1.239/zhangqianfeng/scenario-test.git
-cd scenario-test
-```
+业务项目只需复制一次 Prompt，不从克隆本仓库、安装依赖或构建源码开始：
 
-### 2. 安装依赖
-```bash
-npm install
-```
+1. 在业务项目根目录打开 AI，将 [AI 接入 Prompt](../docs/AI_INSTALL_PROMPT.md) 全文复制给它。AI 自动完成固定 Release 安装、`init` 和 `doctor`。
+2. 回答 AI 提出的业务功能问题，并提供页面、Controller、接口或已有测试中的任一入口；环境地址和测试凭据仅在 AI 询问时提供。
+3. AI 生成场景并给出命令后，再逐个调试或运行。
 
-### 3. 构建项目
-```bash
-npm run build
-```
+项目内 init 生成的 `scenario-test/.scenario-test/AI_SCENARIO_PROMPT.md` 是给 AI 读取的规则，用户不需要再次复制。安装会话关闭后，可在新会话中直接让 AI 读取该文件并说明目标业务功能。
 
-### 4. 运行示例
+本页其余内容用于学习和运行仓库内示例；scenario-test 维护者的源码构建方式见根 [README](../README.md) 的“维护者构建”。
+
+### 运行已构建的仓库示例
 
 **运行所有示例**:
 ```bash
@@ -152,7 +145,7 @@ node dist/scenario-test-cli.cjs --config examples/security-best-practices/scenar
 
 ### 初级（1 小时）
 1. ✅ Basic 示例 - 了解基础概念
-2. ✅ Complete 示例 - 理解完整流程
+2. ✅ Complete 示例 - 理解多步骤编排与运行方式
 3. ✅ Security 示例 - 学习安全实践
 
 ### 中级（2 小时）
@@ -236,9 +229,9 @@ examples/
 2. 修改配置文件和场景
 3. 根据需要调整
 
-### Q: 示例运行失败怎么办？
+### Q: 仓库内源码示例运行失败怎么办？
 **A**: 
-1. 检查是否已执行 `npm install` 和 `npm run build`
+1. 如果你是 scenario-test 维护者，检查是否已按根 README 的“维护者构建”完成依赖安装和构建
 2. 查看错误消息中的提示
 3. 检查环境变量是否设置正确
 4. 参考示例的 README.md
@@ -291,6 +284,6 @@ examples/
 ---
 
 **更新时间**: 2026-08-10  
-**版本**: v0.5.1
+**版本**: v0.5.2
 
-> 内部说明：上文的 `git clone http://192.168.1.239/...` 是团队内网 GitLab 地址，仅适用于内部开发；对外正式安装渠道是 GitHub Release（https://github.com/youzhikeji/scenario-test/releases），见 [README](../README.md) 的“AI 安装 Prompt”。
+> 业务项目请从 [README](../README.md) 的“一次复制”流程开始。GitHub Release（https://github.com/youzhikeji/scenario-test/releases）是正式安装渠道；本页仅用于仓库示例的学习和维护。

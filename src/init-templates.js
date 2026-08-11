@@ -9,42 +9,51 @@ const GLOBALS_TYPES_BACKTICK = contract.globals.types.map((type) => `\`${type}\`
 
 export const DEFAULT_LIBRARY_URL = `https://github.com/youzhikeji/scenario-test/releases/download/v${VERSION}/scenario-test.umd.js`;
 
-const AUTHORING_PROMPT = `# AI 场景生成 Prompt
+const AUTHORING_PROMPT = `# AI 业务功能场景生成规则
 
-请为当前项目生成 scenario-test 场景用例。先阅读本目录的 \`README.md\`、\`SCENARIO_PATTERNS.md\`、\`scenario.config.js\` 和已有 \`scenarios/\`，再分析项目 Controller、OpenAPI/Swagger、前端 API 调用、接口文档和已有自动化测试。
+本文件由安装会话中的 AI 自动读取；新会话中的 AI 应按用户要求从项目目录直接读取。用户不需要复制或粘贴本文件。开始前必须已完成安装和 doctor，并存在本目录及运行时文件。
+
+本阶段只根据当前项目中与目标业务功能直接相关的真实证据生成或维护 HTTP 场景，不负责安装、升级或构建 scenario-test，不启动服务，也不实际调用业务接口。
+
+请针对用户本次指定的一个业务功能生成 scenario-test 场景用例。先定位场景测试根目录：新布局中本文件位于 \`.scenario-test/\`，根目录是上一级；旧版平铺布局中根目录就是本文件所在目录。随后读取根目录的 \`README.md\`、\`scenario.config.js\` 和已有 \`scenarios/\`，并读取本文件同目录的 \`SCENARIO_PATTERNS.md\`，再分析与目标功能直接相关的 Controller、OpenAPI/Swagger、前端 API 调用、接口文档和已有自动化测试。若用户尚未明确指定业务功能，先询问功能名称及可定位的代码、页面或接口入口；得到答复前不扫描整个项目、不创建场景文件。
 
 不要猜测接口路径、字段、认证方式、响应结构、状态枚举、请求枚举或错误响应字段；没有代码或文档依据时列为待确认项。示例中的 SUCCESS、PDF、pdf、错误码等都只是占位结构，不是可直接采用的默认值，也不能改成另一种大小写后使用。
 
 ## 实施要求
 
-1. 先给出场景清单：业务目标、前置条件、接口流和是否写数据；然后直接创建或修改场景文件，不启动服务、不调用接口。
-2. 一条场景对应一条完整业务流，而不是一个接口文件。纯查询接口可以组成独立只读场景。
+1. 只处理本次指定的一个业务功能。先给出功能卡片：功能目标、参与角色、触发入口、前置条件、关键业务规则、状态变化、直接相关接口、测试数据与清理条件；再给出该功能的场景矩阵，列明每个场景的验证目标、前置条件、步骤、预期结果和是否写数据。无法确认的内容列为待确认项，不得把范围扩展到相邻功能。
+2. 业务功能是设计边界，场景是该功能下的一条独立验证路径。按证据覆盖成功路径、业务规则/参数校验、权限、边界值、重复操作或幂等、合法与非法状态流转；没有证据的类别不生成。一个场景可以包含准备、执行、查询验证和精确清理等多个 HTTP 步骤，但这些步骤只服务于目标功能，不把多个业务功能串成一个大场景。认证等公共前置只作为准备步骤，不改变场景归属。
 3. 在 \`scenario.config.js\` 维护 \`envs\`、\`vars\`、\`variables\` 和 \`scenarios\`。私有项目可在 \`vars\` 保存联调凭据；\`variables\` 只声明标签、\`required\` 与可选 \`env\` 映射。源码能确认请求字段但不能确认必填取值时，在配置 \`vars\` 中留空，并在 \`variables\` 中声明为 \`required: true\`；场景只引用该变量，禁止填入猜测值或测试标记。
-4. 先参照 \`SCENARIO_PATTERNS.md\` 的完整模式，再按本项目证据替换路径、字段和响应断言；模式中的尖括号占位内容不得直接写入场景。场景必须使用 \`ScenarioTest.registerScenario(id, ScenarioTest.defineScenario({...}))\`，配置中的场景 id、文件注册 id 必须一致。
+4. 先参照 \`SCENARIO_PATTERNS.md\` 的步骤组合模式，再按本项目证据替换路径、字段和响应断言；模式中的尖括号占位内容不得直接写入场景。场景必须使用 \`ScenarioTest.registerScenario(id, ScenarioTest.defineScenario({...}))\`，配置中的场景 id、文件注册 id 必须一致。
 5. 每一步写 \`name\`、\`method\`、\`path\`、\`status\`，并为关键业务结果写 \`assertions\`。Query 参数只能写在步骤顶层 \`params\`，不能写成 \`request.params\`。用 \`extract\` 保存响应 ID、Token 或状态，再用 \`{{vars.name}}\` 串联后续步骤。断言操作符：${OPERATORS_BACKTICK}；数值比较（如条数不少于 5）用 \`gte: 5\`（仅数字不做字符串转换），"非负整数"这类格式校验用 \`matches: "^\\\\d+$"\`。\`extract\` 项可加 \`required: true\`，路径不存在时该步骤失败。\`when\` 对象形式只允许 \`{ from: "vars", ... }\`，不能基于响应体判断条件。
 6. 认证是普通项目步骤：确认登录接口时先登录并提取 Token；无法确认时仅声明变量并在具体 Header、Query 或 Body 中引用，不虚构框架级认证。浏览器 Cookie 会话必须有项目证据并显式设置 request.credentials 为 include；Node CLI 当前不提供自动 Cookie Jar。
 7. \`runId\` 和 \`runNo\` 是每次执行自动生成的内置变量，禁止在配置 vars、场景 vars、envVars、generatedVars 或 extract 中重新定义或覆盖。写入场景使用 \`scenario-{{vars.runNo}}\` 等测试标记。清理只能按刚提取的 ID 或测试标记精确定位，并用 \`when\` 防止空值删除；无法确认安全清理条件时不生成删除步骤。
-8. 默认保持 \`failurePolicy: "stop"\`。只有在完成状态字段和终态值都有证据时才使用 \`retryUntil\`，且 assertions 必须断言该终态值；只断言字段存在会立即通过，禁止配合 \`retryUntil\`。完成状态未知时最多生成一次状态查询。不要写固定 sleep。
+8. 默认保持 \`failurePolicy: "stop"\`。不同验证目标拆成独立场景；只有同一验证路径确实需要继续收集后续步骤结果时才设置 \`failurePolicy: "continue"\`。只有在完成状态字段和终态值都有证据时才使用 \`retryUntil\`，且 assertions 必须断言该终态值；只断言字段存在会立即通过，禁止配合 \`retryUntil\`。完成状态未知时最多生成一次状态查询。不要写固定 sleep。
 9. 错误响应体没有代码、文档或既有测试依据时，只断言已确认的 HTTP status，不能猜测或断言 code、message、error 等字段存在。
 10. 不修改业务代码、构建配置或公共运行时；不写入生产地址、个人数据、固定 Token 或非测试凭据。
 11. 落盘后逐文件自检：不得出现无证据的 SUCCESS、PDF、pdf、错误字段断言或 \`retryUntil + exists\`；所有外部输入变量必须在配置中声明，场景 vars 只保存测试标记、提取结果或内部状态。发现违规必须先修正再报告。
-12. 最后说明新增/修改文件、覆盖流程、待确认项和本地运行命令；不要实际执行场景。
+12. 最后说明本次目标业务功能、新增/修改文件、场景矩阵、待确认项和每个场景的本地运行命令；不要实际执行场景。
 `;
 
 const SCENARIO_PATTERNS = [
-    "# 场景模式库",
+    "# 业务功能场景模式库",
     "",
-    "本文件提供完整的场景骨架，而不是接口文档。所有 <占位内容> 必须先从当前项目的 Controller、OpenAPI、前端 API 调用、接口文档或既有测试中确认后再替换，不能原样执行。",
+    "本文件提供为单个业务功能编排场景时可复用的步骤组合，不是跨功能端到端流程或接口文档。每次先选定一个明确业务功能，再按真实业务规则组合该功能下的场景。所有 <占位内容> 必须从当前项目中与该功能直接相关的 Controller、OpenAPI、前端 API 调用、接口文档或既有测试确认后再替换，不能原样执行。",
     "",
-    "## 生成前检查",
+    "## 使用方式：先定功能，再设计场景矩阵",
     "",
-    "1. 确认每个接口的方法、路径、认证位置、请求字段、响应结构、是否写数据和安全清理方式。",
-    "2. 在 scenario.config.js 增加稳定的场景 id、名称和文件地址；场景文件注册的 id 必须一致。",
-    "3. 每条场景独立运行：自己获取认证变量或读取配置变量，自己提取 ID，不能依赖上次运行留下的数据。",
-    "4. 每一步都写 name、method、path、status；关键业务结果写 assertions；跨步骤数据通过 extract 保存。Query 参数写在步骤顶层 params，不写 request.params。",
-    "5. runId 和 runNo 由运行时自动生成，不要在 vars、variables、envVars、generatedVars 或 extract 中定义。模式中的状态、格式、错误码和响应字段都是结构占位，必须有项目证据才能采用。",
-    "6. 无法确认的必填请求值放入配置 vars 留空，并在 variables 声明 required: true；不得用 PDF、pdf、SUCCESS 或 scenario-{{vars.runNo}} 充当未知枚举。",
-    `7. 断言操作符：${OPERATORS_TEXT}；数值比较（条数不少于 N）用 gte: N，格式校验（非负整数）用 matches: '^\\\\d+$'。when 对象形式只允许 from: 'vars'。extract 可加 required: true 强制路径存在。`,
+    "1. 一次只处理一个业务功能，先明确功能目标、参与角色、触发入口、前置条件、业务规则、状态变化，以及直接相关的接口；范围不清时先询问，不扫描整个项目批量生成。",
+    "2. 业务功能是边界，场景是该功能下的一条独立验证路径。按证据考虑成功路径、业务规则/参数校验、权限、边界值、重复操作或幂等、合法与非法状态流转；没有依据的类别不生成。",
+    "3. 一个场景可以包含准备、执行、查询验证和精确清理等多个步骤，但所有步骤只服务于目标功能。不要为了追求“完整流程”把相邻业务功能串入同一场景。认证等公共前置可以作为准备步骤。",
+    "4. 建议使用 scenarios/<功能标识>/<验证路径>.js 组织文件，并使用 <功能标识>-<验证路径> 作为稳定场景 id，例如 order-review-success、order-review-forbidden；运行时仍使用扁平 scenarios 清单，不需要新增功能分组字段。",
+    "5. 每个场景独立运行：自己满足前置条件或读取配置变量，自己提取 ID，不能依赖其他场景或上次运行留下的数据。",
+    "6. 确认场景内每个接口的方法、路径、认证位置、请求字段、响应结构、是否写数据和安全清理方式。在 scenario.config.js 注册场景 id、名称和文件地址；文件注册 id 必须一致。",
+    "7. 每一步都写 name、method、path、status；关键业务结果写 assertions；跨步骤数据通过 extract 保存。Query 参数写在步骤顶层 params，不写 request.params。",
+    "8. runId 和 runNo 由运行时自动生成，不要在 vars、variables、envVars、generatedVars 或 extract 中定义。模式中的状态、格式、错误码和响应字段都是结构占位，必须有项目证据才能采用。",
+    "9. 无法确认的必填请求值放入配置 vars 留空，并在 variables 声明 required: true；不得用 PDF、pdf、SUCCESS 或 scenario-{{vars.runNo}} 充当未知枚举。",
+    `10. 断言操作符：${OPERATORS_TEXT}；数值比较（条数不少于 N）用 gte: N，格式校验（非负整数）用 matches: '^\\\\d+$'。when 对象形式只允许 from: 'vars'。extract 可加 required: true 强制路径存在。`,
+    "",
+    "以下模式是功能场景内部的步骤组合。按目标功能所需选用，不要求全部使用，也不要把所有模式拼成一个大场景。",
     "",
     "## 模式一：登录、提取 Token、后续请求引用",
     "",
@@ -104,16 +113,23 @@ const SCENARIO_PATTERNS = [
     "",
     "禁止固定 sleep，使用 retryUntil。重试次数、间隔、状态字段和完成状态必须从项目实现、枚举、文档或既有测试确认；无法确认终态时最多生成一次状态查询，不生成 retryUntil。retryUntil 的断言必须比较已确认终态，不能只检查 exists。",
     "",
-    "## 模式五：参数校验与权限拒绝",
+    "## 模式五：为校验失败与权限拒绝分别建场景",
     "",
-    "    ScenarioTest.registerScenario(\"request-validation\", ScenarioTest.defineScenario({",
-    "        name: \"参数校验和未认证访问\", failurePolicy: \"continue\", steps: [",
-    "            { name: \"缺少必填字段被拒绝\", method: \"POST\", path: \"<创建路径>\", request: { body: {} }, status: 400, assertions: [{ name: \"返回已确认错误码\", path: \"code\", equals: \"<错误码>\" }] },",
-    "            { name: \"未认证访问被拒绝\", method: \"GET\", path: \"<受保护路径>\", status: 401 }",
+    "同一业务功能的不同验证路径使用独立场景，不把参数校验、权限、边界值等互不依赖的失败分支塞进一个 failurePolicy: continue 场景。示例：",
+    "",
+    "    ScenarioTest.registerScenario(\"record-create-required-field\", ScenarioTest.defineScenario({",
+    "        name: \"记录创建 / 缺少必填字段\", steps: [",
+    "            { name: \"缺少必填字段时创建被拒绝\", method: \"POST\", path: \"<创建路径>\", request: { body: {} }, status: 400, assertions: [{ name: \"返回已确认错误码\", path: \"code\", equals: \"<错误码>\" }] }",
     "        ]",
     "    }));",
     "",
-    "状态码和业务错误码必须来自真实代码或文档。错误响应体没有证据时只断言 HTTP status，不断言 code、message、error 等字段。仅在需要收集多个独立校验失败时使用 failurePolicy: continue。",
+    "    ScenarioTest.registerScenario(\"record-create-unauthorized\", ScenarioTest.defineScenario({",
+    "        name: \"记录创建 / 未认证拒绝\", steps: [",
+    "            { name: \"未认证时创建被拒绝\", method: \"POST\", path: \"<创建路径>\", request: { body: { \"<已确认字段名>\": \"<已确认合法值>\" } }, status: 401 }",
+    "        ]",
+    "    }));",
+    "",
+    "状态码和业务错误码必须来自真实代码或文档。错误响应体没有证据时只断言 HTTP status，不断言 code、message、error 等字段。failurePolicy: continue 只用于同一验证路径中需要继续收集的步骤失败，不能用来合并不同场景。",
     "",
     "## 给 AI 的最小输入",
     "",
@@ -122,6 +138,12 @@ const SCENARIO_PATTERNS = [
 
 export function createProjectFiles(directory = "scenario-test", options = {}) {
     const storagePrefix = options.storagePrefix || "scenario-test.project";
+    const frameworkDirectory = options.frameworkDirectory === "." ? "." : ".scenario-test";
+    const frameworkPrefix = frameworkDirectory === "." ? directory : `${directory}/${frameworkDirectory}`;
+    const frameworkUrlPrefix = frameworkDirectory === "." ? "." : `./${frameworkDirectory}`;
+    const frameworkDisplay = frameworkDirectory === "." ? "当前目录（旧版兼容布局）" : `${frameworkDirectory}/`;
+    const cliPath = `${frameworkPrefix}/scenario-test-cli.cjs`;
+    const authoringPromptPath = `${frameworkPrefix}/AI_SCENARIO_PROMPT.md`;
     return {
         [`${directory}/index.html`]: `<!doctype html>
 <html lang="zh-CN">
@@ -132,7 +154,7 @@ export function createProjectFiles(directory = "scenario-test", options = {}) {
 </head>
 <body style="margin:0">
     <div id="scenario-test" style="height:100vh"></div>
-    <script src="./scenario-test.umd.js"></script>
+    <script src="${frameworkUrlPrefix}/scenario-test.umd.js"></script>
     <script src="./scenario.config.js"></script>
     <script>
         ScenarioTest.createApp({ mount: "#scenario-test", config: ScenarioTest.getConfig() });
@@ -140,16 +162,15 @@ export function createProjectFiles(directory = "scenario-test", options = {}) {
 </body>
 </html>
 `,
-        [`${directory}/scenario.config.js`]: `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+        [`${directory}/scenario.config.js`]: `/// <reference path="${frameworkUrlPrefix}/scenario-test.d.ts" />
+ScenarioTest.registerConfig(ScenarioTest.defineConfig({
     envs: [
         {
             key: "local",
             name: "本地开发",
             baseUrl: "http://localhost:8080",
-            // 全局参数：追加到本环境每个请求，支持 header / cookie / query
-            globals: [
-                { type: "header", name: "X-Project", value: "my-project" }
-            ]
+            // 未确认前保持为空；按真实项目需要添加 header / cookie / query
+            globals: []
         }
     ],
     defaultEnvKey: "local",
@@ -160,33 +181,39 @@ export function createProjectFiles(directory = "scenario-test", options = {}) {
     scenarios: []
 }));
 `,
-        [`${directory}/AI_SCENARIO_PROMPT.md`]: AUTHORING_PROMPT,
-        [`${directory}/SCENARIO_PATTERNS.md`]: SCENARIO_PATTERNS,
+        [`${frameworkPrefix}/AI_SCENARIO_PROMPT.md`]: AUTHORING_PROMPT,
+        [`${frameworkPrefix}/SCENARIO_PATTERNS.md`]: SCENARIO_PATTERNS,
         [`${directory}/README.md`]: `# 场景测试
 
 本目录是当前项目的场景测试入口。它与业务代码同仓维护：环境地址、测试变量、场景文件和项目专属插件放在这里；浏览器工作台与 CLI 固定为已下载的同一版本运行时。
 
-不需要克隆公共库源码、不需要 \`npm install\`，也不要让浏览器直接引用 GitLab Raw 地址。页面始终加载本目录的 \`scenario-test.umd.js\`。
+不需要克隆公共库源码、不需要 \`npm install\`，也不要让浏览器直接引用 GitLab Raw 地址。框架运行文件集中在 \`${frameworkDisplay}\`，业务人员通常不需要打开或修改。
 
-## 先做什么
+## 开始使用
 
-1. 打开 \`scenario.config.js\`，填写当前项目的环境和启动变量。
-2. 将 \`AI_SCENARIO_PROMPT.md\` 完整交给 AI 助手，并让它先阅读 \`SCENARIO_PATTERNS.md\`。初始场景清单为空，避免默认猜测项目存在健康检查或其他接口。
-3. 检查 AI 生成的路径、字段、状态枚举和测试数据条件是否都有项目代码或文档依据。
-4. 使用浏览器工作台调试单个场景，使用 CLI 批量执行或接入本项目的脚本。
+如果安装会话还在继续，直接回答 AI 提出的业务功能问题即可；AI 已读取本目录的规则，不需要再次复制任何 Prompt。
+
+如果新开了 AI 会话，只需输入：
+
+\`\`\`text
+请读取 ${authoringPromptPath}，为“<业务功能名称>”设计场景测试。入口：<页面、Controller、接口或已有测试路径>。
+\`\`\`
+
+接下来：
+
+1. AI 先输出功能卡片和场景矩阵；用户只需确认业务规则，并在 AI 询问时提供环境地址、安全测试账号、Token、枚举值或测试数据。
+2. AI 负责维护 \`scenario.config.js\` 和 \`scenarios/\`。一次只处理一个业务功能，不扫描整个项目批量生成。
+3. AI 给出命令后，再逐个调试该功能下的场景。初始场景清单为空时不要运行 \`--all\`。
 
 ## 目录说明
 
 | 路径 | 作用 | 是否应修改 |
 | --- | --- | --- |
-| \`index.html\` | 浏览器工作台入口，只加载本地 UMD、配置和挂载容器 | 通常不需要 |
-| \`scenario.config.js\` | 环境、初始变量、页面变量定义与场景清单 | 是 |
-| \`scenarios/\` | 一个文件一个完整业务场景 | 是 |
+| \`index.html\` | 浏览器工作台入口 | 通常不需要 |
+| \`scenario.config.js\` | 环境、测试变量和场景清单；通常由 AI 按用户提供的信息维护 | 按需 |
+| \`scenarios/\` | 按业务功能建子目录；目录内一个文件对应该功能的一条独立验证路径 | 由 AI 维护 |
 | \`plugins/\` | 仅当前项目需要的文件、Excel 或业务扩展 | 按需新建 |
-| \`AI_SCENARIO_PROMPT.md\` | 交给 AI 生成或维护场景的操作约束 | 阅读并使用 |
-| \`SCENARIO_PATTERNS.md\` | 登录、查询、创建清理、异步和错误分支的完整可套改模式 | 阅读并按项目证据替换 |
-| \`scenario-test.umd.js\` | 浏览器运行时 | 仅升级时替换 |
-| \`scenario-test-cli.cjs\` | CLI 与本地工作台服务 | 仅升级时替换 |
+| \`${frameworkDisplay}\` | CLI、浏览器运行时、AI 规则、类型声明、能力清单和版本锁 | 不需要用户修改 |
 
 ## 配置环境和变量
 
@@ -220,7 +247,8 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
         { name: "clientSecret", label: "客户端密钥", required: true, env: "SCENARIO_CLIENT_SECRET" }
     ],
     scenarios: [
-        { id: "order-create-query", name: "创建并查询订单", url: "scenarios/order-create-query.js" }
+        { id: "order-create-success", name: "订单创建 / 成功", url: "scenarios/order-create/success.js" },
+        { id: "order-create-required-field", name: "订单创建 / 缺少必填字段", url: "scenarios/order-create/required-field.js" }
     ]
 }));
 \`\`\`
@@ -233,11 +261,15 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
 
 ## 编写场景
 
-场景文件必须注册与配置相同的 id。一个场景应是一条完整业务流，不是把每个接口机械地拆成一个文件。读操作可以单独形成查询场景；写操作要使用可识别的测试标记，并只按本场景刚创建或提取到的 ID 清理数据。
+先确定一个业务功能，再为它设计场景矩阵。业务功能是设计与目录边界，场景是该功能下的一条独立验证路径，例如成功、业务规则校验、权限拒绝、边界值、重复操作或状态流转。只生成有代码或文档依据的路径。
+
+建议使用 \`scenarios/<功能标识>/<验证路径>.js\`，场景 id 使用 \`<功能标识>-<验证路径>\`，名称使用 \`功能名 / 验证路径\`。运行时仍使用扁平的 \`scenarios\` 清单，不需要新增功能分组字段。一个场景可以包含准备数据、执行目标操作、查询结果和精确清理等多个步骤，但这些步骤必须只服务于目标功能，不能把相邻业务功能串成一个大场景。每个场景必须独立运行，文件注册 id 与配置 id 保持一致。
+
+下面是“订单创建”功能的成功场景；“缺少必填字段”“未认证拒绝”等应分别建立同功能下的其他场景文件：
 
 \`\`\`js
-ScenarioTest.registerScenario("create-order", ScenarioTest.defineScenario({
-    name: "创建并查询测试订单",
+ScenarioTest.registerScenario("order-create-success", ScenarioTest.defineScenario({
+    name: "订单创建 / 成功",
     vars: { orderName: "scenario-{{vars.runNo}}" },
     steps: [
         {
@@ -264,6 +296,8 @@ ScenarioTest.registerScenario("create-order", ScenarioTest.defineScenario({
 }));
 \`\`\`
 
+写操作使用可识别的测试标记，并只按本场景刚创建或提取到的 ID 精确清理。不同验证目标应拆成同一功能下的独立场景，不通过 \`failurePolicy: "continue"\` 把无关失败分支合并起来。
+
 常用能力：
 
 - 用 \`{{vars.name}}\` 在 path、Query、Header、Body 中引用变量。
@@ -274,17 +308,17 @@ ScenarioTest.registerScenario("create-order", ScenarioTest.defineScenario({
 - 未写 \`status\` 和 \`assertions\` 时运行时默认要求 HTTP 2xx，不能把异常响应当成功。
 - 最终一致性使用 \`retryUntil\`，避免固定等待；前置变量可能为空的删除操作使用 \`when\` 保护（\`when\` 对象形式只允许 \`from: "vars"\`）。
 - \`runId\` / \`runNo\` 是运行时保留变量，禁止在配置或场景中声明或覆盖。
-- 默认失败即停止；只有需要收集多个失败时才在场景上设 \`failurePolicy: "continue"\`。
+- 默认失败即停止；只有同一验证路径确实需要继续收集后续步骤结果时，才在场景上设 \`failurePolicy: "continue"\`。
 - SKIP 步骤不计入通过/执行统计，全跳过时场景状态为 SKIPPED；写数据类场景在配置清单中加 \`manual: true\`，\`--all\` 会默认排除，需用 \`--scenario <id>\` 显式执行。
 
-完整 DSL 与示例见公共库 README；项目内新增用例优先遵循 \`AI_SCENARIO_PROMPT.md\` 和 \`SCENARIO_PATTERNS.md\`。
+完整 DSL 与示例见公共库 README；项目内新增用例由 AI 读取 \`${frameworkDirectory}/AI_SCENARIO_PROMPT.md\` 和同目录的模式库后生成。
 
 ## 浏览器工作台
 
 在本目录启动本地服务，再打开终端输出的地址：
 
 \`\`\`powershell
-node ${directory}/scenario-test-cli.cjs serve --config ${directory}/scenario.config.js --port 4300
+node ${cliPath} serve --config ${directory}/scenario.config.js --port 4300
 \`\`\`
 
 浏览器页面可切换环境和场景，填写并保存当前环境的变量覆盖，单步执行、全量执行、取消执行，并查看实际请求、响应和变量。不要双击直接打开 \`index.html\`：浏览器对本地文件加载场景 JS 有限制，应通过 \`serve\` 启动。
@@ -294,20 +328,20 @@ node ${directory}/scenario-test-cli.cjs serve --config ${directory}/scenario.con
 执行配置中全部场景：
 
 \`\`\`powershell
-node ${directory}/scenario-test-cli.cjs --config ${directory}/scenario.config.js --env local --all
+node ${cliPath} --config ${directory}/scenario.config.js --env local --all
 \`\`\`
 
 执行单个场景时，使用配置中的场景 id：
 
 \`\`\`powershell
-node ${directory}/scenario-test-cli.cjs --config ${directory}/scenario.config.js --env local --scenario order-create-query
+node ${cliPath} --config ${directory}/scenario.config.js --env local --scenario order-create-success
 \`\`\`
 
 在 PowerShell 中为一次执行临时覆盖凭据：
 
 \`\`\`powershell
 $env:SCENARIO_CLIENT_SECRET = "temporary-value"
-node ${directory}/scenario-test-cli.cjs --config ${directory}/scenario.config.js --env local --all
+node ${cliPath} --config ${directory}/scenario.config.js --env local --all
 Remove-Item Env:SCENARIO_CLIENT_SECRET
 \`\`\`
 
@@ -317,7 +351,7 @@ Remove-Item Env:SCENARIO_CLIENT_SECRET
 
 ### 页面提示 ScenarioTest 未定义或脚本加载失败
 
-确认 \`index.html\` 中使用的是 \`<script src="./scenario-test.umd.js"></script>\`，且本目录存在该文件。不要把 GitLab Raw URL 直接写进 \`script src\`，它可能以浏览器拒绝的 MIME 类型返回。
+确认 \`index.html\` 加载的是 \`${frameworkUrlPrefix}/scenario-test.umd.js\`，且 \`${frameworkDirectory}/\` 中存在该文件。不要把 GitLab Raw URL 直接写进 \`script src\`，它可能以浏览器拒绝的 MIME 类型返回。
 
 ### 页面能打开但场景没有加载
 
@@ -327,13 +361,13 @@ Remove-Item Env:SCENARIO_CLIENT_SECRET
 
 这是预期行为：页面读取浏览器当前环境的 LocalStorage 覆盖；CLI 不读取它。需要在 CLI 临时替换值时，为 \`variables\` 配置 \`env\` 并设置对应系统环境变量。
 
-### 新接口不知道如何写用例
+### 新业务功能不知道如何设计场景
 
-不要猜。将 \`AI_SCENARIO_PROMPT.md\` 和 \`SCENARIO_PATTERNS.md\` 交给 AI，并让它先检索项目的 Controller、OpenAPI、前端 API 调用、接口文档和既有测试；没有依据的接口和字段应先列为待确认项。
+不要先扫描整个项目或按接口批量建文件。先选定一个业务功能，并把功能名称及可定位的页面、Controller、OpenAPI 节点、前端 API 模块或已有测试入口交给 AI；AI 会读取 \`${frameworkDirectory}/\` 中的项目规则，先输出功能卡片和场景矩阵。没有依据的业务规则、接口和字段列为待确认项。
 
 ## 升级运行时
 
-场景、配置和项目插件属于本项目，升级时不要覆盖它们。使用新版 CLI 对当前目录执行 \`init\` 且不传 \`--force\`，然后只确认或替换运行时文件：\`scenario-test.umd.js\` 与 \`scenario-test-cli.cjs\`。升级后先运行健康检查和一个代表性业务场景，再提交本项目改动。
+场景、配置和项目插件属于本项目，升级时不要覆盖它们。使用新版 CLI 对当前目录执行 \`init\` 且不传 \`--force\`；CLI 会按当前项目已采用的新隐藏布局或旧平铺布局更新对应的内部文件。升级后先运行 doctor 和一个代表性业务场景，再提交本项目改动。
 
 公共运行时不保存业务地址、账号、Token、Secret 或测试数据；这些仅能放在当前私有项目的配置和受控环境变量中。
 `

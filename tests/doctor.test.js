@@ -65,6 +65,22 @@ test("doctor：健康项目全 PASS + manual INFO，退出码 0", () => {
     }
 });
 
+test("doctor：新布局缺文件时不从旧平铺位置拼接产物", () => {
+    const { project, dir } = initProject();
+    try {
+        const internalUmd = path.join(dir, ".scenario-test", "scenario-test.umd.js");
+        fs.copyFileSync(internalUmd, path.join(dir, "scenario-test.umd.js"));
+        fs.rmSync(internalUmd);
+
+        const result = runDoctor(dir);
+        assert.equal(result.status, 0, result.stdout + result.stderr);
+        assert.match(result.stdout, /\[WARN\] umd: 缺少框架管理文件/);
+        assert.doesNotMatch(result.stdout, /\[PASS\] umd/);
+    } finally {
+        cleanup(project);
+    }
+});
+
 test("doctor：未知操作符场景 FAIL，且不中断其余检查（汇总）", () => {
     const { project, dir } = initProject();
     try {
@@ -110,7 +126,7 @@ test("doctor：多文件错误汇总（文件缺失 + 未知操作符同时报�
 test("doctor：缺少版本锁只 WARN 不失败，并给出补齐提示", () => {
     const { project, dir } = initProject();
     try {
-        fs.rmSync(path.join(dir, ".scenario-test-version.json"));
+        fs.rmSync(path.join(dir, ".scenario-test", ".scenario-test-version.json"));
         const result = runDoctor(dir);
         assert.equal(result.status, 0, result.stdout + result.stderr);
         assert.match(result.stdout, /\[WARN\] version-lock/);
@@ -125,7 +141,7 @@ test("doctor：缺少版本锁只 WARN 不失败，并给出补齐提示", () =>
 test("doctor：版本锁版本不一致为 error（退出码 1）", () => {
     const { project, dir } = initProject();
     try {
-        const lockPath = path.join(dir, ".scenario-test-version.json");
+        const lockPath = path.join(dir, ".scenario-test", ".scenario-test-version.json");
         const lock = JSON.parse(fs.readFileSync(lockPath, "utf8"));
         lock.runtimeVersion = "0.4.0";
         fs.writeFileSync(lockPath, JSON.stringify(lock, null, 2), "utf8");

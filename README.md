@@ -2,30 +2,30 @@
 
 `scenario-test` 是一个可直接引用的场景测试公共 JavaScript 库。它提供同一套 DSL、浏览器工作台和 Node.js CLI，不依赖业务项目、前端框架或公网 CDN。
 
-## AI 安装 Prompt
+## 给业务同事：复制一次即可
 
-将下列 Prompt 粘贴给当前项目的 AI 助手，即可安装到默认的 `scenario-test` 目录。将 `scenario-test` 替换为团队约定的项目内相对目录，例如 `dev/场景测试`；不要使用绝对路径。
+不需要克隆本仓库、执行 `npm install` 或学习 DSL。使用流程只有四步：
+
+1. 在**业务项目根目录**打开 AI 助手。
+2. 将 [AI 接入 Prompt](docs/AI_INSTALL_PROMPT.md) 全文复制给 AI。AI 会自动安装、执行 `init` 和 `doctor`。
+3. 回答 AI 的问题：要测试哪个业务功能，并提供页面、Controller、接口或已有测试中的任一入口；环境地址、测试账号或 Token 等信息仅在 AI 询问时提供。
+4. AI 生成该功能的场景并给出命令后，再运行单个场景或打开浏览器工作台调试。
+
+整个会话只需复制一次接入 Prompt。`scenario-test/.scenario-test/AI_SCENARIO_PROMPT.md` 是 init 生成给 AI 使用的内部规则，用户不需要再次复制。若安装会话已经关闭，在业务项目的新会话中直接输入：
 
 ```text
-请在当前项目根目录安装 scenario-test v0.5.1，目标目录为 scenario-test。
-
-1. 确认 Node.js 版本不低于 18；不满足时停止并说明原因。
-2. 不克隆公共库源码，不执行 npm install，不修改业务代码、构建配置或已有场景文件。
-3. 仅从以下固定版本地址下载 CLI 到系统临时目录：
-   https://github.com/youzhikeji/scenario-test/releases/download/v0.5.1/scenario-test-cli.cjs
-4. 使用 node <临时 CLI 路径> init --project . --dir "scenario-test" 执行初始化；不要传 --force。
-5. 检查并报告 scenario-test/index.html、scenario-test/scenario.config.js、scenario-test/AI_SCENARIO_PROMPT.md、scenario-test/SCENARIO_PATTERNS.md、scenario-test/scenario-test.umd.js、scenario-test/scenario-test-cli.cjs、scenario-test/scenario-test.d.ts、scenario-test/scenario-test-capabilities.json 和 scenario-test/.scenario-test-version.json 是已创建还是已保留。初始场景清单应为空，由 AI 根据当前项目真实接口生成。
-6. 运行 doctor 确认安装完整：node scenario-test/scenario-test-cli.cjs doctor --config scenario-test/scenario.config.js；有 FAIL 时停止并报告。
-7. 不启动服务、不调用任何业务接口、不写入 Token、Secret 或真实测试数据。
-8. 最后只给出安装结果、doctor 结果，以及后续运行命令：
-   node scenario-test/scenario-test-cli.cjs --config scenario-test/scenario.config.js --env local --all
-
-如果下载、Node.js 检查或初始化失败，停止后报告具体失败原因，不尝试替代安装方式。
+请读取 scenario-test/.scenario-test/AI_SCENARIO_PROMPT.md，为“<业务功能名称>”设计场景测试。入口：<页面、Controller、接口或已有测试路径>。
 ```
 
-完整独立版本见 [AI 安装 Prompt](docs/AI_INSTALL_PROMPT.md)。
+旧平铺项目重跑 v0.5.2 `init` 后仍保留原布局；这类项目让 AI 读取 `scenario-test/AI_SCENARIO_PROMPT.md`。
 
-安装完成后，使用 [AI 场景生成 Prompt](docs/AI_SCENARIO_PROMPT.md) 让 AI 从项目接口与既有代码生成场景；初始化目录会同时提供登录认证、查询详情、创建清理、异步轮询和错误分支的可套改模式库。安装 Prompt 只负责初始化，不会自动猜测业务用例。
+每次只处理一个业务功能。业务功能是设计边界，场景是该功能下的一条独立验证路径，例如成功、校验、权限、边界或状态流转；不要让 AI 扫描整个项目批量生成，也不要把多个业务功能串成一个大场景。
+
+> 团队使用其他相对目录时，将 `scenario-test` 替换为约定目录，例如 `dev/场景测试`。安装和场景生成阶段都不会启动服务或调用业务接口。
+
+---
+
+> 普通业务使用到这里即可。以下内容面向公共库维护者，或需要手工接入浏览器、CLI、插件和 CI 的开发人员。
 
 ## 运行要求
 
@@ -33,7 +33,7 @@
 - 构建端：Node.js 18+ 与 npm。
 - 消费者只需要 `dist/`，无需安装 npm 依赖。
 
-## 构建
+## 维护者构建
 
 ```powershell
 npm install
@@ -60,8 +60,8 @@ npm run test:browser
 
 - **`capabilities` 命令**：`node scenario-test-cli.cjs capabilities` 输出人类可读能力清单（版本、contractVersion、断言操作符及简述、when、extract、保留变量、manual、CLI 命令与参数）；`capabilities --json` 输出机器可读 JSON，内容与 `dist/scenario-test-capabilities.json` 完全一致。
 - **`doctor` 命令**：`node scenario-test-cli.cjs doctor --config scenario.config.js [--json]` 对项目做静态体检（Node 版本、配置/场景加载、DSL 校验、manual 提示、CLI/UMD/d.ts/capabilities/版本锁版本握手），汇总所有可继续检查的错误；有 FAIL 退出码 1。
-- **`scenario-test.d.ts`**：init 会复制到项目场景测试目录；纯 JS 项目通过 `// @ts-check` + `/** @type {import('./scenario-test').ScenarioDefinition} */` 获得 IDE 补全，无需 npm install。
-- **`.scenario-test-version.json`（项目版本锁）**：init 生成的框架管理文件，记录 runtimeVersion、contractVersion、预期文件名、产物 SHA256 与 source/release 信息；doctor 据此做本地固定版本握手。
+- **`scenario-test.d.ts`**：init 会复制到项目场景测试目录的 `.scenario-test/` 内部目录；纯 JS 项目仍可获得全局 `ScenarioTest` 类型提示，无需 npm install。
+- **`.scenario-test-version.json`（项目版本锁）**：init 生成在 `.scenario-test/` 内部目录，记录 runtimeVersion、contractVersion、预期文件名、产物 SHA256 与 source/release 信息；doctor 据此做本地固定版本握手。旧项目的平铺版本锁继续兼容。
 - **固定版本升级原则**：只使用已发布 Tag 的固定版本产物，不使用 `master`/latest；升级时用新版 CLI 重新执行 `init`（不传 `--force`，不会覆盖项目配置与场景），随后运行 `doctor` 验证版本一致。`upgrade` 命令尚未实现，版本锁仅建立未来升级所需的所有权基础。
 
 GitHub Release（https://github.com/youzhikeji/scenario-test/releases）是对外正式安装渠道；仓库内 GitLab 相关文档与脚本仅用于内部/历史发布流程，不作为对外安装指引。
@@ -121,23 +121,23 @@ ScenarioTest.registerScenario("health", ScenarioTest.defineScenario({
 
 `vars` 是启动初始值。私有项目可在此保存团队测试凭据，浏览器页面中的变量可按项目 `storagePrefix` 和环境覆盖它，覆盖值保存在浏览器 LocalStorage。不同项目必须使用不同的 `storagePrefix`，`init` 会自动生成。CLI/CI 中同名 `variables[].env` 环境变量优先于 `vars`；其后依次是 `vars`、场景 `vars` 和 `variables[].defaultValue`。公共库、示例和构建产物不得写入真实业务凭据。
 
-业务项目应将 Release 的 UMD 下载并固定在项目目录中，再由页面引用本地文件：
+业务项目通过 `init` 使用隐藏内部目录中的本地 UMD：
 
 ```html
-<script src="./scenario-test.umd.js"></script>
+<script src="./.scenario-test/scenario-test.umd.js"></script>
 ```
 
 GitLab Raw 用于下载而不是浏览器直接加载，因为其响应 MIME 类型可能被浏览器拒绝。不要引用 `master`，应固定使用已发布的 Tag。
 
 ## 初始化项目
 
-CLI 可创建业务项目所需的最小目录、浏览器入口、配置、示例场景，并把当前版本 CLI 写入项目：
+CLI 可创建业务项目所需的最小目录、浏览器入口、配置和空场景清单，并把当前版本 CLI 写入项目：
 
 ```powershell
 node scenario-test-cli.cjs init --project D:\project --dir "scenario-test"
 ```
 
-`--dir` 决定场景测试在项目中的目录，默认是 `scenario-test`。现有项目可继续显式使用 `--dir "dev/场景测试"`。`init` 会将 CLI 和浏览器 UMD 写入指定目录；需要私有镜像或其他版本时指定 `--library-url <url>`。已有文件默认保留，只有传入 `--force` 才覆盖。
+`--dir` 决定场景测试在项目中的目录，默认是 `scenario-test`。现有项目可继续显式使用 `--dir "dev/场景测试"`。新项目只在根层创建 `README.md`、`index.html` 和 `scenario.config.js`，框架运行时、CLI、AI 规则、类型声明、能力清单和版本锁统一放入 `.scenario-test/`；场景由 AI 后续写入 `scenarios/`。`--library-url <url>` 只用于获取同版本 UMD 的私有镜像，不能用于跨版本替换，否则 `doctor` 会报告版本不一致。已有旧平铺项目重跑 init 时继续使用原布局，不强制迁移、不混用文件。
 
 ## CLI
 
@@ -155,7 +155,7 @@ node D:\path\to\scenario-test\dist\scenario-test-cli.cjs serve `
   --port 4300
 ```
 
-CLI 从变量定义的 `env` 字段读取环境变量。私有项目可将联调凭据直接写入 `vars`。`failurePolicy` 默认为 `stop`；需要收集全部失败时在场景上设置 `failurePolicy: "continue"`。
+CLI 从变量定义的 `env` 字段读取环境变量。私有项目可将联调凭据直接写入 `vars`。`failurePolicy` 默认为 `stop`；只有同一验证路径确实需要继续收集后续步骤结果时才设置 `continue`。
 
 `--all` 默认排除配置中 `manual: true` 的场景（需要人工准备数据的写数据场景），`--scenario <id>` 可显式执行任意场景包括 manual。`--fail-on-skip` 开启后任何 SKIP 步骤都会让最终退出码变为 1（默认 SKIP 不视为失败）。
 
@@ -196,6 +196,17 @@ CLI 从变量定义的 `env` 字段读取环境变量。私有项目可将联调
 - 使用环境变量传递敏感信息
 
 ## 升级指南
+
+### 升级到 v0.5.2
+
+v0.5.2 简化业务项目接入和场景设计流程，无 DSL 或 CLI 破坏性变更。请参考 [CHANGELOG.md](CHANGELOG.md)。
+
+**主要变更**:
+- 业务用户只需复制一次 AI 接入 Prompt；AI 自动安装、体检、读取项目规则并询问目标业务功能。
+- 场景按单个业务功能设计矩阵，不扫描整个项目批量生成，不把多个功能串成大场景。
+- 新项目把框架运行时、CLI、AI 规则、类型声明、能力清单和版本锁收拢到 `.scenario-test/`，根层只保留三个入口文件。
+- init 默认全局请求参数为空，避免发送占位请求头。
+- 既有平铺项目重跑 init 时继续原位更新，不强制迁移；不要直接用 `init --force` 覆盖项目配置。
 
 ### 升级到 v0.5.1
 
