@@ -36,7 +36,7 @@ export function validateAdapterResponse(response, adapterName = "unknown") {
     
     const actualResponse = response.response || response;
     
-    if (actualResponse.status === undefined && actualResponse.status === null) {
+    if (actualResponse.status === undefined || actualResponse.status === null) {
         throw new TypeError(`适配器 ${adapterName} 响应缺少 status 字段`);
     }
     

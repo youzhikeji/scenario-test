@@ -1,58 +1,49 @@
 ScenarioTest.registerScenario("safe-paths", ScenarioTest.defineScenario({
-    name: "安全的文件路径使用",
+    name: "安全的文件保存路径使用",
     vars: {
         reportDate: "2026-08-08"
     },
     steps: [
         {
-            name: "✅ 安全：使用相对路径",
-            prepareXlsx: {
-                template: "templates/report.xlsx",  // ✅ 相对路径
-                output: "output/result.xlsx",        // ✅ 相对路径
-                sheet: "Sheet1",
-                cells: [
-                    { cell: "A1", value: "安全的路径示例" },
-                    { cell: "A2", value: "{{vars.reportDate}}" }
-                ]
-            }
+            name: "✅ 安全：使用相对路径保存响应",
+            method: "GET",
+            path: "https://mock.local/report?date={{vars.reportDate}}",
+            status: 200,
+            saveResponseAs: "output/report.txt"  // ✅ 相对路径
         },
 
         {
-            name: "✅ 安全：项目内的子目录",
-            prepareXlsx: {
-                template: "templates/subfolder/report.xlsx",  // ✅ 允许
-                output: "output/reports/result.xlsx",          // ✅ 允许
-                sheet: "Sheet1",
-                cells: [
-                    { cell: "A1", value: "子目录也是安全的" }
-                ]
-            }
+            name: "✅ 安全：保存到项目内的子目录",
+            method: "GET",
+            path: "https://mock.local/report?date={{vars.reportDate}}",
+            status: 200,
+            saveResponseAs: "output/reports/result.txt"  // ✅ 允许
         }
 
-        // ❌ 以下路径会被 v0.3.0 拒绝（演示用，实际运行会失败）
+        // ❌ 以下路径会被路径验证拒绝（演示用，实际运行会失败）
 
         // {
         //     name: "❌ 不安全：绝对路径",
-        //     prepareXlsx: {
-        //         template: "/etc/passwd",           // ❌ 绝对路径
-        //         output: "output/result.xlsx"
-        //     }
+        //     method: "GET",
+        //     path: "https://mock.local/report",
+        //     status: 200,
+        //     saveResponseAs: "/etc/passwd"  // ❌ 绝对路径
         // },
 
         // {
         //     name: "❌ 不安全：路径遍历",
-        //     prepareXlsx: {
-        //         template: "../../../tmp/evil.xlsx",  // ❌ 路径遍历
-        //         output: "output/result.xlsx"
-        //     }
+        //     method: "GET",
+        //     path: "https://mock.local/report",
+        //     status: 200,
+        //     saveResponseAs: "../../../tmp/evil.txt"  // ❌ 路径遍历
         // },
 
         // {
         //     name: "❌ 不安全：访问系统文件",
-        //     prepareXlsx: {
-        //         template: "templates/report.xlsx",
-        //         output: "C:\\Windows\\System32\\evil.xlsx"  // ❌ 系统路径
-        //     }
+        //     method: "GET",
+        //     path: "https://mock.local/report",
+        //     status: 200,
+        //     saveResponseAs: "C:\\Windows\\System32\\evil.txt"  // ❌ 系统路径
         // }
     ]
 }));
@@ -60,9 +51,9 @@ ScenarioTest.registerScenario("safe-paths", ScenarioTest.defineScenario({
 // 💡 v0.3.0 路径验证规则：
 //
 // ✅ 允许：
-// - 相对路径（templates/file.xlsx）
-// - 子目录（templates/sub/file.xlsx）
-// - 当前目录（./file.xlsx）
+// - 相对路径（output/file.txt）
+// - 子目录（output/sub/file.txt）
+// - 当前目录（./file.txt）
 //
 // ❌ 拒绝：
 // - 绝对路径（/etc/passwd, C:\Windows\...）
@@ -70,18 +61,17 @@ ScenarioTest.registerScenario("safe-paths", ScenarioTest.defineScenario({
 // - 父目录访问（在配置目录外）
 //
 // 🔒 安全保障：
-// 所有文件操作都必须在配置文件所在目录内
-// 防止读取/写入系统文件
-// 防止覆盖重要文件
+// 所有文件操作（响应保存 saveResponseAs、文件上传 request.fileUpload）都必须
+// 在配置文件所在目录内，防止读取/写出系统文件，防止覆盖重要文件。
 
 // 📝 错误示例：
 //
 // 如果尝试使用不安全的路径，会看到如下错误：
 //
-// Excel 模板路径不安全: /etc/passwd
+// 响应保存路径不安全: /etc/passwd
 // 原因: 不允许使用绝对路径: /etc/passwd
-// 提示: 请使用配置目录内的相对路径
+// 提示: 保存路径必须在工作区内
 //
-// Excel 输出路径不安全: ../../../tmp/evil.xlsx
-// 原因: 路径越界: ../../../tmp/evil.xlsx
-// 提示: 文件必须在配置目录内: /path/to/config
+// 响应保存路径不安全: ../../../tmp/evil.txt
+// 原因: 路径越界: ../../../tmp/evil.txt
+// 提示: 保存路径必须在工作区内

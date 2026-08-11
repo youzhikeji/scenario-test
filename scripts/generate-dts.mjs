@@ -157,7 +157,7 @@ export interface Step {
     timeoutMs?: number;
     saveResponseAs?: string;
     adapter?: string;
-    /** 适配器专属步骤键（如 prepareXlsx）与兼容字段 */
+    /** 适配器专属步骤键与兼容字段 */
     [key: string]: unknown;
 }
 

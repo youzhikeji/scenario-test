@@ -18,8 +18,8 @@ import path from "node:path";
  *
  * @example
  * // 安全的相对路径
- * validatePath("/workspace", "templates/file.xlsx")
- * // => "/workspace/templates/file.xlsx"
+ * validatePath("/workspace", "templates/file.txt")
+ * // => "/workspace/templates/file.txt"
  *
  * @example
  * // 阻止路径遍历

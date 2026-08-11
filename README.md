@@ -182,7 +182,6 @@ CLI 从变量定义的 `env` 字段读取环境变量。私有项目可将联调
 - `when` 条件：对象形式只允许 `{ from: "vars", ... }`（不支持 body/status/header 条件），非对象形式（模板字符串/布尔）保持真值语义；条件不满足时步骤标记为 `SKIPPED`，不计入通过/执行统计，全场景跳过时场景状态为 `SKIPPED`。
 - Node 下的 `request.fileUpload`、`saveResponseAs`。
 - `generatedVars`：`timestamp`、`uuidHex`、`md5`、`signature`。
-- `prepareXlsx` 由官方 Excel 适配器执行。
 
 ## 安全
 

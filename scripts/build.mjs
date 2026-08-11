@@ -14,7 +14,7 @@ fs.writeFileSync(
     "utf8"
 );
 fs.rmSync(dist, { recursive: true, force: true });
-fs.mkdirSync(path.join(dist, "adapters"), { recursive: true });
+fs.mkdirSync(dist, { recursive: true });
 
 // 版本写入后动态导入 contract（获得最新 VERSION），生成对外能力清单与 d.ts
 const { contract } = await import(pathToFileURL(path.join(root, "src/contract.js")).href);

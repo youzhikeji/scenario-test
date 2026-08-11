@@ -69,9 +69,6 @@ scenario-test 提供了多个示例帮助您快速上手。
 ### 我需要了解完整功能
 → 查看 **Complete** 示例
 
-### 我需要生成 Excel 报表
-→ 查看 **XLSX Adapter** 示例
-
 ### 我想了解安全最佳实践
 → 查看 **Security Best Practices** 示例（推荐所有用户阅读）
 

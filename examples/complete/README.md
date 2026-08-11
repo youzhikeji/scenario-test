@@ -31,3 +31,7 @@ node .\dist\scenario-test-cli.cjs `
 ```
 
 `manual-login.js` 演示用户自定义登录步骤；它不是框架内置认证能力。登录后提取的变量只在本次场景运行中有效，避免把示例凭据写入本地配置。
+
+## 给 AI 一键安装
+
+在**业务项目根目录**打开 AI 助手，将 [AI 接入 Prompt](../../docs/AI_INSTALL_PROMPT.md) 全文复制给 AI，AI 会自动完成 CLI 下载、`init` 初始化与 `doctor` 体检，然后只询问你要测试的业务功能。全程不需要克隆本仓库、执行 `npm install` 或学习 DSL。

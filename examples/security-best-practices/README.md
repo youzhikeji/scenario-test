@@ -77,19 +77,20 @@ vars: {
 
 ### 场景 2: 安全的文件路径 ✅
 
-**v0.3.0 新增路径验证**：
+**路径验证覆盖响应保存与文件上传**：
 
 ```javascript
 // ✅ 安全：相对路径
-prepareXlsx: {
-    template: "templates/report.xlsx",
-    output: "output/result.xlsx"
+{
+    saveResponseAs: "output/result.txt"
 }
 
 // ❌ 危险：会被拒绝
-prepareXlsx: {
-    template: "/etc/passwd",           // 绝对路径
-    output: "../../../tmp/file.xlsx"   // 路径遍历
+{
+    saveResponseAs: "/etc/passwd"           // 绝对路径
+}
+{
+    saveResponseAs: "../../../tmp/file.txt" // 路径遍历
 }
 ```
 
@@ -203,17 +204,13 @@ node cli.cjs --config scenario.config.js
 ### ❌ 问题 3: 路径遍历
 
 ```javascript
-// ❌ 不安全：可以访问系统文件
+// ❌ 不安全：可以把响应写出到系统文件
 {
-    prepareXlsx: {
-        template: "../../../etc/passwd",
-        output: "output.xlsx"
-    }
+    saveResponseAs: "../../../etc/passwd"
 }
 ```
 
 **风险**：
-- 读取敏感文件
 - 覆盖系统文件
 - 权限提升
 
@@ -223,10 +220,7 @@ node cli.cjs --config scenario.config.js
 // ✅ 安全：v0.3.0 会自动拒绝
 // 只使用项目内的相对路径
 {
-    prepareXlsx: {
-        template: "templates/report.xlsx",
-        output: "output/result.xlsx"
-    }
+    saveResponseAs: "output/result.txt"
 }
 ```
 

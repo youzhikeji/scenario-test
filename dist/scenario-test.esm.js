@@ -685,7 +685,7 @@ function validateAdapterResponse(response, adapterName = "unknown") {
     throw new TypeError(`\u9002\u914D\u5668 ${adapterName} \u8FD4\u56DE\u503C\u5FC5\u987B\u662F\u5BF9\u8C61`);
   }
   const actualResponse = response.response || response;
-  if (actualResponse.status === void 0 && actualResponse.status === null) {
+  if (actualResponse.status === void 0 || actualResponse.status === null) {
     throw new TypeError(`\u9002\u914D\u5668 ${adapterName} \u54CD\u5E94\u7F3A\u5C11 status \u5B57\u6BB5`);
   }
   if (actualResponse.headers !== void 0 && typeof actualResponse.headers !== "object") {
@@ -1700,121 +1700,6 @@ var legacyCore = function(globalRoot) {
       runtime.vars[item.name] = value;
     });
     return { warnings, failures };
-  }
-  function md52(str) {
-    var s = unescape(encodeURIComponent(String(str)));
-    function add32(a2, b2) {
-      return a2 + b2 & 4294967295;
-    }
-    function cmn(q, a2, b2, x, s2, t) {
-      return add32(rol(add32(add32(a2, q), add32(x, t)), s2), b2);
-    }
-    function ff(a2, b2, c2, d2, x, s2, t) {
-      return cmn(b2 & c2 | ~b2 & d2, a2, b2, x, s2, t);
-    }
-    function gg(a2, b2, c2, d2, x, s2, t) {
-      return cmn(d2 & b2 | ~d2 & c2, a2, b2, x, s2, t);
-    }
-    function hh(a2, b2, c2, d2, x, s2, t) {
-      return cmn(b2 ^ c2 ^ d2, a2, b2, x, s2, t);
-    }
-    function ii(a2, b2, c2, d2, x, s2, t) {
-      return cmn(c2 ^ (b2 | ~d2), a2, b2, x, s2, t);
-    }
-    function rol(num, cnt) {
-      return num << cnt | num >>> 32 - cnt;
-    }
-    var n = s.length;
-    var wordCount = ((n + 8 >> 6) + 1) * 16;
-    var words = new Array(wordCount).fill(0);
-    for (var i = 0; i < n; i++) {
-      words[i >> 2] |= (s.charCodeAt(i) & 255) << i % 4 * 8;
-    }
-    words[i >> 2] |= 128 << i % 4 * 8;
-    words[wordCount - 2] = n * 8;
-    var a0 = 1732584193;
-    var b0 = -271733879;
-    var c0 = -1732584194;
-    var d0 = 271733878;
-    for (var j = 0; j < wordCount; j += 16) {
-      var a = a0, b = b0, c = c0, d = d0;
-      a = ff(a, b, c, d, words[j + 0], 7, -680876936);
-      d = ff(d, a, b, c, words[j + 1], 12, -389564586);
-      c = ff(c, d, a, b, words[j + 2], 17, 606105819);
-      b = ff(b, c, d, a, words[j + 3], 22, -1044525330);
-      a = ff(a, b, c, d, words[j + 4], 7, -176418897);
-      d = ff(d, a, b, c, words[j + 5], 12, 1200080426);
-      c = ff(c, d, a, b, words[j + 6], 17, -1473231341);
-      b = ff(b, c, d, a, words[j + 7], 22, -45705983);
-      a = ff(a, b, c, d, words[j + 8], 7, 1770035416);
-      d = ff(d, a, b, c, words[j + 9], 12, -1958414417);
-      c = ff(c, d, a, b, words[j + 10], 17, -42063);
-      b = ff(b, c, d, a, words[j + 11], 22, -1990404162);
-      a = ff(a, b, c, d, words[j + 12], 7, 1804603682);
-      d = ff(d, a, b, c, words[j + 13], 12, -40341101);
-      c = ff(c, d, a, b, words[j + 14], 17, -1502002290);
-      b = ff(b, c, d, a, words[j + 15], 22, 1236535329);
-      a = gg(a, b, c, d, words[j + 1], 5, -165796510);
-      d = gg(d, a, b, c, words[j + 6], 9, -1069501632);
-      c = gg(c, d, a, b, words[j + 11], 14, 643717713);
-      b = gg(b, c, d, a, words[j + 0], 20, -373897302);
-      a = gg(a, b, c, d, words[j + 5], 5, -701558691);
-      d = gg(d, a, b, c, words[j + 10], 9, 38016083);
-      c = gg(c, d, a, b, words[j + 15], 14, -660478335);
-      b = gg(b, c, d, a, words[j + 4], 20, -405537848);
-      a = gg(a, b, c, d, words[j + 9], 5, 568446438);
-      d = gg(d, a, b, c, words[j + 14], 9, -1019803690);
-      c = gg(c, d, a, b, words[j + 3], 14, -187363961);
-      b = gg(b, c, d, a, words[j + 8], 20, 1163531501);
-      a = gg(a, b, c, d, words[j + 13], 5, -1444681467);
-      d = gg(d, a, b, c, words[j + 2], 9, -51403784);
-      c = gg(c, d, a, b, words[j + 7], 14, 1735328473);
-      b = gg(b, c, d, a, words[j + 12], 20, -1926607734);
-      a = hh(a, b, c, d, words[j + 5], 4, -378558);
-      d = hh(d, a, b, c, words[j + 8], 11, -2022574463);
-      c = hh(c, d, a, b, words[j + 11], 16, 1839030562);
-      b = hh(b, c, d, a, words[j + 14], 23, -35309556);
-      a = hh(a, b, c, d, words[j + 1], 4, -1530992060);
-      d = hh(d, a, b, c, words[j + 4], 11, 1272893353);
-      c = hh(c, d, a, b, words[j + 7], 16, -155497632);
-      b = hh(b, c, d, a, words[j + 10], 23, -1094730640);
-      a = hh(a, b, c, d, words[j + 13], 4, 681279174);
-      d = hh(d, a, b, c, words[j + 0], 11, -358537222);
-      c = hh(c, d, a, b, words[j + 3], 16, -722521979);
-      b = hh(b, c, d, a, words[j + 6], 23, 76029189);
-      a = hh(a, b, c, d, words[j + 9], 4, -640364487);
-      d = hh(d, a, b, c, words[j + 12], 11, -421815835);
-      c = hh(c, d, a, b, words[j + 15], 16, 530742520);
-      b = hh(b, c, d, a, words[j + 2], 23, -995338651);
-      a = ii(a, b, c, d, words[j + 0], 6, -198630844);
-      d = ii(d, a, b, c, words[j + 7], 10, 1126891415);
-      c = ii(c, d, a, b, words[j + 14], 15, -1416354905);
-      b = ii(b, c, d, a, words[j + 5], 21, -57434055);
-      a = ii(a, b, c, d, words[j + 12], 6, 1700485571);
-      d = ii(d, a, b, c, words[j + 3], 10, -1894986606);
-      c = ii(c, d, a, b, words[j + 10], 15, -1051523);
-      b = ii(b, c, d, a, words[j + 1], 21, -2054922799);
-      a = ii(a, b, c, d, words[j + 8], 6, 1873313359);
-      d = ii(d, a, b, c, words[j + 15], 10, -30611744);
-      c = ii(c, d, a, b, words[j + 6], 15, 1560198380);
-      b = ii(b, c, d, a, words[j + 13], 21, 1309151649);
-      a = ii(a, b, c, d, words[j + 4], 6, -145523070);
-      d = ii(d, a, b, c, words[j + 11], 10, -1120210379);
-      c = ii(c, d, a, b, words[j + 2], 15, 718787259);
-      b = ii(b, c, d, a, words[j + 9], 21, -343485551);
-      a0 = add32(a0, a);
-      b0 = add32(b0, b);
-      c0 = add32(c0, c);
-      d0 = add32(d0, d);
-    }
-    function toHex(num) {
-      var hex = "";
-      for (var k = 0; k < 4; k++) {
-        hex += ("0" + (num >>> k * 8 & 255).toString(16)).slice(-2);
-      }
-      return hex;
-    }
-    return toHex(a0) + toHex(b0) + toHex(c0) + toHex(d0);
   }
   return {
     md5: md52,

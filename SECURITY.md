@@ -31,13 +31,11 @@
 ```javascript
 // ❌ 旧版本 - 不安全
 {
-  prepareXlsx: {
-    template: "../../../etc/passwd"  // 可以读取系统文件
-  }
+  saveResponseAs: "../../../etc/passwd"  // 可以写出到系统文件
 }
 
 // ✅ 新版本 - 安全
-// 抛出错误: "Excel 模板路径不安全: ../../../etc/passwd"
+// 抛出错误: "响应保存路径不安全: ../../../etc/passwd"
 ```
 
 ### 2. 环境变量授权
@@ -158,18 +156,17 @@ runtime.vars.apiKey = "hacked";  // TypeError in strict mode
 ```javascript
 // ✅ 安全
 {
-  prepareXlsx: {
-    template: "templates/report.xlsx",  // 相对路径
-    output: "output/result.xlsx"
-  }
+  saveResponseAs: "output/result.txt"  // 相对路径
 }
 
 // ❌ 会被拒绝
 {
-  prepareXlsx: {
-    template: "/etc/passwd",           // 绝对路径
-    output: "../../../tmp/file.xlsx"   // 路径遍历
-  }
+  saveResponseAs: "/etc/passwd"           // 绝对路径
+}
+
+// ❌ 会被拒绝（路径遍历）
+{
+  saveResponseAs: "../../../tmp/file.txt" // 越界
 }
 ```
 
