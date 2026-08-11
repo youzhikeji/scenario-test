@@ -210,37 +210,27 @@ function copyRuntimeCli(layout, force) {
     return true;
 }
 
-// UMD 运行时副本：本机 dist 拷贝优先，--library-url 远程下载兜底
-async function copyRuntimeBrowser(layout, libraryUrl, force) {
-    const target = layout.frameworkPath(FRAMEWORK_FILES.umd);
+// 运行时副本统一入口：本机 dist 拷贝优先，--library-url 远程下载兜底（CLI/UMD/d.ts/capabilities 通用）
+async function ensureRuntimeFile(layout, fileName, libraryUrl, force) {
+    const target = layout.frameworkPath(fileName);
     if (fs.existsSync(target) && !force) return false;
-    const source = runtimeSourceCandidates("scenario-test.umd.js").find((candidate) => fs.existsSync(candidate));
+    const source = runtimeSourceCandidates(fileName).find((candidate) => fs.existsSync(candidate));
     fs.mkdirSync(path.dirname(target), { recursive: true });
     if (source) {
         fs.copyFileSync(source, target);
         return true;
     }
     if (!libraryUrl) return null;
+    const base = libraryUrl.replace(/\/+$/, "") + "/";
     try {
-        const response = await fetch(libraryUrl);
+        const response = await fetch(`${base}${fileName}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         fs.writeFileSync(target, Buffer.from(await response.arrayBuffer()));
         return true;
     } catch (error) {
-        console.warn(`警告: UMD 运行时下载失败（${error.message}），可稍后重跑 init 补齐`);
+        console.warn(`警告: ${fileName} 下载失败（${error.message}）`);
         return null;
     }
-}
-
-// d.ts / capabilities 同为发行产物，从本机 dist 拷贝
-function copyRuntimeTextFile(layout, fileName, force) {
-    const target = layout.frameworkPath(fileName);
-    if (fs.existsSync(target) && !force) return false;
-    const source = runtimeSourceCandidates(fileName).find((candidate) => fs.existsSync(candidate));
-    if (!source) return null;
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.copyFileSync(source, target);
-    return true;
 }
 
 // 版本锁：记录 runtimeVersion/contractVersion 与各运行时文件 SHA256，doctor 据此握手
@@ -308,7 +298,8 @@ async function initCommand(args) {
         }
         force = mode === "overwrite";
     }
-    // 运行时副本在锁缺失/版本不一致/文件缺失时刷新；AI 规则/模式库随副本刷新（不覆盖用户项目配置与场景）
+    // AI 规则/模式库随每次 init 刷新（keep 语义：不覆盖项目配置与场景）；
+    // 运行时副本仅在锁缺失/版本不一致/文件缺失时刷新
     const refreshFramework = shouldRefreshFramework(layout, force);
     const frameworkTemplatePaths = new Set([
         layout.frameworkRelativePath(FRAMEWORK_FILES.authoringPrompt),
@@ -317,14 +308,25 @@ async function initCommand(args) {
     const created = [];
     const skipped = [];
     for (const [relativePath, content] of Object.entries(createProjectFiles(directory, { storagePrefix, frameworkDirectory }))) {
-        const overwrite = force || (refreshFramework && frameworkTemplatePaths.has(relativePath));
+        const overwrite = force || frameworkTemplatePaths.has(relativePath);
         (writeProjectFile(projectRoot, relativePath, content, overwrite) ? created : skipped).push(relativePath);
     }
     const libraryUrl = args.libraryUrl || DEFAULT_LIBRARY_URL;
-    recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.cli), copyRuntimeCli(layout, refreshFramework));
-    recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.umd), await copyRuntimeBrowser(layout, libraryUrl, refreshFramework));
-    recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.dts), copyRuntimeTextFile(layout, FRAMEWORK_FILES.dts, refreshFramework));
-    recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.capabilities), copyRuntimeTextFile(layout, FRAMEWORK_FILES.capabilities, refreshFramework));
+    recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.cli), copyRuntimeCli(layout, refreshFramework) ?? await ensureRuntimeFile(layout, FRAMEWORK_FILES.cli, libraryUrl, refreshFramework));
+    recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.umd), await ensureRuntimeFile(layout, FRAMEWORK_FILES.umd, libraryUrl, refreshFramework));
+    recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.dts), await ensureRuntimeFile(layout, FRAMEWORK_FILES.dts, libraryUrl, refreshFramework));
+    recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.capabilities), await ensureRuntimeFile(layout, FRAMEWORK_FILES.capabilities, libraryUrl, refreshFramework));
+    // 运行时副本必须齐全才能写版本锁：任一文件缺失即明确失败（退出码 1），
+    // 避免下载失败后仍落锁、init 假成功导致不完整安装
+    const runtimeFileNames = [FRAMEWORK_FILES.cli, FRAMEWORK_FILES.umd, FRAMEWORK_FILES.dts, FRAMEWORK_FILES.capabilities];
+    const missingRuntimeFiles = runtimeFileNames.filter((fileName) => !fs.existsSync(layout.frameworkPath(fileName)));
+    if (missingRuntimeFiles.length) {
+        throw new Error(
+            `运行时副本不完整，缺少: ${missingRuntimeFiles.join(", ")}\n` +
+            `请检查 --library-url（${libraryUrl}）指向的目录是否包含全部 4 个文件，` +
+            "或确认本机 dist 可用后重跑 init"
+        );
+    }
     recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.versionLock), writeVersionLock(layout));
     console.log(`已初始化项目: ${projectRoot}`);
     console.log(`项目布局: 内部文件位于 ${layout.frameworkRelativeDir}`);

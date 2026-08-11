@@ -58,8 +58,8 @@ test("doctor：健康项目全 PASS + manual INFO，退出码 0", () => {
         assert.match(result.stdout, /\[PASS\] dts/);
         assert.match(result.stdout, /\[PASS\] capabilities/);
         assert.match(result.stdout, /\[PASS\] version-lock/);
-        // src 环境运行 init 时没有发行版 CLI（.cjs）可复制，副本缺失仅 WARN，不导致失败
-        assert.match(result.stdout, /\[WARN\] runtime-cli/);
+        // src 环境运行 init 时 CLI 副本从本机 dist 兜底拷贝，完整副本就绪
+        assert.match(result.stdout, /\[PASS\] runtime-cli/);
         assert.match(result.stdout, /\[INFO\] manual-scenario/);
         assert.match(result.stdout, /seed/);
         assert.doesNotMatch(result.stdout, /\[FAIL\]/);

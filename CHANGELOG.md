@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.6] - 2026-03-15
+
+### ✨ Integration Experience
+
+1. **默认免 npm 接入，npm 降为显式可选**
+   - 官方 `install.ps1` / `install.sh` 反转默认：无开关时直接从固定版本 GitHub Tag 的 `dist/` Raw 目录下载 CLI 并执行 `init --library-url`，业务项目不执行 `npm install`、不改 `package.json` / `package-lock.json`；`Source` / `SCENARIO_TEST_SOURCE` 可覆盖为内网 GitLab Raw 或制品目录（默认固定 `v0.5.6/dist/`）。
+   - npm 变为显式可选：PowerShell `-UseNpm`、shell `SCENARIO_TEST_USE_NPM=true`，只有显式开启才执行 npm 安装；失败即退出，不静默切换。AI 接入 Prompt 默认指示免 npm，仅当用户明确要求 npm 时才切换；两种方式不混用、不自动兜底。
+   - `init` 在无本机 dist/npm 包时，从 `--library-url` 指定目录下载全部 4 个运行时文件（CLI/UMD/d.ts/能力清单）；运行时副本任一缺失时明确失败（退出码 1）且不写版本锁，不再出现下载失败仍假成功的不完整安装。
+   - 安装脚本生成文件校验覆盖全部运行时副本（CLI/UMD/d.ts/能力清单/版本锁），不再只检查 AI 规则文件。
+   - `scenario.config.js` 三斜线引用改为项目内相对路径（`/// <reference path="./.scenario-test/scenario-test.d.ts" />`），免 npm 项目无 npm 包时类型提示仍可用；项目内生成的 README 以 `start-scenario-test.cmd` 与 `.scenario-test/scenario-test-cli.cjs` 为主命令，不再把 npx 写成默认。
+
 ## [0.5.5] - 2026-03-15
 
 ### ✨ Integration Experience

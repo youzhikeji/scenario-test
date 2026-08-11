@@ -1,6 +1,6 @@
 {
   "schema": "scenario-test-capabilities",
-  "version": "0.5.5",
+  "version": "0.5.6",
   "contractVersion": 1,
   "assertions": {
     "operators": {
@@ -189,7 +189,7 @@
       },
       "library-url": {
         "kind": "value",
-        "description": "init 时 UMD 下载地址（默认 GitHub Release）"
+        "description": "init 运行时副本下载目录（CLI/UMD/d.ts/capabilities，默认 GitHub Tag dist）"
       },
       "all": {
         "kind": "flag",

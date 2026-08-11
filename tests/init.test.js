@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import http from "node:http";
+import { spawn, spawnSync } from "node:child_process";
 import test from "node:test";
 import { CONTRACT_VERSION } from "../src/index.js";
 import { VERSION } from "../src/version.generated.js";
@@ -14,16 +15,30 @@ function runInit(project, ...args) {
     return spawnSync(process.execPath, [cli, "init", "--project", project, ...args], { encoding: "utf8" });
 }
 
+// 异步运行 CLI：不阻塞本进程事件循环，供"同进程 HTTP server 提供下载源"的测试使用
+function runCliAsync(cliPath, args) {
+    return new Promise((resolve, reject) => {
+        const child = spawn(process.execPath, [cliPath, ...args], { encoding: "utf8" });
+        let stdout = "";
+        let stderr = "";
+        child.stdout.on("data", (chunk) => { stdout += chunk; });
+        child.stderr.on("data", (chunk) => { stderr += chunk; });
+        child.on("error", reject);
+        child.on("close", (code, signal) => resolve({ status: code, signal, stdout, stderr }));
+    });
+}
+
 function assertGeneratedLayout(project, directory = "scenario-test") {
     const publicDir = path.join(project, ...directory.split("/"));
     const frameworkDir = path.join(publicDir, ".scenario-test");
     assert.deepEqual(fs.readdirSync(publicDir).sort(), [".scenario-test", "README.md", "index.html", "scenario.config.js", "start-scenario-test.cmd"]);
-    // src 环境运行 init：无发行版 CLI（.cjs）可复制，其余运行时副本与版本锁落盘
+    // src 环境运行 init：CLI 副本从本机 dist 兜底拷贝，其余运行时副本与版本锁落盘
     assert.deepEqual(fs.readdirSync(frameworkDir).sort(), [
         ".scenario-test-version.json",
         "AI_SCENARIO_PROMPT.md",
         "SCENARIO_PATTERNS.md",
         "scenario-test-capabilities.json",
+        "scenario-test-cli.cjs",
         "scenario-test.d.ts",
         "scenario-test.umd.js"
     ]);
@@ -37,7 +52,7 @@ function assertGeneratedLayout(project, directory = "scenario-test") {
     assert.match(startScript, /Start-Process/);
     assert.match(
         fs.readFileSync(path.join(publicDir, "scenario.config.js"), "utf8"),
-        /reference types="@yc_yzkj\/scenario-test"/
+        /reference path="\.\/\.scenario-test\/scenario-test\.d\.ts"/
     );
     const lock = JSON.parse(fs.readFileSync(path.join(frameworkDir, ".scenario-test-version.json"), "utf8"));
     assert.equal(lock.runtimeVersion, VERSION);
@@ -179,6 +194,52 @@ test("init 在 .scenario-test 被同名文件占用时给出明确错误", () =>
         assert.equal(result.status, 1);
         assert.match(result.stderr, /\.scenario-test 必须是目录/);
     } finally {
+        fs.rmSync(project, { recursive: true, force: true });
+    }
+});
+
+test("init 免 npm 模式：--library-url 下载全部运行时副本", async () => {
+    const files = {
+        "scenario-test-cli.cjs": "#!/usr/bin/env node\nconsole.log('mock cli');\n",
+        "scenario-test.umd.js": `/*! scenario-test v${VERSION} */\nvar ScenarioTest = {};\n`,
+        "scenario-test.d.ts": `// scenario-test v${VERSION}\nexport {};\n`,
+        "scenario-test-capabilities.json": JSON.stringify({ schema: "scenario-test-capabilities", version: VERSION, contractVersion: CONTRACT_VERSION })
+    };
+    const server = http.createServer((request, response) => {
+        const name = decodeURIComponent(request.url).replace(/^\//, "");
+        if (files[name]) {
+            response.writeHead(200, { "Content-Type": "application/octet-stream" });
+            response.end(files[name]);
+        } else {
+            response.writeHead(404);
+            response.end();
+        }
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const sourceUrl = `http://127.0.0.1:${server.address().port}/`;
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-download-"));
+    try {
+        // 隔离 CLI 目录：模拟"本机只有单文件 CLI、无 dist、无 npm 包"的免 npm 场景
+        const cliHome = path.join(project, "_cli");
+        fs.mkdirSync(cliHome);
+        fs.copyFileSync(path.join(root, "dist/scenario-test-cli.cjs"), path.join(cliHome, "scenario-test-cli.cjs"));
+        // 用异步 spawn 运行 CLI：spawnSync 会阻塞本进程事件循环，同进程 HTTP server 将无法响应下载请求
+        const result = await runCliAsync(path.join(cliHome, "scenario-test-cli.cjs"), [
+            "init", "--project", project, "--dir", "scenario-test", "--library-url", sourceUrl
+        ]);
+        assert.equal(result.status, 0, result.stderr + result.stdout);
+        const frameworkDir = path.join(project, "scenario-test", ".scenario-test");
+        for (const fileName of ["scenario-test-cli.cjs", "scenario-test.umd.js", "scenario-test.d.ts", "scenario-test-capabilities.json"]) {
+            assert.equal(fs.existsSync(path.join(frameworkDir, fileName)), true, `${fileName} 应下载落盘`);
+        }
+        assert.equal(fs.readFileSync(path.join(frameworkDir, "scenario-test.umd.js"), "utf8"), files["scenario-test.umd.js"]);
+        const lock = JSON.parse(fs.readFileSync(path.join(frameworkDir, ".scenario-test-version.json"), "utf8"));
+        assert.equal(lock.runtimeVersion, VERSION);
+        assert.ok(lock.sha256["scenario-test.umd.js"], "版本锁应记录下载文件的 SHA256");
+    } finally {
+        // 等待 server 完全关闭（先断开 keep-alive 空闲连接，再等待 close 回调），避免端口与句柄残留
+        server.closeAllConnections?.();
+        await new Promise((resolve) => server.close(resolve));
         fs.rmSync(project, { recursive: true, force: true });
     }
 });

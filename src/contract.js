@@ -128,7 +128,7 @@ export const contract = Object.freeze({
             port: { kind: "value", prop: "port", parse: "number", description: "浏览器服务端口，默认 4300" },
             project: { kind: "value", prop: "project", description: "init 目标项目根目录" },
             dir: { kind: "value", prop: "dir", description: "init 场景测试目录名" },
-            "library-url": { kind: "value", prop: "libraryUrl", description: "init 时 UMD 下载地址（默认 GitHub Release）" },
+            "library-url": { kind: "value", prop: "libraryUrl", description: "init 运行时副本下载目录（CLI/UMD/d.ts/capabilities，默认 GitHub Tag dist）" },
             all: { kind: "flag", prop: "all", description: "执行配置中的全部自动场景（默认排除 manual:true）" },
             force: { kind: "flag", prop: "force", description: "init 覆盖已有文件（目标目录已存在时可交互选择）" },
             "fail-on-skip": { kind: "flag", prop: "failOnSkip", description: "存在任何 SKIP 步骤时最终退出码为 1" },

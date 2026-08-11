@@ -4,7 +4,9 @@
     一键安装 scenario-test 到业务项目
 
 .DESCRIPTION
-    通过 npm 安装运行时 @yc_yzkj/scenario-test，再初始化项目并做健康检查
+    默认免 npm 安装：从固定版本 GitHub Tag dist（或 -Source 指定目录）下载 CLI 并初始化，
+    不安装 npm 包、不改 package.json；显式指定 -UseNpm 时才通过 npm 安装运行时。
+    两种方式都会把固定版本运行时副本落到项目 .scenario-test/ 并执行健康检查。
 
 .PARAMETER ProjectDir
     业务项目根目录，默认为当前目录
@@ -15,16 +17,27 @@
 .PARAMETER SkipDoctor
     跳过健康检查
 
+.PARAMETER UseNpm
+    显式使用 npm 安装方式（npm install -D + npx init/doctor）。默认不指定即为免 npm 模式。
+
+.PARAMETER Source
+    免 npm 模式下载目录（GitHub Tag dist 或 GitLab Raw），默认固定为当前版本
+    https://raw.githubusercontent.com/youzhikeji/scenario-test/v0.5.6/dist/
+
 .EXAMPLE
     .\install.ps1
     .\install.ps1 -ProjectDir D:\myproject -TargetDir "dev/场景测试"
+    .\install.ps1 -UseNpm
+    .\install.ps1 -Source "https://gitlab.example.com/group/project/-/raw/v0.5.6/dist"
     irm https://raw.githubusercontent.com/youzhikeji/scenario-test/master/scripts/install.ps1 | iex
 #>
 
 param(
     [string]$ProjectDir = ".",
     [string]$TargetDir = "scenario-test",
-    [switch]$SkipDoctor
+    [switch]$SkipDoctor,
+    [switch]$UseNpm,
+    [string]$Source = "https://raw.githubusercontent.com/youzhikeji/scenario-test/v0.5.6/dist/"
 )
 
 $ErrorActionPreference = "Stop"
@@ -36,7 +49,11 @@ function Write-Info { param([string]$Message) Write-Host "ℹ $Message" -Foregro
 function Write-Warning-Custom { param([string]$Message) Write-Host "⚠ $Message" -ForegroundColor Yellow }
 
 Write-Host "`n=== scenario-test 一键安装 ===" -ForegroundColor Magenta
-Write-Host "包: @yc_yzkj/scenario-test`n" -ForegroundColor Magenta
+if ($UseNpm) {
+    Write-Host "模式: npm 安装（显式 -UseNpm）`n" -ForegroundColor Magenta
+} else {
+    Write-Host "模式: 免 npm 下载（默认）`n" -ForegroundColor Magenta
+}
 
 # 1. 检查 Node.js 版本
 Write-Info "检查 Node.js 版本..."
@@ -78,23 +95,46 @@ $fullTargetPath = Join-Path $ProjectDir $TargetDir
 
 Push-Location $ProjectDir
 try {
-    # 3. 通过 npm 安装运行时
-    Write-Info "通过 npm 安装运行时：@yc_yzkj/scenario-test ..."
-    $installOutput = npm install --save-dev "@yc_yzkj/scenario-test" 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        throw "npm 安装失败`n$installOutput"
-    }
-    Write-Success "npm 安装成功"
+    if (-not $UseNpm) {
+        # 默认免 npm 模式：从固定版本下载目录取 CLI，init 再补齐其余运行时副本
+        Write-Info "免 npm 安装模式，下载源：$Source ..."
+        $cliUrl = "$($Source.TrimEnd('/'))/scenario-test-cli.cjs"
+        $tempCli = Join-Path $env:TEMP "scenario-test-cli-$([guid]::NewGuid().ToString('N')).cjs"
+        try {
+            Invoke-WebRequest -Uri $cliUrl -OutFile $tempCli -UseBasicParsing
+        } catch {
+            throw "CLI 下载失败: $cliUrl`n$_"
+        }
+        Write-Success "CLI 下载成功"
 
-    # 4. 执行 init
-    Write-Info "初始化场景测试目录：$fullTargetPath ..."
+        # 4. 执行 init（--library-url 指向下载源，init 会补齐其余运行时文件）
+        Write-Info "初始化场景测试目录：$fullTargetPath ..."
 
-    $initOutput = npx @yc_yzkj/scenario-test init --project $ProjectDir --dir $TargetDir 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        throw "init 命令失败`n$initOutput"
+        $initOutput = node $tempCli init --project $ProjectDir --dir $TargetDir --library-url $Source 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            throw "init 命令失败`n$initOutput"
+        }
+        Write-Success "初始化完成"
+        Write-Host $initOutput -ForegroundColor Gray
+    } else {
+        # 显式 npm 模式：通过 npm 安装运行时（失败即退出，不静默切换）
+        Write-Info "通过 npm 安装运行时：@yc_yzkj/scenario-test ..."
+        $installOutput = npm install --save-dev "@yc_yzkj/scenario-test" 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            throw "npm 安装失败`n$installOutput"
+        }
+        Write-Success "npm 安装成功"
+
+        # 4. 执行 init
+        Write-Info "初始化场景测试目录：$fullTargetPath ..."
+
+        $initOutput = npx @yc_yzkj/scenario-test init --project $ProjectDir --dir $TargetDir 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            throw "init 命令失败`n$initOutput"
+        }
+        Write-Success "初始化完成"
+        Write-Host $initOutput -ForegroundColor Gray
     }
-    Write-Success "初始化完成"
-    Write-Host $initOutput -ForegroundColor Gray
 
     # 5. 检查生成的文件
     Write-Info "验证生成的文件..."
@@ -107,7 +147,12 @@ try {
     $internalDir = Join-Path $fullTargetPath ".scenario-test"
     $expectedInternalFiles = @(
         "AI_SCENARIO_PROMPT.md",
-        "SCENARIO_PATTERNS.md"
+        "SCENARIO_PATTERNS.md",
+        "scenario-test-cli.cjs",
+        "scenario-test.umd.js",
+        "scenario-test.d.ts",
+        "scenario-test-capabilities.json",
+        ".scenario-test-version.json"
     )
 
     $allFilesExist = $true
@@ -122,7 +167,7 @@ try {
     }
 
     if (Test-Path $internalDir) {
-        Write-Success "  .scenario-test/ (AI 规则与模式库)"
+        Write-Success "  .scenario-test/ (AI 规则与运行时副本)"
         foreach ($file in $expectedInternalFiles) {
             $filePath = Join-Path $internalDir $file
             if (Test-Path $filePath) {
@@ -147,7 +192,11 @@ try {
 
         $configPath = Join-Path $fullTargetPath "scenario.config.js"
 
-        $doctorOutput = npx @yc_yzkj/scenario-test doctor --config $configPath 2>&1
+        if ($UseNpm) {
+            $doctorOutput = npx @yc_yzkj/scenario-test doctor --config $configPath 2>&1
+        } else {
+            $doctorOutput = node (Join-Path $internalDir "scenario-test-cli.cjs") doctor --config $configPath 2>&1
+        }
         $doctorExitCode = $LASTEXITCODE
 
         Write-Host $doctorOutput -ForegroundColor Gray
@@ -186,13 +235,25 @@ Write-Host "   为 `"<业务功能名称>`" 设计场景测试。" -ForegroundCo
 Write-Host "   入口：<页面、Controller、接口或已有测试路径>`n" -ForegroundColor Cyan
 
 Write-Host "2. 启动浏览器工作台（可视化调试）：" -ForegroundColor Yellow
-Write-Host "   npx @yc_yzkj/scenario-test serve --config $configRelative`n" -ForegroundColor Cyan
+if ($UseNpm) {
+    Write-Host "   npx @yc_yzkj/scenario-test serve --config $configRelative`n" -ForegroundColor Cyan
+} else {
+    Write-Host "   双击 $relativeTargetDir/start-scenario-test.cmd`n" -ForegroundColor Cyan
+}
 
 Write-Host "3. 命令行执行场景：" -ForegroundColor Yellow
-Write-Host "   # 执行所有非 manual 场景" -ForegroundColor Gray
-Write-Host "   npx @yc_yzkj/scenario-test --config $configRelative --env local --all`n" -ForegroundColor Cyan
-Write-Host "   # 执行指定场景" -ForegroundColor Gray
-Write-Host "   npx @yc_yzkj/scenario-test --config $configRelative --env local --scenario <场景ID>`n" -ForegroundColor Cyan
+if ($UseNpm) {
+    Write-Host "   # 执行所有非 manual 场景" -ForegroundColor Gray
+    Write-Host "   npx @yc_yzkj/scenario-test --config $configRelative --env local --all`n" -ForegroundColor Cyan
+    Write-Host "   # 执行指定场景" -ForegroundColor Gray
+    Write-Host "   npx @yc_yzkj/scenario-test --config $configRelative --env local --scenario <场景ID>`n" -ForegroundColor Cyan
+} else {
+    $cliRelative = "$relativeTargetDir/.scenario-test/scenario-test-cli.cjs"
+    Write-Host "   # 执行所有非 manual 场景" -ForegroundColor Gray
+    Write-Host "   node $cliRelative --config $configRelative --env local --all`n" -ForegroundColor Cyan
+    Write-Host "   # 执行指定场景" -ForegroundColor Gray
+    Write-Host "   node $cliRelative --config $configRelative --env local --scenario <场景ID>`n" -ForegroundColor Cyan
+}
 
 Write-Host "4. 文档位置：" -ForegroundColor Yellow
 Write-Host "   README:  $relativeTargetDir/README.md" -ForegroundColor Cyan

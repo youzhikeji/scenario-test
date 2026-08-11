@@ -1,11 +1,11 @@
 # 发布流程
 
-> ⚠️ **内部/历史文档**：本指南是仓库维护者的发布流程。对外正式渠道是 **npm**
-> （`@yc_yzkj/scenario-test`），对外安装指引见
-> [README](../README.md) 与 [AI_INSTALL_PROMPT.md](AI_INSTALL_PROMPT.md)。
+> ⚠️ **内部/历史文档**：本指南是仓库维护者的发布流程。对外接入默认**免 npm**
+> （官方安装脚本从固定版本 GitHub Tag 的 `dist/` 下载运行时副本，不修改业务项目依赖），
+> 对外安装指引见 [README](../README.md) 与 [AI_INSTALL_PROMPT.md](AI_INSTALL_PROMPT.md)。
 > 仓库内的 `scripts/publish-release.mjs`（GitLab CI）仅用于内部镜像发布。
 
-`master` 只包含可发布代码。`dist/` 随版本提交，消费者通过 npm 安装 `@yc_yzkj/scenario-test` 并用 `npx @yc_yzkj/scenario-test` 执行命令。运行时（CLI、UMD、d.ts、能力清单）只存在于 npm 包，不写入业务项目；项目 `.scenario-test/` 仅保存 AI 规则与模式库。
+`master` 只包含可发布代码。`dist/` 随版本提交（GitHub Tag 的 Raw `dist/` 目录是免 npm 默认下载源，不依赖 GitHub Release 上传资产）。消费者默认免 npm：官方 `install.ps1` / `install.sh` 从固定版本 Tag 的 `dist/` 下载全部运行时副本到项目 `.scenario-test/`；npm（`@yc_yzkj/scenario-test`）为显式可选方式（`-UseNpm` / `SCENARIO_TEST_USE_NPM=true`）。
 
 ## 发布步骤
 
@@ -41,7 +41,7 @@
    ```
 
    GitLab Release 同步提供 `start-scenario-test.ps1` 下载资产，脚本与该版本的 CLI、UMD 保持一致。
-6. （可选）创建 GitHub Release 作为源码归档；Release 的 `dist/` 资产同时是 `init --library-url` 的 UMD 下载源（GitHub Release 与 GitLab Raw URL 均可）。
+6. （可选）创建 GitHub Release 作为源码归档。免 npm 默认下载源是 GitHub Tag 的 Raw `dist/` 目录（`https://raw.githubusercontent.com/youzhikeji/scenario-test/vX.Y.Z/dist/`），不依赖 Release 上传资产；内网可把 `Source` / `SCENARIO_TEST_SOURCE` 指向 GitLab Raw 或制品目录。
 
 业务项目由 `init` 生成 `index.html`，引用项目内运行时副本：
 
@@ -49,7 +49,7 @@
 <script src="./.scenario-test/scenario-test.umd.js"></script>
 ```
 
-`init` 优先从本机 npm 包 `dist/` 拷贝副本；CLI 不在本机时可用 `--library-url` 指定下载地址（默认指向 GitHub Release 的 `scenario-test.umd.js`）。人工场景测试通过 `start-scenario-test.cmd` 启动，`serve` 把接口请求代理到环境 `baseUrl`（页面 `baseUrl` 留空即走代理），无需后端放行 CORS。
+`init` 优先从本机 npm 包 `dist/` 拷贝副本；本机没有 npm 包时可用 `--library-url <目录>` 指定包含全部运行时文件的目录（默认指向固定版本 GitHub Tag 的 `dist/` Raw 目录）。人工场景测试通过 `start-scenario-test.cmd` 启动，`serve` 把接口请求代理到环境 `baseUrl`（页面 `baseUrl` 留空即走代理），无需后端放行 CORS。
 
 已发布 Tag 不覆盖重推。修复通过新的 patch Tag 发布。
 
