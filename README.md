@@ -77,6 +77,7 @@ npm publish --access public   # 发布到 npm（scoped 包需 public 或私有 o
 | `dist/scenario-test-cli.cjs` | CLI 与本地浏览器服务 |
 | `dist/scenario-test.d.ts` | 类型声明（零安装：纯 JS 项目用 JSDoc/IDE 补全） |
 | `dist/scenario-test-capabilities.json` | 机器可读 DSL 能力清单（与 `capabilities --json` 同源） |
+| `scripts/start-scenario-test.ps1` | Windows HTTP Server 启动脚本，默认服务 `scenario-test/scenario.config.js` |
 ## 三方能力发现
 
 三方（或 AI）不应靠猜或手工比对多份文档。本项目以 `src/contract.js` 的不可变 DSL Contract 为唯一能力真相，投影到以下入口：

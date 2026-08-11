@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-03-14
+
+### ✨ Distribution
+
+1. **Windows HTTP Server 启动脚本随发行版提供**
+   - 新增 `scripts/start-scenario-test.ps1`，支持 `-Project`、`-Config`、`-Port` 与可选 `-OpenBrowser`；默认读取 `scenario-test/scenario.config.js`。
+   - npm 包通过 `files` 包含该脚本；GitLab Release 新增同名下载资产，并按其仓库 `scripts/` 路径生成链接。
+
 ### ⚠️ Breaking Changes
 
 1. **运行时统一由 npm 包提供**

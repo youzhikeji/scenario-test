@@ -17,15 +17,21 @@ const files = [
     "scenario-test.cjs",
     "scenario-test-cli.cjs",
     "scenario-test.d.ts",
-    "scenario-test-capabilities.json"
+    "scenario-test-capabilities.json",
+    "start-scenario-test.ps1"
 ];
-const assets = files.map((filePath) => ({
-    name: filePath.split("/").at(-1),
-    // dist is committed with the tag, so this URL is immutable and does not depend on CI artifacts.
-    url: `${projectUrl}/-/raw/${encodeURIComponent(tag)}/dist/${filePath}`,
-    filepath: `/${filePath}`,
-    link_type: "other"
-}));
+const assets = files.map((filePath) => {
+    const sourcePath = filePath === "start-scenario-test.ps1"
+        ? `scripts/${filePath}`
+        : `dist/${filePath}`;
+    return {
+        name: filePath.split("/").at(-1),
+        // 发行文件随 Tag 提交，链接不依赖 CI artifacts。
+        url: `${projectUrl}/-/raw/${encodeURIComponent(tag)}/${sourcePath}`,
+        filepath: `/${filePath}`,
+        link_type: "other"
+    };
+});
 
 const releaseUrl = `${apiUrl}/projects/${encodeURIComponent(projectId)}/releases/${encodeURIComponent(tag)}`;
 const existing = await fetch(releaseUrl, { headers: { "PRIVATE-TOKEN": token } });
@@ -46,7 +52,7 @@ const response = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectId)
     body: JSON.stringify({
         name: `Scenario Test ${tag}`,
         tag_name: tag,
-        description: "浏览器、Node.js、CLI、类型声明与能力清单构建产物。",
+        description: "浏览器、Node.js、CLI、类型声明、能力清单与 Windows HTTP Server 启动脚本。",
         assets: { links: assets }
     })
 });

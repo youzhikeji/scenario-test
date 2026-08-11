@@ -32,7 +32,15 @@
    npm publish --access public
    ```
 
-   `files: ["dist"]` 保证只发布构建产物；`bin` 指向 `dist/scenario-test-cli.cjs`（带 shebang，支持 `npx @yc_yzkj/scenario-test`）。
+   `files: ["dist", "scripts/start-scenario-test.ps1"]` 保证构建产物与 Windows 启动脚本一并发布；`bin` 指向 `dist/scenario-test-cli.cjs`（带 shebang，支持 `npx @yc_yzkj/scenario-test`）。
+
+   Windows 浏览器工作台也可直接使用发行版中的启动脚本。脚本默认读取业务项目根目录下的 `scenario-test/scenario.config.js`，默认只启动服务；传入 `-OpenBrowser` 才会自动打开浏览器：
+
+   ```powershell
+   & ".\start-scenario-test.ps1" -Project . -OpenBrowser
+   ```
+
+   GitLab Release 同步提供 `start-scenario-test.ps1` 下载资产，脚本与该版本的 CLI、UMD 保持一致。
 6. （可选）创建 GitHub Release 作为源码归档与历史参考；业务项目不再依赖 Release 下载安装。
 
 业务项目由 `init` 生成 `index.html`，引用 npm 包内的 UMD，浏览器通过 `serve` 的 `/node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js` 路由加载：
