@@ -4,9 +4,10 @@
     一键安装 scenario-test 到业务项目
 
 .DESCRIPTION
-    默认免 npm 安装：从固定版本 GitHub Tag dist（或 -Source 指定目录）下载 CLI 并初始化，
+    默认免 npm 安装：从 npm Registry 下载固定版本 tarball，解压后从本地 dist 初始化，
     不安装 npm 包、不改 package.json；显式指定 -UseNpm 时才通过 npm 安装运行时。
-    两种方式都会把固定版本运行时副本落到项目 .scenario-test/ 并执行健康检查。
+    指定 -Source 时改从内网目录下载全部运行时文件。两种方式都会把固定版本运行时副本
+    落到项目 .scenario-test/ 并执行健康检查。
 
 .PARAMETER ProjectDir
     业务项目根目录，默认为当前目录
@@ -21,15 +22,14 @@
     显式使用 npm 安装方式（npm install -D + npx init/doctor）。默认不指定即为免 npm 模式。
 
 .PARAMETER Source
-    免 npm 模式下载目录（GitHub Tag dist 或 GitLab Raw），默认固定为当前版本
-    https://raw.githubusercontent.com/youzhikeji/scenario-test/v0.5.6/dist/
+    可选的内网运行时目录（GitLab Raw 或制品目录）。不指定时从 npm Registry 下载固定版本 tarball。
 
 .EXAMPLE
     .\install.ps1
     .\install.ps1 -ProjectDir D:\myproject -TargetDir "dev/场景测试"
     .\install.ps1 -UseNpm
-    .\install.ps1 -Source "https://gitlab.example.com/group/project/-/raw/v0.5.6/dist"
-    irm https://raw.githubusercontent.com/youzhikeji/scenario-test/master/scripts/install.ps1 | iex
+    .\install.ps1 -Source "https://gitlab.example.com/group/project/-/raw/v0.5.7/dist"
+    irm https://cdn.jsdelivr.net/gh/youzhikeji/scenario-test@v0.5.7/scripts/install.ps1 | iex
 #>
 
 param(
@@ -37,10 +37,18 @@ param(
     [string]$TargetDir = "scenario-test",
     [switch]$SkipDoctor,
     [switch]$UseNpm,
-    [string]$Source = "https://raw.githubusercontent.com/youzhikeji/scenario-test/v0.5.6/dist/"
+    [string]$Source = ""
 )
 
 $ErrorActionPreference = "Stop"
+$ScenarioTestVersion = "0.5.7"
+$PackageTarball = "https://registry.npmjs.org/@yc_yzkj/scenario-test/-/scenario-test-$ScenarioTestVersion.tgz"
+$RuntimeFiles = @(
+    "scenario-test-cli.cjs",
+    "scenario-test.umd.js",
+    "scenario-test.d.ts",
+    "scenario-test-capabilities.json"
+)
 
 # 颜色输出函数
 function Write-Success { param([string]$Message) Write-Host "✓ $Message" -ForegroundColor Green }
@@ -92,25 +100,49 @@ $ProjectDir = (Resolve-Path $ProjectDir -ErrorAction Stop).Path
 Write-Info "项目目录：$ProjectDir"
 
 $fullTargetPath = Join-Path $ProjectDir $TargetDir
+$tempRoot = Join-Path $env:TEMP "scenario-test-install-$([guid]::NewGuid().ToString('N'))"
+New-Item -ItemType Directory -Path $tempRoot | Out-Null
 
 Push-Location $ProjectDir
 try {
     if (-not $UseNpm) {
-        # 默认免 npm 模式：从固定版本下载目录取 CLI，init 再补齐其余运行时副本
-        Write-Info "免 npm 安装模式，下载源：$Source ..."
-        $cliUrl = "$($Source.TrimEnd('/'))/scenario-test-cli.cjs"
-        $tempCli = Join-Path $env:TEMP "scenario-test-cli-$([guid]::NewGuid().ToString('N')).cjs"
-        try {
-            Invoke-WebRequest -Uri $cliUrl -OutFile $tempCli -UseBasicParsing
-        } catch {
-            throw "CLI 下载失败: $cliUrl`n$_"
+        $runtimeDir = Join-Path $tempRoot "runtime"
+        New-Item -ItemType Directory -Path $runtimeDir | Out-Null
+
+        if ($Source) {
+            Write-Info "免 npm 安装模式，内网下载源：$Source ..."
+            foreach ($fileName in $RuntimeFiles) {
+                $fileUrl = "$($Source.TrimEnd('/'))/$fileName"
+                try {
+                    Invoke-WebRequest -Uri $fileUrl -OutFile (Join-Path $runtimeDir $fileName) -UseBasicParsing
+                } catch {
+                    throw "运行时文件下载失败: $fileUrl`n$_"
+                }
+            }
+        } else {
+            Write-Info "免 npm 安装模式，从 npm Registry 下载固定版本 $ScenarioTestVersion ..."
+            $tarballPath = Join-Path $tempRoot "scenario-test.tgz"
+            try {
+                Invoke-WebRequest -Uri $PackageTarball -OutFile $tarballPath -UseBasicParsing
+                tar -xzf $tarballPath -C $tempRoot
+                if ($LASTEXITCODE -ne 0) { throw "tar 解压退出码 $LASTEXITCODE" }
+            } catch {
+                throw "npm Registry tarball 下载或解压失败: $PackageTarball`n$_"
+            }
+            $runtimeDir = Join-Path $tempRoot "package/dist"
         }
-        Write-Success "CLI 下载成功"
 
-        # 4. 执行 init（--library-url 指向下载源，init 会补齐其余运行时文件）
+        foreach ($fileName in $RuntimeFiles) {
+            if (-not (Test-Path (Join-Path $runtimeDir $fileName) -PathType Leaf)) {
+                throw "下载内容不完整，缺少运行时文件：$fileName"
+            }
+        }
+        Write-Success "固定版本运行时下载成功"
+
         Write-Info "初始化场景测试目录：$fullTargetPath ..."
+        $tempCli = Join-Path $runtimeDir "scenario-test-cli.cjs"
 
-        $initOutput = node $tempCli init --project $ProjectDir --dir $TargetDir --library-url $Source 2>&1
+        $initOutput = node $tempCli init --project $ProjectDir --dir $TargetDir 2>&1
         if ($LASTEXITCODE -ne 0) {
             throw "init 命令失败`n$initOutput"
         }
@@ -215,6 +247,7 @@ try {
     exit 1
 } finally {
     Pop-Location
+    Remove-Item $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 # 7. 输出使用指南

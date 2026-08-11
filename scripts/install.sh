@@ -5,13 +5,13 @@
 # 使用方法：
 #   ./install.sh
 #   ./install.sh /path/to/project scenario-test
-#   ./install.sh /path/to/project scenario-test "https://gitlab.example.com/group/project/-/raw/v0.5.6/dist"
-#   curl -fsSL https://raw.githubusercontent.com/youzhikeji/scenario-test/master/scripts/install.sh | bash -s -- /path/to/project scenario-test
+#   ./install.sh /path/to/project scenario-test "https://gitlab.example.com/group/project/-/raw/v0.5.7/dist"
+#   curl -fsSL https://cdn.jsdelivr.net/gh/youzhikeji/scenario-test@v0.5.7/scripts/install.sh | bash -s -- /path/to/project scenario-test
 #
-# 原理：默认免 npm 安装 —— 从固定版本下载目录（GitHub Tag dist / GitLab Raw）下载 CLI，
-#       由 init 补齐全部运行时副本，业务项目不安装 npm 包、不改 package.json。
+# 原理：默认免 npm 安装 —— 从 npm Registry 下载固定版本 tarball，解压后从本地 dist 初始化，
+#       业务项目不安装 npm 包、不改 package.json，也不访问 GitHub API。
+#       SCENARIO_TEST_SOURCE 或第三个参数可改用内网运行时目录。
 #       显式设置 SCENARIO_TEST_USE_NPM=true 时才通过 npm 安装运行时（失败即退出，不静默切换）。
-# 可选下载源覆盖：SCENARIO_TEST_SOURCE=<url> 或第三个参数（默认固定 v0.5.6 GitHub Tag dist）
 #
 
 set -eo pipefail
@@ -22,9 +22,17 @@ trap 'rm -rf "$LOG_DIR"' EXIT
 # 默认参数
 PROJECT_DIR="${1:-.}"
 TARGET_DIR="${2:-scenario-test}"
-SOURCE="${3:-${SCENARIO_TEST_SOURCE:-https://raw.githubusercontent.com/youzhikeji/scenario-test/v0.5.6/dist/}}"
+SOURCE="${3:-${SCENARIO_TEST_SOURCE:-}}"
 USE_NPM="${SCENARIO_TEST_USE_NPM:-false}"
 SKIP_DOCTOR="${SKIP_DOCTOR:-false}"
+SCENARIO_TEST_VERSION="${SCENARIO_TEST_VERSION:-0.5.7}"
+PACKAGE_TARBALL="https://registry.npmjs.org/@yc_yzkj/scenario-test/-/scenario-test-${SCENARIO_TEST_VERSION}.tgz"
+RUNTIME_FILES=(
+    "scenario-test-cli.cjs"
+    "scenario-test.umd.js"
+    "scenario-test.d.ts"
+    "scenario-test-capabilities.json"
+)
 NPM_PACKAGE="@yc_yzkj/scenario-test"
 if [ -n "${SCENARIO_TEST_VERSION:-}" ]; then
     NPM_PACKAGE="$NPM_PACKAGE@$SCENARIO_TEST_VERSION"
@@ -88,18 +96,42 @@ FULL_TARGET_PATH="$PROJECT_DIR/$TARGET_DIR"
 INTERNAL_DIR="$FULL_TARGET_PATH/.scenario-test"
 
 if [ "$USE_NPM" != "true" ]; then
-    # 默认免 npm 模式：从下载源获取 CLI，init 补齐其余运行时副本
-    print_info "免 npm 安装模式，下载源：$SOURCE ..."
-    CLI_URL="$(echo "$SOURCE" | sed 's:/*$::')/scenario-test-cli.cjs"
-    TEMP_CLI="$LOG_DIR/scenario-test-cli.cjs"
-    if ! curl -fsSL "$CLI_URL" -o "$TEMP_CLI"; then
-        print_error "CLI 下载失败：$CLI_URL"
-        exit 1
+    RUNTIME_DIR="$LOG_DIR/runtime"
+    mkdir -p "$RUNTIME_DIR"
+
+    if [ -n "$SOURCE" ]; then
+        print_info "免 npm 安装模式，内网下载源：$SOURCE ..."
+        for file in "${RUNTIME_FILES[@]}"; do
+            FILE_URL="$(echo "$SOURCE" | sed 's:/*$::')/$file"
+            if ! curl -fsSL "$FILE_URL" -o "$RUNTIME_DIR/$file"; then
+                print_error "运行时文件下载失败：$FILE_URL"
+                exit 1
+            fi
+        done
+    else
+        print_info "免 npm 安装模式，从 npm Registry 下载固定版本 $SCENARIO_TEST_VERSION ..."
+        if ! curl -fsSL "$PACKAGE_TARBALL" -o "$LOG_DIR/scenario-test.tgz"; then
+            print_error "tarball 下载失败：$PACKAGE_TARBALL"
+            exit 1
+        fi
+        if ! tar -xzf "$LOG_DIR/scenario-test.tgz" -C "$LOG_DIR"; then
+            print_error "tarball 解压失败"
+            exit 1
+        fi
+        RUNTIME_DIR="$LOG_DIR/package/dist"
     fi
-    print_success "CLI 下载成功"
+
+    for file in "${RUNTIME_FILES[@]}"; do
+        if [ ! -f "$RUNTIME_DIR/$file" ]; then
+            print_error "下载内容不完整，缺少运行时文件：$file"
+            exit 1
+        fi
+    done
+    print_success "固定版本运行时下载成功"
 
     print_info "初始化场景测试目录：$FULL_TARGET_PATH ..."
-    if node "$TEMP_CLI" init --project "$PROJECT_DIR" --dir "$TARGET_DIR" --library-url "$SOURCE" 2>&1 | tee "$LOG_DIR/init.log"; then
+    TEMP_CLI="$RUNTIME_DIR/scenario-test-cli.cjs"
+    if node "$TEMP_CLI" init --project "$PROJECT_DIR" --dir "$TARGET_DIR" 2>&1 | tee "$LOG_DIR/init.log"; then
         print_success "初始化完成"
     else
         print_error "初始化失败"

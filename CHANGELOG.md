@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.7] - 2026-03-15
+
+### 🐛 Bug Fixes
+
+1. **免 npm 下载不再依赖 GitHub API或 Node fetch**
+   - 默认从 npm Registry 下载一次固定版本 tarball，在临时目录解压后由本地 `dist/` 初始化，避免 GitHub API共享出口限流以及 Node `fetch` 不继承系统代理的问题。
+   - `Source` / `SCENARIO_TEST_SOURCE` 仍可指定内网 GitLab Raw 或制品目录；安装脚本会自行下载并校验全部 4 个运行时文件。
+
 ## [0.5.6] - 2026-03-15
 
 ### ✨ Integration Experience

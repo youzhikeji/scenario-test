@@ -1,6 +1,6 @@
 {
   "name": "@yc_yzkj/scenario-test",
-  "version": "0.5.6",
+  "version": "0.5.7",
   "description": "Reusable browser and Node.js scenario testing library",
   "type": "module",
   "main": "dist/scenario-test.cjs",
@@ -9,6 +9,8 @@
   "types": "dist/scenario-test.d.ts",
   "files": [
     "dist",
+    "scripts/install.ps1",
+    "scripts/install.sh",
     "scripts/start-scenario-test.ps1"
   ],
   "bin": {

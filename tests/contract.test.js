@@ -117,9 +117,11 @@ test("对外接入文档使用当前版本且只要求复制一次 Prompt", () =
     assert.match(installPrompt, /你要测试哪个业务功能/);
     assert.match(scenarioPrompt, /仓库预览/);
     assert.match(scenarioPrompt, /业务用户不要直接复制本文件/);
+    assert.match(scenarioPrompt, /实际执行时，以.*项目.*文件为准/);
+    assert.match(scenarioPrompt, /不复制完整模板和操作符名单/);
     // README 内联与 docs 同源的接入 Prompt：默认免 npm，npm 为显式可选，两种方式明确且不混用。
     const readme = fs.readFileSync(path.resolve(import.meta.dirname, "../README.md"), "utf8");
-    assert.match(readme, /复制一次即可/);
+    assert.match(readme, /## 快速接入/);
     assert.match(readme, /AI_INSTALL_PROMPT\.md/);
     assert.match(readme, /用户不需要再次复制/);
     assert.match(readme, /默认.*免 npm|免 npm.*默认/);
@@ -133,23 +135,25 @@ test("对外接入文档使用当前版本且只要求复制一次 Prompt", () =
 
     const quickStart = examplesIndex.match(/^##\s+[^\n]*快速开始[^\n]*\n[\s\S]*?(?=^##\s|$(?![\s\S]))/mi)?.[0] ?? "";
     assert.ok(quickStart, "示例索引缺少业务接入快速开始章节");
-    // npm 已是主安装路径，允许 npm install；仍禁止克隆源码或从源码构建
-    assert.doesNotMatch(quickStart, /\bgit\s+clone\b|\bnpm\s+run\s+build\b/);
+    // 示例快速开始必须坚持默认免 npm；不得把 npm install 或源码构建写成业务接入默认步骤
+    assert.match(quickStart, /默认.*免 npm|免 npm.*默认/);
+    assert.doesNotMatch(quickStart, /\bnpm\s+install\b|\bgit\s+clone\b|\bnpm\s+run\s+build\b/);
     assert.match(quickStart, /AI_INSTALL_PROMPT\.md|AI 接入 Prompt/);
     assert.match(quickStart, /AI_SCENARIO_PROMPT\.md/);
     assert.match(quickStart, /用户不需要再次复制/);
     assert.doesNotMatch(examplesIndex, /两次 Prompt/);
 
-    // 一键安装脚本同时锁定两条路径：默认免 npm（固定版本源 → scenario-test-cli.cjs 下载 → --library-url init）
+    // 一键安装脚本同时锁定两条路径：默认免 npm（npm Registry 固定版本 tarball → 本地 dist 初始化）
     // 与显式 npm 可选路径（-UseNpm / SCENARIO_TEST_USE_NPM → npm install + npx init/doctor）。
     const installSh = fs.readFileSync(path.resolve(import.meta.dirname, "../scripts/install.sh"), "utf8");
     const installPs1 = fs.readFileSync(path.resolve(import.meta.dirname, "../scripts/install.ps1"), "utf8");
     for (const script of [installSh, installPs1]) {
         assert.match(script, /scenario-test-cli\.cjs/);
-        assert.match(script, /--library-url/);
+        assert.match(script, /registry\.npmjs\.org/);
+        assert.match(script, new RegExp(VERSION.replaceAll(".", "\\.")), "默认 tarball 应固定到当前版本");
+        assert.doesNotMatch(script, /api\.github\.com/);
         assert.match(script, /SCENARIO_TEST_SOURCE|Source/);
         assert.match(script, /SCENARIO_TEST_USE_NPM|-UseNpm/);
-        assert.match(script, new RegExp(`v${VERSION}/dist`), "默认下载源应固定到当前版本 dist");
         // npm 分支仍完整保留（仅显式开关开启时使用）
         assert.match(script, /npm install/);
         assert.match(script, /@yc_yzkj\/scenario-test/);

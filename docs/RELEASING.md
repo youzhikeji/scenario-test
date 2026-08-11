@@ -1,15 +1,15 @@
 # 发布流程
 
 > ⚠️ **内部/历史文档**：本指南是仓库维护者的发布流程。对外接入默认**免 npm**
-> （官方安装脚本从固定版本 GitHub Tag 的 `dist/` 下载运行时副本，不修改业务项目依赖），
+> （官方安装脚本从 npm Registry 下载固定版本 tarball，在本地解压后初始化，不修改业务项目依赖），
 > 对外安装指引见 [README](../README.md) 与 [AI_INSTALL_PROMPT.md](AI_INSTALL_PROMPT.md)。
 > 仓库内的 `scripts/publish-release.mjs`（GitLab CI）仅用于内部镜像发布。
 
-`master` 只包含可发布代码。`dist/` 随版本提交（GitHub Tag 的 Raw `dist/` 目录是免 npm 默认下载源，不依赖 GitHub Release 上传资产）。消费者默认免 npm：官方 `install.ps1` / `install.sh` 从固定版本 Tag 的 `dist/` 下载全部运行时副本到项目 `.scenario-test/`；npm（`@yc_yzkj/scenario-test`）为显式可选方式（`-UseNpm` / `SCENARIO_TEST_USE_NPM=true`）。
+`master` 只包含可发布代码。`dist/` 随版本提交，npm tarball 也必须包含完整 `dist/`。消费者默认免 npm：官方 `install.ps1` / `install.sh` 从固定版本 npm Registry tarball 下载并解压运行时到项目 `.scenario-test/`；npm（`@yc_yzkj/scenario-test`）为显式可选方式（`-UseNpm` / `SCENARIO_TEST_USE_NPM=true`）。内网可通过 `Source` / `SCENARIO_TEST_SOURCE` 改用 GitLab Raw 或制品目录。
 
 ## 发布步骤
 
-1. 修改 `package.json` 版本号，遵循语义化版本。
+1. 修改 `package.json` 版本号，遵循语义化版本；同步更新 `package-lock.json`、`CHANGELOG.md`、`scripts/install.ps1` / `scripts/install.sh` 中的固定版本与 npm tarball URL，以及 README / AI Prompt 中固定 Tag 的 jsDelivr 安装脚本 URL。构建后确认 `src/version.generated.js`、`dist/` 和 `npm pack` 内容版本一致。
 2. 本地运行：
 
    ```powershell
@@ -32,7 +32,7 @@
    npm publish --access public
    ```
 
-   `files: ["dist", "scripts/start-scenario-test.ps1"]` 保证构建产物与 Windows 启动脚本一并发布；`bin` 指向 `dist/scenario-test-cli.cjs`（带 shebang，支持 `npx @yc_yzkj/scenario-test`）。
+   `files` 必须包含 `dist`、`scripts/install.ps1`、`scripts/install.sh` 与 `scripts/start-scenario-test.ps1`；`bin` 指向 `dist/scenario-test-cli.cjs`（带 shebang，支持 `npx @yc_yzkj/scenario-test`）。安装脚本依赖 npm tarball 中的完整 `dist/`，发布前需用 `npm pack --dry-run` 核对。
 
    Windows 浏览器工作台也可直接使用发行版中的启动脚本。脚本默认读取业务项目根目录下的 `scenario-test/scenario.config.js`，默认只启动服务；传入 `-OpenBrowser` 才会自动打开浏览器：
 
@@ -41,7 +41,7 @@
    ```
 
    GitLab Release 同步提供 `start-scenario-test.ps1` 下载资产，脚本与该版本的 CLI、UMD 保持一致。
-6. （可选）创建 GitHub Release 作为源码归档。免 npm 默认下载源是 GitHub Tag 的 Raw `dist/` 目录（`https://raw.githubusercontent.com/youzhikeji/scenario-test/vX.Y.Z/dist/`），不依赖 Release 上传资产；内网可把 `Source` / `SCENARIO_TEST_SOURCE` 指向 GitLab Raw 或制品目录。
+6. （可选）创建 GitHub Release 作为源码归档。免 npm 默认下载源是 npm Registry 固定版本 tarball（`https://registry.npmjs.org/@yc_yzkj/scenario-test/-/scenario-test-vX.Y.Z.tgz`），不依赖 GitHub Release 上传资产；内网可把 `Source` / `SCENARIO_TEST_SOURCE` 指向 GitLab Raw 或制品目录（需包含全部运行时文件）。
 
 业务项目由 `init` 生成 `index.html`，引用项目内运行时副本：
 
@@ -49,7 +49,7 @@
 <script src="./.scenario-test/scenario-test.umd.js"></script>
 ```
 
-`init` 优先从本机 npm 包 `dist/` 拷贝副本；本机没有 npm 包时可用 `--library-url <目录>` 指定包含全部运行时文件的目录（默认指向固定版本 GitHub Tag 的 `dist/` Raw 目录）。人工场景测试通过 `start-scenario-test.cmd` 启动，`serve` 把接口请求代理到环境 `baseUrl`（页面 `baseUrl` 留空即走代理），无需后端放行 CORS。
+`init` 优先从本机 `dist/` 拷贝运行时副本（CLI 自身复制 + UMD/d.ts/能力清单同目录拷贝）；本机没有 `dist` 时可用 `--library-url <目录>` 指定包含全部运行时文件的目录（默认指向固定版本 GitHub Tag 的 `dist/` Raw 目录，仅作兜底）。安装脚本（install.ps1/install.sh）会先下载固定版本 npm tarball 并解压出完整 `dist/`，因此正常安装路径不触发远程兜底下载。人工场景测试通过 `start-scenario-test.cmd` 启动，`serve` 把接口请求代理到环境 `baseUrl`（页面 `baseUrl` 留空即走代理），无需后端放行 CORS。
 
 已发布 Tag 不覆盖重推。修复通过新的 patch Tag 发布。
 
