@@ -3,16 +3,16 @@
 在目标业务项目根目录打开 AI 助手，将下面内容完整粘贴。AI 会优先通过 npm 安装并完成初始化、体检，然后主动询问要测试的业务功能。用户不需要克隆公共库、学习 DSL 或再次复制场景 Prompt。
 
 ```text
-请在当前项目根目录安装 @youzhikeji/scenario-test。目标目录为 scenario-test。
+请在当前项目根目录安装 @yc_yzkj/scenario-test。目标目录为 scenario-test。
 
 执行要求：
 1. 先确认当前目录是项目根目录，且 Node.js 版本不低于 18；不满足时停止并说明原因。
 2. 不克隆公共库源码，不修改业务代码、构建配置或已有场景文件；不启动服务、不调用业务接口、不写入 Token、Secret 或真实测试数据。
 3. 通过 npm 安装并初始化：
-   a. 在项目根目录执行 npm install -D @youzhikeji/scenario-test。
-   b. 执行 npx @youzhikeji/scenario-test init --project . --dir "scenario-test" 完成初始化；不要传 --force。
+   a. 在项目根目录执行 npm install -D @yc_yzkj/scenario-test。
+   b. 执行 npx @yc_yzkj/scenario-test init --project . --dir "scenario-test" 完成初始化；若提示目标目录已存在，选择保留（默认回车）。
 4. 运行项目体检确认安装完整：
-   npx @youzhikeji/scenario-test doctor --config scenario-test/scenario.config.js
+   npx @yc_yzkj/scenario-test doctor --config scenario-test/scenario.config.js
    有 FAIL 时停止并报告，不继续后续步骤。
 5. doctor 通过后，读取刚生成的 scenario-test/.scenario-test/AI_SCENARIO_PROMPT.md，将其作为后续场景设计规则，不要要求用户复制或粘贴。
 6. 最后报告安装和 doctor 结果，然后只询问：“你要测试哪个业务功能？请提供功能名称，以及页面、Controller、接口或已有测试中的任一入口。”此时不要扫描整个项目、生成场景、启动服务或调用业务接口。

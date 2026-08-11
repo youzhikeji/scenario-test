@@ -193,7 +193,7 @@
       },
       "force": {
         "kind": "flag",
-        "description": "init 强制覆盖已有文件"
+        "description": "init 覆盖已有文件（目标目录已存在时可交互选择）"
       },
       "fail-on-skip": {
         "kind": "flag",

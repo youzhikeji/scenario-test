@@ -4,7 +4,7 @@
     一键安装 scenario-test 到业务项目
 
 .DESCRIPTION
-    通过 npm 安装运行时 @youzhikeji/scenario-test，再初始化项目并做健康检查
+    通过 npm 安装运行时 @yc_yzkj/scenario-test，再初始化项目并做健康检查
 
 .PARAMETER ProjectDir
     业务项目根目录，默认为当前目录
@@ -36,7 +36,7 @@ function Write-Info { param([string]$Message) Write-Host "ℹ $Message" -Foregro
 function Write-Warning-Custom { param([string]$Message) Write-Host "⚠ $Message" -ForegroundColor Yellow }
 
 Write-Host "`n=== scenario-test 一键安装 ===" -ForegroundColor Magenta
-Write-Host "包: @youzhikeji/scenario-test`n" -ForegroundColor Magenta
+Write-Host "包: @yc_yzkj/scenario-test`n" -ForegroundColor Magenta
 
 # 1. 检查 Node.js 版本
 Write-Info "检查 Node.js 版本..."
@@ -79,8 +79,8 @@ $fullTargetPath = Join-Path $ProjectDir $TargetDir
 Push-Location $ProjectDir
 try {
     # 3. 通过 npm 安装运行时
-    Write-Info "通过 npm 安装运行时：@youzhikeji/scenario-test ..."
-    $installOutput = npm install --save-dev "@youzhikeji/scenario-test" 2>&1
+    Write-Info "通过 npm 安装运行时：@yc_yzkj/scenario-test ..."
+    $installOutput = npm install --save-dev "@yc_yzkj/scenario-test" 2>&1
     if ($LASTEXITCODE -ne 0) {
         throw "npm 安装失败`n$installOutput"
     }
@@ -89,7 +89,7 @@ try {
     # 4. 执行 init
     Write-Info "初始化场景测试目录：$fullTargetPath ..."
 
-    $initOutput = npx @youzhikeji/scenario-test init --project $ProjectDir --dir $TargetDir 2>&1
+    $initOutput = npx @yc_yzkj/scenario-test init --project $ProjectDir --dir $TargetDir 2>&1
     if ($LASTEXITCODE -ne 0) {
         throw "init 命令失败`n$initOutput"
     }
@@ -147,7 +147,7 @@ try {
 
         $configPath = Join-Path $fullTargetPath "scenario.config.js"
 
-        $doctorOutput = npx @youzhikeji/scenario-test doctor --config $configPath 2>&1
+        $doctorOutput = npx @yc_yzkj/scenario-test doctor --config $configPath 2>&1
         $doctorExitCode = $LASTEXITCODE
 
         Write-Host $doctorOutput -ForegroundColor Gray
@@ -186,13 +186,13 @@ Write-Host "   为 `"<业务功能名称>`" 设计场景测试。" -ForegroundCo
 Write-Host "   入口：<页面、Controller、接口或已有测试路径>`n" -ForegroundColor Cyan
 
 Write-Host "2. 启动浏览器工作台（可视化调试）：" -ForegroundColor Yellow
-Write-Host "   npx @youzhikeji/scenario-test serve --config $configRelative`n" -ForegroundColor Cyan
+Write-Host "   npx @yc_yzkj/scenario-test serve --config $configRelative`n" -ForegroundColor Cyan
 
 Write-Host "3. 命令行执行场景：" -ForegroundColor Yellow
 Write-Host "   # 执行所有非 manual 场景" -ForegroundColor Gray
-Write-Host "   npx @youzhikeji/scenario-test --config $configRelative --env local --all`n" -ForegroundColor Cyan
+Write-Host "   npx @yc_yzkj/scenario-test --config $configRelative --env local --all`n" -ForegroundColor Cyan
 Write-Host "   # 执行指定场景" -ForegroundColor Gray
-Write-Host "   npx @youzhikeji/scenario-test --config $configRelative --env local --scenario <场景ID>`n" -ForegroundColor Cyan
+Write-Host "   npx @yc_yzkj/scenario-test --config $configRelative --env local --scenario <场景ID>`n" -ForegroundColor Cyan
 
 Write-Host "4. 文档位置：" -ForegroundColor Yellow
 Write-Host "   README:  $relativeTargetDir/README.md" -ForegroundColor Cyan

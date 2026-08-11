@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
+import { createInterface } from "node:readline/promises";
 import { pathToFileURL } from "node:url";
 import * as ScenarioTest from "./node.js";
 import { createProjectFiles } from "./init-templates.js";
@@ -165,6 +166,27 @@ function resolveInitDirectory(projectRoot, value) {
     return directory;
 }
 
+// 目标目录已存在时询问覆盖方式；非交互环境（CI、脚本、管道）自动采用默认保留行为，避免卡住
+async function askInitMode(directory) {
+    if (!process.stdin.isTTY) return "keep";
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    try {
+        const answer = await rl.question(
+            `目标目录 ${directory} 已存在。\n` +
+                `  [o] 覆盖已有文件（等价 --force）\n` +
+                `  [k] 保留现有文件，仅刷新 AI 规则（默认）\n` +
+                `  [c] 取消\n` +
+                `请选择 (k): `
+        );
+        const choice = answer.trim().toLowerCase();
+        if (choice === "o") return "overwrite";
+        if (choice === "c") return "cancel";
+        return "keep";
+    } finally {
+        rl.close();
+    }
+}
+
 async function initCommand(args) {
     const projectRoot = path.resolve(args.project || process.cwd());
     const directory = resolveInitDirectory(projectRoot, args.dir);
@@ -172,6 +194,16 @@ async function initCommand(args) {
     const storagePrefix = `scenario-test.${projectName.replace(/[^\p{L}\p{N}._-]+/gu, "-")}`;
     const layout = resolveProjectLayout(projectRoot, directory);
     const frameworkDirectory = ".scenario-test";
+    // 目标目录已存在且未显式 --force 时，由用户选择覆盖方式
+    let force = args.force;
+    if (!force && fs.existsSync(path.join(projectRoot, directory))) {
+        const mode = await askInitMode(directory);
+        if (mode === "cancel") {
+            console.log("已取消初始化。");
+            return;
+        }
+        force = mode === "overwrite";
+    }
     // AI 规则/模式库是项目专属文件：重跑 init 时刷新（不覆盖用户项目配置与场景）
     const frameworkTemplatePaths = new Set([
         layout.frameworkRelativePath(FRAMEWORK_FILES.authoringPrompt),
@@ -180,7 +212,7 @@ async function initCommand(args) {
     const created = [];
     const skipped = [];
     for (const [relativePath, content] of Object.entries(createProjectFiles(directory, { storagePrefix, frameworkDirectory }))) {
-        const overwrite = args.force || frameworkTemplatePaths.has(relativePath);
+        const overwrite = force || frameworkTemplatePaths.has(relativePath);
         (writeProjectFile(projectRoot, relativePath, content, overwrite) ? created : skipped).push(relativePath);
     }
     console.log(`已初始化项目: ${projectRoot}`);
@@ -188,7 +220,7 @@ async function initCommand(args) {
     if (created.length) console.log(`已创建: ${created.join(", ")}`);
     if (skipped.length) console.log(`已保留现有文件: ${skipped.join(", ")}`);
     console.log(`浏览器工作台: ${path.join(projectRoot, directory, "index.html")}`);
-    console.log("提示: 运行时由 npm 包提供（@youzhikeji/scenario-test），使用 npx @youzhikeji/scenario-test 执行命令。");
+    console.log("提示: 运行时由 npm 包提供（@yc_yzkj/scenario-test），使用 npx @yc_yzkj/scenario-test 执行命令。");
 }
 
 function resolveConfigPath(value) {
@@ -358,8 +390,8 @@ async function serveCommand(args) {
                 // 仓库内示例的 index.html 引用 ../../dist/scenario-test.umd.js（浏览器规范化为 /dist/...）
                 filePath = path.join(libraryDist, "scenario-test.umd.js");
             }
-            else if (pathname === "/node_modules/@youzhikeji/scenario-test/dist/scenario-test.umd.js") {
-                // 业务项目 index.html 引用 ../node_modules/@youzhikeji/scenario-test/dist/scenario-test.umd.js
+            else if (pathname === "/node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js") {
+                // 业务项目 index.html 引用 ../node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js
                 // （浏览器规范化为 /node_modules/...）；运行时只存在于 npm 包，从 CLI 所在 dist 提供
                 filePath = path.join(libraryDist, "scenario-test.umd.js");
             }

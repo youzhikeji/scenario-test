@@ -7,7 +7,7 @@
 #   ./install.sh /path/to/project scenario-test
 #   curl -fsSL https://raw.githubusercontent.com/youzhikeji/scenario-test/master/scripts/install.sh | bash -s -- /path/to/project scenario-test
 #
-# 原理：通过 npm 安装运行时 @youzhikeji/scenario-test，再初始化项目并做健康检查。
+# 原理：通过 npm 安装运行时 @yc_yzkj/scenario-test，再初始化项目并做健康检查。
 # 可选版本固定：SCENARIO_TEST_VERSION=0.5.3 ./install.sh
 #
 
@@ -20,7 +20,7 @@ trap 'rm -rf "$LOG_DIR"' EXIT
 PROJECT_DIR="${1:-.}"
 TARGET_DIR="${2:-scenario-test}"
 SKIP_DOCTOR="${SKIP_DOCTOR:-false}"
-NPM_PACKAGE="@youzhikeji/scenario-test"
+NPM_PACKAGE="@yc_yzkj/scenario-test"
 if [ -n "${SCENARIO_TEST_VERSION:-}" ]; then
     NPM_PACKAGE="$NPM_PACKAGE@$SCENARIO_TEST_VERSION"
 fi
@@ -90,7 +90,7 @@ fi
 FULL_TARGET_PATH="$PROJECT_DIR/$TARGET_DIR"
 print_info "初始化场景测试目录：$FULL_TARGET_PATH ..."
 
-if npx @youzhikeji/scenario-test init --project "$PROJECT_DIR" --dir "$TARGET_DIR" 2>&1 | tee "$LOG_DIR/init.log"; then
+if npx @yc_yzkj/scenario-test init --project "$PROJECT_DIR" --dir "$TARGET_DIR" 2>&1 | tee "$LOG_DIR/init.log"; then
     print_success "初始化完成"
 else
     print_error "初始化失败"
@@ -149,7 +149,7 @@ if [ "$SKIP_DOCTOR" != "true" ]; then
 
     CONFIG_PATH="$FULL_TARGET_PATH/scenario.config.js"
 
-    if npx @youzhikeji/scenario-test doctor --config "$CONFIG_PATH" 2>&1 | tee "$LOG_DIR/doctor.log"; then
+    if npx @yc_yzkj/scenario-test doctor --config "$CONFIG_PATH" 2>&1 | tee "$LOG_DIR/doctor.log"; then
         echo ""
         print_success "健康检查通过"
     else
@@ -183,15 +183,15 @@ echo -e "${CYAN}   入口：<页面、Controller、接口或已有测试路径>$
 echo ""
 
 echo -e "${YELLOW}2. 启动浏览器工作台（可视化调试）：${NC}"
-echo -e "${CYAN}   npx @youzhikeji/scenario-test serve --config $CONFIG_RELATIVE${NC}"
+echo -e "${CYAN}   npx @yc_yzkj/scenario-test serve --config $CONFIG_RELATIVE${NC}"
 echo ""
 
 echo -e "${YELLOW}3. 命令行执行场景：${NC}"
 echo -e "${GRAY}   # 执行所有非 manual 场景${NC}"
-echo -e "${CYAN}   npx @youzhikeji/scenario-test --config $CONFIG_RELATIVE --env local --all${NC}"
+echo -e "${CYAN}   npx @yc_yzkj/scenario-test --config $CONFIG_RELATIVE --env local --all${NC}"
 echo ""
 echo -e "${GRAY}   # 执行指定场景${NC}"
-echo -e "${CYAN}   npx @youzhikeji/scenario-test --config $CONFIG_RELATIVE --env local --scenario <场景ID>${NC}"
+echo -e "${CYAN}   npx @yc_yzkj/scenario-test --config $CONFIG_RELATIVE --env local --scenario <场景ID>${NC}"
 echo ""
 
 echo -e "${YELLOW}4. 文档位置：${NC}"

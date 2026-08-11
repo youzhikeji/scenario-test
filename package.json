@@ -1,5 +1,5 @@
 {
-  "name": "@youzhikeji/scenario-test",
+  "name": "@yc_yzkj/scenario-test",
   "version": "0.5.3",
   "description": "Reusable browser and Node.js scenario testing library",
   "type": "module",

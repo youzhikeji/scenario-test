@@ -243,6 +243,7 @@ var require_md5 = __commonJS({
 var import_node_fs5 = __toESM(require("node:fs"), 1);
 var import_node_http = __toESM(require("node:http"), 1);
 var import_node_path6 = __toESM(require("node:path"), 1);
+var import_promises = require("node:readline/promises");
 var import_node_url = require("node:url");
 
 // src/node.js
@@ -433,7 +434,7 @@ var contract = Object.freeze({
       project: { kind: "value", prop: "project", description: "init \u76EE\u6807\u9879\u76EE\u6839\u76EE\u5F55" },
       dir: { kind: "value", prop: "dir", description: "init \u573A\u666F\u6D4B\u8BD5\u76EE\u5F55\u540D" },
       all: { kind: "flag", prop: "all", description: "\u6267\u884C\u914D\u7F6E\u4E2D\u7684\u5168\u90E8\u81EA\u52A8\u573A\u666F\uFF08\u9ED8\u8BA4\u6392\u9664 manual:true\uFF09" },
-      force: { kind: "flag", prop: "force", description: "init \u5F3A\u5236\u8986\u76D6\u5DF2\u6709\u6587\u4EF6" },
+      force: { kind: "flag", prop: "force", description: "init \u8986\u76D6\u5DF2\u6709\u6587\u4EF6\uFF08\u76EE\u6807\u76EE\u5F55\u5DF2\u5B58\u5728\u65F6\u53EF\u4EA4\u4E92\u9009\u62E9\uFF09" },
       "fail-on-skip": { kind: "flag", prop: "failOnSkip", description: "\u5B58\u5728\u4EFB\u4F55 SKIP \u6B65\u9AA4\u65F6\u6700\u7EC8\u9000\u51FA\u7801\u4E3A 1" },
       "allow-external-plugins": { kind: "flag", prop: "allowExternalPlugins", description: "\u5141\u8BB8\u52A0\u8F7D\u5916\u90E8\u63D2\u4EF6\uFF08\u6709\u5B89\u5168\u98CE\u9669\uFF09" },
       json: { kind: "flag", prop: "json", description: "capabilities/doctor \u8F93\u51FA\u673A\u5668\u53EF\u8BFB JSON\uFF08stdout \u7EAF\u51C0\uFF09" },
@@ -4562,8 +4563,8 @@ function createProjectFiles(directory = "scenario-test", options = {}) {
 </head>
 <body style="margin:0">
     <div id="scenario-test" style="height:100vh"></div>
-    <!-- \u8FD0\u884C\u65F6\u6765\u81EA npm \u5305 @youzhikeji/scenario-test\uFF08serve \u63D0\u4F9B /node_modules/... \u8DEF\u7531\uFF09 -->
-    <script src="/node_modules/@youzhikeji/scenario-test/dist/scenario-test.umd.js"></script>
+    <!-- \u8FD0\u884C\u65F6\u6765\u81EA npm \u5305 @yc_yzkj/scenario-test\uFF08serve \u63D0\u4F9B /node_modules/... \u8DEF\u7531\uFF09 -->
+    <script src="/node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js"></script>
     <script src="./scenario.config.js"></script>
     <script>
         ScenarioTest.createApp({ mount: "#scenario-test", config: ScenarioTest.getConfig() });
@@ -4571,7 +4572,7 @@ function createProjectFiles(directory = "scenario-test", options = {}) {
 </body>
 </html>
 `,
-    [`${directory}/scenario.config.js`]: `/// <reference types="@youzhikeji/scenario-test" />
+    [`${directory}/scenario.config.js`]: `/// <reference types="@yc_yzkj/scenario-test" />
 ScenarioTest.registerConfig(ScenarioTest.defineConfig({
     envs: [
         {
@@ -4594,9 +4595,9 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
     [`${frameworkPrefix}/SCENARIO_PATTERNS.md`]: SCENARIO_PATTERNS,
     [`${directory}/README.md`]: `# \u573A\u666F\u6D4B\u8BD5
 
-\u672C\u76EE\u5F55\u662F\u5F53\u524D\u9879\u76EE\u7684\u573A\u666F\u6D4B\u8BD5\u5165\u53E3\u3002\u5B83\u4E0E\u4E1A\u52A1\u4EE3\u7801\u540C\u4ED3\u7EF4\u62A4\uFF1A\u73AF\u5883\u5730\u5740\u3001\u6D4B\u8BD5\u53D8\u91CF\u3001\u573A\u666F\u6587\u4EF6\u548C\u9879\u76EE\u4E13\u5C5E\u63D2\u4EF6\u653E\u5728\u8FD9\u91CC\uFF1B\u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0\u4E0E CLI \u7531 npm \u5305 @youzhikeji/scenario-test \u63D0\u4F9B\u3002
+\u672C\u76EE\u5F55\u662F\u5F53\u524D\u9879\u76EE\u7684\u573A\u666F\u6D4B\u8BD5\u5165\u53E3\u3002\u5B83\u4E0E\u4E1A\u52A1\u4EE3\u7801\u540C\u4ED3\u7EF4\u62A4\uFF1A\u73AF\u5883\u5730\u5740\u3001\u6D4B\u8BD5\u53D8\u91CF\u3001\u573A\u666F\u6587\u4EF6\u548C\u9879\u76EE\u4E13\u5C5E\u63D2\u4EF6\u653E\u5728\u8FD9\u91CC\uFF1B\u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0\u4E0E CLI \u7531 npm \u5305 @yc_yzkj/scenario-test \u63D0\u4F9B\u3002
 
-\u8FD0\u884C\u65F6\u901A\u8FC7 npm \u5B89\u88C5\uFF08\`npm install -D @youzhikeji/scenario-test\`\uFF09\u540E\u7531 \`npx @youzhikeji/scenario-test\` \u8C03\u7528\uFF1B\u9879\u76EE\u5185 \`${frameworkDisplay}\` \u53EA\u4FDD\u5B58 AI \u89C4\u5219\u4E0E\u6A21\u5F0F\u5E93\uFF0C\u4E1A\u52A1\u4EBA\u5458\u901A\u5E38\u4E0D\u9700\u8981\u6253\u5F00\u6216\u4FEE\u6539\u3002
+\u8FD0\u884C\u65F6\u901A\u8FC7 npm \u5B89\u88C5\uFF08\`npm install -D @yc_yzkj/scenario-test\`\uFF09\u540E\u7531 \`npx @yc_yzkj/scenario-test\` \u8C03\u7528\uFF1B\u9879\u76EE\u5185 \`${frameworkDisplay}\` \u53EA\u4FDD\u5B58 AI \u89C4\u5219\u4E0E\u6A21\u5F0F\u5E93\uFF0C\u4E1A\u52A1\u4EBA\u5458\u901A\u5E38\u4E0D\u9700\u8981\u6253\u5F00\u6216\u4FEE\u6539\u3002
 
 ## \u5F00\u59CB\u4F7F\u7528
 
@@ -4727,7 +4728,7 @@ ScenarioTest.registerScenario("order-create-success", ScenarioTest.defineScenari
 \u5728\u672C\u76EE\u5F55\u542F\u52A8\u672C\u5730\u670D\u52A1\uFF0C\u518D\u6253\u5F00\u7EC8\u7AEF\u8F93\u51FA\u7684\u5730\u5740\uFF1A
 
 \`\`\`powershell
-npx @youzhikeji/scenario-test serve --config ${directory}/scenario.config.js --port 4300
+npx @yc_yzkj/scenario-test serve --config ${directory}/scenario.config.js --port 4300
 \`\`\`
 
 \u6D4F\u89C8\u5668\u9875\u9762\u53EF\u5207\u6362\u73AF\u5883\u548C\u573A\u666F\uFF0C\u586B\u5199\u5E76\u4FDD\u5B58\u5F53\u524D\u73AF\u5883\u7684\u53D8\u91CF\u8986\u76D6\uFF0C\u5355\u6B65\u6267\u884C\u3001\u5168\u91CF\u6267\u884C\u3001\u53D6\u6D88\u6267\u884C\uFF0C\u5E76\u67E5\u770B\u5B9E\u9645\u8BF7\u6C42\u3001\u54CD\u5E94\u548C\u53D8\u91CF\u3002\u4E0D\u8981\u53CC\u51FB\u76F4\u63A5\u6253\u5F00 \`index.html\`\uFF1A\u6D4F\u89C8\u5668\u5BF9\u672C\u5730\u6587\u4EF6\u52A0\u8F7D\u573A\u666F JS \u6709\u9650\u5236\uFF0C\u5E94\u901A\u8FC7 \`serve\` \u542F\u52A8\u3002
@@ -4737,20 +4738,20 @@ npx @youzhikeji/scenario-test serve --config ${directory}/scenario.config.js --p
 \u6267\u884C\u914D\u7F6E\u4E2D\u5168\u90E8\u573A\u666F\uFF1A
 
 \`\`\`powershell
-npx @youzhikeji/scenario-test --config ${directory}/scenario.config.js --env local --all
+npx @yc_yzkj/scenario-test --config ${directory}/scenario.config.js --env local --all
 \`\`\`
 
 \u6267\u884C\u5355\u4E2A\u573A\u666F\u65F6\uFF0C\u4F7F\u7528\u914D\u7F6E\u4E2D\u7684\u573A\u666F id\uFF1A
 
 \`\`\`powershell
-npx @youzhikeji/scenario-test --config ${directory}/scenario.config.js --env local --scenario order-create-success
+npx @yc_yzkj/scenario-test --config ${directory}/scenario.config.js --env local --scenario order-create-success
 \`\`\`
 
 \u5728 PowerShell \u4E2D\u4E3A\u4E00\u6B21\u6267\u884C\u4E34\u65F6\u8986\u76D6\u51ED\u636E\uFF1A
 
 \`\`\`powershell
 $env:SCENARIO_CLIENT_SECRET = "temporary-value"
-npx @youzhikeji/scenario-test --config ${directory}/scenario.config.js --env local --all
+npx @yc_yzkj/scenario-test --config ${directory}/scenario.config.js --env local --all
 Remove-Item Env:SCENARIO_CLIENT_SECRET
 \`\`\`
 
@@ -4760,7 +4761,7 @@ Remove-Item Env:SCENARIO_CLIENT_SECRET
 
 ### \u9875\u9762\u63D0\u793A ScenarioTest \u672A\u5B9A\u4E49\u6216\u811A\u672C\u52A0\u8F7D\u5931\u8D25
 
-\u786E\u8BA4\u5DF2\u6267\u884C \`npm install -D @youzhikeji/scenario-test\`\uFF0C\`index.html\` \u52A0\u8F7D\u7684\u662F \`/node_modules/@youzhikeji/scenario-test/dist/scenario-test.umd.js\`\uFF0C\u5E76\u901A\u8FC7 \`npx @youzhikeji/scenario-test serve\` \u542F\u52A8\u5DE5\u4F5C\u53F0\u3002
+\u786E\u8BA4\u5DF2\u6267\u884C \`npm install -D @yc_yzkj/scenario-test\`\uFF0C\`index.html\` \u52A0\u8F7D\u7684\u662F \`/node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js\`\uFF0C\u5E76\u901A\u8FC7 \`npx @yc_yzkj/scenario-test serve\` \u542F\u52A8\u5DE5\u4F5C\u53F0\u3002
 
 ### \u9875\u9762\u80FD\u6253\u5F00\u4F46\u573A\u666F\u6CA1\u6709\u52A0\u8F7D
 
@@ -4776,7 +4777,7 @@ Remove-Item Env:SCENARIO_CLIENT_SECRET
 
 ## \u5347\u7EA7\u8FD0\u884C\u65F6
 
-\u573A\u666F\u3001\u914D\u7F6E\u548C\u9879\u76EE\u63D2\u4EF6\u5C5E\u4E8E\u672C\u9879\u76EE\uFF0C\u5347\u7EA7\u65F6\u4E0D\u8981\u8986\u76D6\u5B83\u4EEC\u3002\u4F7F\u7528\u65B0\u7248 CLI \u5BF9\u5F53\u524D\u76EE\u5F55\u6267\u884C \`init\` \u4E14\u4E0D\u4F20 \`--force\`\uFF1BCLI \u53EA\u4F1A\u5237\u65B0 \`${frameworkDisplay}\` \u4E2D\u7684 AI \u89C4\u5219\u4E0E\u6A21\u5F0F\u5E93\u3002\u5347\u7EA7\u540E\u5148\u8FD0\u884C doctor \u548C\u4E00\u4E2A\u4EE3\u8868\u6027\u4E1A\u52A1\u573A\u666F\uFF0C\u518D\u63D0\u4EA4\u672C\u9879\u76EE\u6539\u52A8\u3002
+\u573A\u666F\u3001\u914D\u7F6E\u548C\u9879\u76EE\u63D2\u4EF6\u5C5E\u4E8E\u672C\u9879\u76EE\uFF0C\u5347\u7EA7\u65F6\u4E0D\u8981\u8986\u76D6\u5B83\u4EEC\u3002\u4F7F\u7528\u65B0\u7248 CLI \u5BF9\u5F53\u524D\u76EE\u5F55\u6267\u884C \`init\`\uFF1BCLI \u53EA\u4F1A\u5237\u65B0 \`${frameworkDisplay}\` \u4E2D\u7684 AI \u89C4\u5219\u4E0E\u6A21\u5F0F\u5E93\u3002\u5347\u7EA7\u540E\u5148\u8FD0\u884C doctor \u548C\u4E00\u4E2A\u4EE3\u8868\u6027\u4E1A\u52A1\u573A\u666F\uFF0C\u518D\u63D0\u4EA4\u672C\u9879\u76EE\u6539\u52A8\u3002
 
 \u516C\u5171\u8FD0\u884C\u65F6\u4E0D\u4FDD\u5B58\u4E1A\u52A1\u5730\u5740\u3001\u8D26\u53F7\u3001Token\u3001Secret \u6216\u6D4B\u8BD5\u6570\u636E\uFF1B\u8FD9\u4E9B\u4EC5\u80FD\u653E\u5728\u5F53\u524D\u79C1\u6709\u9879\u76EE\u7684\u914D\u7F6E\u548C\u53D7\u63A7\u73AF\u5883\u53D8\u91CF\u4E2D\u3002
 `
@@ -5168,6 +5169,25 @@ function resolveInitDirectory(projectRoot, value) {
   }
   return directory;
 }
+async function askInitMode(directory) {
+  if (!process.stdin.isTTY) return "keep";
+  const rl = (0, import_promises.createInterface)({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = await rl.question(
+      `\u76EE\u6807\u76EE\u5F55 ${directory} \u5DF2\u5B58\u5728\u3002
+  [o] \u8986\u76D6\u5DF2\u6709\u6587\u4EF6\uFF08\u7B49\u4EF7 --force\uFF09
+  [k] \u4FDD\u7559\u73B0\u6709\u6587\u4EF6\uFF0C\u4EC5\u5237\u65B0 AI \u89C4\u5219\uFF08\u9ED8\u8BA4\uFF09
+  [c] \u53D6\u6D88
+\u8BF7\u9009\u62E9 (k): `
+    );
+    const choice = answer.trim().toLowerCase();
+    if (choice === "o") return "overwrite";
+    if (choice === "c") return "cancel";
+    return "keep";
+  } finally {
+    rl.close();
+  }
+}
 async function initCommand(args) {
   const projectRoot = import_node_path6.default.resolve(args.project || process.cwd());
   const directory = resolveInitDirectory(projectRoot, args.dir);
@@ -5175,6 +5195,15 @@ async function initCommand(args) {
   const storagePrefix = `scenario-test.${projectName.replace(/[^\p{L}\p{N}._-]+/gu, "-")}`;
   const layout = resolveProjectLayout(projectRoot, directory);
   const frameworkDirectory = ".scenario-test";
+  let force = args.force;
+  if (!force && import_node_fs5.default.existsSync(import_node_path6.default.join(projectRoot, directory))) {
+    const mode = await askInitMode(directory);
+    if (mode === "cancel") {
+      console.log("\u5DF2\u53D6\u6D88\u521D\u59CB\u5316\u3002");
+      return;
+    }
+    force = mode === "overwrite";
+  }
   const frameworkTemplatePaths = /* @__PURE__ */ new Set([
     layout.frameworkRelativePath(FRAMEWORK_FILES.authoringPrompt),
     layout.frameworkRelativePath(FRAMEWORK_FILES.patterns)
@@ -5182,7 +5211,7 @@ async function initCommand(args) {
   const created = [];
   const skipped = [];
   for (const [relativePath, content] of Object.entries(createProjectFiles(directory, { storagePrefix, frameworkDirectory }))) {
-    const overwrite = args.force || frameworkTemplatePaths.has(relativePath);
+    const overwrite = force || frameworkTemplatePaths.has(relativePath);
     (writeProjectFile(projectRoot, relativePath, content, overwrite) ? created : skipped).push(relativePath);
   }
   console.log(`\u5DF2\u521D\u59CB\u5316\u9879\u76EE: ${projectRoot}`);
@@ -5190,7 +5219,7 @@ async function initCommand(args) {
   if (created.length) console.log(`\u5DF2\u521B\u5EFA: ${created.join(", ")}`);
   if (skipped.length) console.log(`\u5DF2\u4FDD\u7559\u73B0\u6709\u6587\u4EF6: ${skipped.join(", ")}`);
   console.log(`\u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0: ${import_node_path6.default.join(projectRoot, directory, "index.html")}`);
-  console.log("\u63D0\u793A: \u8FD0\u884C\u65F6\u7531 npm \u5305\u63D0\u4F9B\uFF08@youzhikeji/scenario-test\uFF09\uFF0C\u4F7F\u7528 npx @youzhikeji/scenario-test \u6267\u884C\u547D\u4EE4\u3002");
+  console.log("\u63D0\u793A: \u8FD0\u884C\u65F6\u7531 npm \u5305\u63D0\u4F9B\uFF08@yc_yzkj/scenario-test\uFF09\uFF0C\u4F7F\u7528 npx @yc_yzkj/scenario-test \u6267\u884C\u547D\u4EE4\u3002");
 }
 function resolveConfigPath(value) {
   const candidate = import_node_path6.default.resolve(value || "scenario.config.js");
@@ -5346,7 +5375,7 @@ async function serveCommand(args) {
       if (pathname === "/__scenario-test__/scenario-test.umd.js") filePath = import_node_path6.default.join(libraryDist, "scenario-test.umd.js");
       else if (pathname === "/dist/scenario-test.umd.js") {
         filePath = import_node_path6.default.join(libraryDist, "scenario-test.umd.js");
-      } else if (pathname === "/node_modules/@youzhikeji/scenario-test/dist/scenario-test.umd.js") {
+      } else if (pathname === "/node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js") {
         filePath = import_node_path6.default.join(libraryDist, "scenario-test.umd.js");
       } else {
         const relativePath = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");

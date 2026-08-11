@@ -53,8 +53,8 @@
 需要核对操作符、when 来源、保留变量、extract 语义时，以当前版本 CLI 的实际输出为准：
 
 ```powershell
-npx @youzhikeji/scenario-test capabilities          # 人类文本
-npx @youzhikeji/scenario-test capabilities --json   # 机器可读
+npx @yc_yzkj/scenario-test capabilities          # 人类文本
+npx @yc_yzkj/scenario-test capabilities --json   # 机器可读
 ```
 
 不要依据旧版本文档或记忆手抄操作符名单。

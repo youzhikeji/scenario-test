@@ -7,9 +7,9 @@ All notable changes to this project will be documented in this file.
 ### ⚠️ Breaking Changes
 
 1. **运行时统一由 npm 包提供**
-   - CLI、浏览器 UMD、d.ts 和能力清单不再复制到业务项目的 `.scenario-test/`；运行时唯一来源改为 `node_modules/@youzhikeji/scenario-test/dist/`。
-   - init 生成的 `index.html` 直接引用 `../node_modules/@youzhikeji/scenario-test/dist/scenario-test.umd.js`，`serve` 新增对应路由并从 CLI 所在 npm 包的 `dist/` 提供文件。
-   - 业务项目必须先执行 `npm install -D @youzhikeji/scenario-test`，不再支持下载单文件 CLI 兜底或克隆即用。
+   - CLI、浏览器 UMD、d.ts 和能力清单不再复制到业务项目的 `.scenario-test/`；运行时唯一来源改为 `node_modules/@yc_yzkj/scenario-test/dist/`。
+   - init 生成的 `index.html` 直接引用 `../node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js`，`serve` 新增对应路由并从 CLI 所在 npm 包的 `dist/` 提供文件。
+   - 业务项目必须先执行 `npm install -D @yc_yzkj/scenario-test`，不再支持下载单文件 CLI 兜底或克隆即用。
 
 2. **移除项目版本锁与旧平铺布局兼容**
    - 删除 `.scenario-test-version.json`、运行时 SHA256/版本握手以及 `--library-url`；npm 包版本天然保证 CLI、UMD 与 d.ts 一致。
@@ -19,15 +19,15 @@ All notable changes to this project will be documented in this file.
 ### ✨ Integration Experience
 
 1. **npm-only 一键安装与运行命令**
-   - `scripts/install.sh` / `scripts/install.ps1` 改为执行 `npm install -D @youzhikeji/scenario-test`、`npx ... init` 和 `npx ... doctor`，不再下载 Release CLI。
-   - README、AI 接入 Prompt、项目初始化模板与内部指南统一使用 `npx @youzhikeji/scenario-test`。
-   - 项目 `scenario.config.js` 通过 `/// <reference types="@youzhikeji/scenario-test" />` 使用 npm 包内类型声明。
+   - `scripts/install.sh` / `scripts/install.ps1` 改为执行 `npm install -D @yc_yzkj/scenario-test`、`npx ... init` 和 `npx ... doctor`，不再下载 Release CLI。
+   - README、AI 接入 Prompt、项目初始化模板与内部指南统一使用 `npx @yc_yzkj/scenario-test`。
+   - 项目 `scenario.config.js` 通过 `/// <reference types="@yc_yzkj/scenario-test" />` 使用 npm 包内类型声明。
 
 ### Migration Guide
 
-1. 在业务项目根目录执行 `npm install -D @youzhikeji/scenario-test`。
-2. 执行 `npx @youzhikeji/scenario-test init --project . --dir "scenario-test"`（不要传 `--force`），刷新 `.scenario-test/` 中的 AI 规则。
-3. 执行 `npx @youzhikeji/scenario-test doctor --config scenario-test/scenario.config.js`。
+1. 在业务项目根目录执行 `npm install -D @yc_yzkj/scenario-test`。
+2. 执行 `npx @yc_yzkj/scenario-test init --project . --dir "scenario-test"`，刷新 `.scenario-test/` 中的 AI 规则。
+3. 执行 `npx @yc_yzkj/scenario-test doctor --config scenario-test/scenario.config.js`。
 4. 可手动删除旧 `.scenario-test/` 中的 `scenario-test-cli.cjs`、`scenario-test.umd.js`、`scenario-test.d.ts`、`scenario-test-capabilities.json` 和 `.scenario-test-version.json`；不要删除 AI 规则、配置或场景文件。
 
 ### ✨ Integration Experience
@@ -37,12 +37,17 @@ All notable changes to this project will be documented in this file.
    - AI 接入 Prompt 精简为「脚本优先 + 手动兜底」：AI 优先运行官方安装脚本；脚本不可用（如内网受限）时自主下载 CLI 完成 `init` 和 `doctor`。`docs/AI_INSTALL_PROMPT.md` 与 README 内联 Prompt 同步更新。
    - `tests/contract.test.js` 新增一键脚本默认版本断言，锁住 `install.sh` / `install.ps1` 的默认版本与 `package.json` 一致，防升级时静默漂移。
 
-2. **npm 发布：`@youzhikeji/scenario-test`**
-   - `package.json` 改为 scoped 包名 `@youzhikeji/scenario-test`，去除 `private`，新增 `files: ["dist"]`、`bin: { "scenario-test": "dist/scenario-test-cli.cjs" }` 与 `license`。
-   - CLI 产物增加 shebang（`#!/usr/bin/env node`），支持 `npx @youzhikeji/scenario-test` 直接执行。
-   - README、`docs/AI_INSTALL_PROMPT.md`、`examples/EXAMPLES_INDEX.md` 改为以 npm 安装为主路径（`npm install -D @youzhikeji/scenario-test` + `npx @youzhikeji/scenario-test init`），GitHub Release 下载降为 npm 不可用时的兜底。
+2. **npm 发布：`@yc_yzkj/scenario-test`**
+   - `package.json` 改为 scoped 包名 `@yc_yzkj/scenario-test`，去除 `private`，新增 `files: ["dist"]`、`bin: { "scenario-test": "dist/scenario-test-cli.cjs" }` 与 `license`。
+   - CLI 产物增加 shebang（`#!/usr/bin/env node`），支持 `npx @yc_yzkj/scenario-test` 直接执行。
+   - README、`docs/AI_INSTALL_PROMPT.md`、`examples/EXAMPLES_INDEX.md` 改为以 npm 安装为主路径（`npm install -D @yc_yzkj/scenario-test` + `npx @yc_yzkj/scenario-test init`），GitHub Release 下载降为 npm 不可用时的兜底。
    - `tests/contract.test.js` quick-start 断言允许 `npm install`（仍禁止 `git clone` / `npm run build`）。
    - `docs/RELEASING.md` 补充 `npm publish --access public` 发布步骤。
+
+3. **init 目标目录已存在时交互确认**
+   - 目标目录已存在且未传 `--force` 时，`init` 交互询问：`o` 覆盖已有文件（等价 `--force`）、`k` 保留现有文件（默认：刷新 `.scenario-test/` 内 AI 规则，不覆盖项目配置与场景）、`c` 取消。
+   - stdin 非 TTY（CI、安装脚本、管道）时自动采用默认保留，不阻塞自动化流程。
+   - README 与 `docs/AI_INSTALL_PROMPT.md` 同步补充交互说明。
 
 ---
 

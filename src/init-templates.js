@@ -149,8 +149,8 @@ export function createProjectFiles(directory = "scenario-test", options = {}) {
 </head>
 <body style="margin:0">
     <div id="scenario-test" style="height:100vh"></div>
-    <!-- 运行时来自 npm 包 @youzhikeji/scenario-test（serve 提供 /node_modules/... 路由） -->
-    <script src="/node_modules/@youzhikeji/scenario-test/dist/scenario-test.umd.js"></script>
+    <!-- 运行时来自 npm 包 @yc_yzkj/scenario-test（serve 提供 /node_modules/... 路由） -->
+    <script src="/node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js"></script>
     <script src="./scenario.config.js"></script>
     <script>
         ScenarioTest.createApp({ mount: "#scenario-test", config: ScenarioTest.getConfig() });
@@ -158,7 +158,7 @@ export function createProjectFiles(directory = "scenario-test", options = {}) {
 </body>
 </html>
 `,
-        [`${directory}/scenario.config.js`]: `/// <reference types="@youzhikeji/scenario-test" />
+        [`${directory}/scenario.config.js`]: `/// <reference types="@yc_yzkj/scenario-test" />
 ScenarioTest.registerConfig(ScenarioTest.defineConfig({
     envs: [
         {
@@ -181,9 +181,9 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
         [`${frameworkPrefix}/SCENARIO_PATTERNS.md`]: SCENARIO_PATTERNS,
         [`${directory}/README.md`]: `# 场景测试
 
-本目录是当前项目的场景测试入口。它与业务代码同仓维护：环境地址、测试变量、场景文件和项目专属插件放在这里；浏览器工作台与 CLI 由 npm 包 @youzhikeji/scenario-test 提供。
+本目录是当前项目的场景测试入口。它与业务代码同仓维护：环境地址、测试变量、场景文件和项目专属插件放在这里；浏览器工作台与 CLI 由 npm 包 @yc_yzkj/scenario-test 提供。
 
-运行时通过 npm 安装（\`npm install -D @youzhikeji/scenario-test\`）后由 \`npx @youzhikeji/scenario-test\` 调用；项目内 \`${frameworkDisplay}\` 只保存 AI 规则与模式库，业务人员通常不需要打开或修改。
+运行时通过 npm 安装（\`npm install -D @yc_yzkj/scenario-test\`）后由 \`npx @yc_yzkj/scenario-test\` 调用；项目内 \`${frameworkDisplay}\` 只保存 AI 规则与模式库，业务人员通常不需要打开或修改。
 
 ## 开始使用
 
@@ -314,7 +314,7 @@ ScenarioTest.registerScenario("order-create-success", ScenarioTest.defineScenari
 在本目录启动本地服务，再打开终端输出的地址：
 
 \`\`\`powershell
-npx @youzhikeji/scenario-test serve --config ${directory}/scenario.config.js --port 4300
+npx @yc_yzkj/scenario-test serve --config ${directory}/scenario.config.js --port 4300
 \`\`\`
 
 浏览器页面可切换环境和场景，填写并保存当前环境的变量覆盖，单步执行、全量执行、取消执行，并查看实际请求、响应和变量。不要双击直接打开 \`index.html\`：浏览器对本地文件加载场景 JS 有限制，应通过 \`serve\` 启动。
@@ -324,20 +324,20 @@ npx @youzhikeji/scenario-test serve --config ${directory}/scenario.config.js --p
 执行配置中全部场景：
 
 \`\`\`powershell
-npx @youzhikeji/scenario-test --config ${directory}/scenario.config.js --env local --all
+npx @yc_yzkj/scenario-test --config ${directory}/scenario.config.js --env local --all
 \`\`\`
 
 执行单个场景时，使用配置中的场景 id：
 
 \`\`\`powershell
-npx @youzhikeji/scenario-test --config ${directory}/scenario.config.js --env local --scenario order-create-success
+npx @yc_yzkj/scenario-test --config ${directory}/scenario.config.js --env local --scenario order-create-success
 \`\`\`
 
 在 PowerShell 中为一次执行临时覆盖凭据：
 
 \`\`\`powershell
 $env:SCENARIO_CLIENT_SECRET = "temporary-value"
-npx @youzhikeji/scenario-test --config ${directory}/scenario.config.js --env local --all
+npx @yc_yzkj/scenario-test --config ${directory}/scenario.config.js --env local --all
 Remove-Item Env:SCENARIO_CLIENT_SECRET
 \`\`\`
 
@@ -347,7 +347,7 @@ Remove-Item Env:SCENARIO_CLIENT_SECRET
 
 ### 页面提示 ScenarioTest 未定义或脚本加载失败
 
-确认已执行 \`npm install -D @youzhikeji/scenario-test\`，\`index.html\` 加载的是 \`/node_modules/@youzhikeji/scenario-test/dist/scenario-test.umd.js\`，并通过 \`npx @youzhikeji/scenario-test serve\` 启动工作台。
+确认已执行 \`npm install -D @yc_yzkj/scenario-test\`，\`index.html\` 加载的是 \`/node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js\`，并通过 \`npx @yc_yzkj/scenario-test serve\` 启动工作台。
 
 ### 页面能打开但场景没有加载
 
@@ -363,7 +363,7 @@ Remove-Item Env:SCENARIO_CLIENT_SECRET
 
 ## 升级运行时
 
-场景、配置和项目插件属于本项目，升级时不要覆盖它们。使用新版 CLI 对当前目录执行 \`init\` 且不传 \`--force\`；CLI 只会刷新 \`${frameworkDisplay}\` 中的 AI 规则与模式库。升级后先运行 doctor 和一个代表性业务场景，再提交本项目改动。
+场景、配置和项目插件属于本项目，升级时不要覆盖它们。使用新版 CLI 对当前目录执行 \`init\`；CLI 只会刷新 \`${frameworkDisplay}\` 中的 AI 规则与模式库。升级后先运行 doctor 和一个代表性业务场景，再提交本项目改动。
 
 公共运行时不保存业务地址、账号、Token、Secret 或测试数据；这些仅能放在当前私有项目的配置和受控环境变量中。
 `

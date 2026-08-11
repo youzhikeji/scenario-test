@@ -19,11 +19,11 @@ function assertGeneratedLayout(project, directory = "scenario-test") {
     assert.deepEqual(fs.readdirSync(frameworkDir).sort(), ["AI_SCENARIO_PROMPT.md", "SCENARIO_PATTERNS.md"]);
     assert.match(
         fs.readFileSync(path.join(publicDir, "index.html"), "utf8"),
-        /\/node_modules\/@youzhikeji\/scenario-test\/dist\/scenario-test\.umd\.js/
+        /\/node_modules\/@yc_yzkj\/scenario-test\/dist\/scenario-test\.umd\.js/
     );
     assert.match(
         fs.readFileSync(path.join(publicDir, "scenario.config.js"), "utf8"),
-        /reference types="@youzhikeji\/scenario-test"/
+        /reference types="@yc_yzkj\/scenario-test"/
     );
     for (const fileName of [
         "scenario-test-cli.cjs",
@@ -66,7 +66,7 @@ test("init 创建 npm-only 项目入口，且默认不覆盖项目文件", () =>
 
         const readme = fs.readFileSync(path.join(publicDir, "README.md"), "utf8");
         assert.match(readme, /不需要再次复制任何 Prompt/);
-        assert.match(readme, /npx @youzhikeji\/scenario-test/);
+        assert.match(readme, /npx @yc_yzkj\/scenario-test/);
         assert.match(readme, /AI 负责维护 `scenario\.config\.js` 和 `scenarios\/`/);
         assert.match(readme, /一次只处理一个业务功能/);
 
@@ -133,7 +133,7 @@ test("init 支持嵌套项目内场景目录，浏览器 UMD 使用根路径", (
         assert.equal(result.status, 0, result.stderr);
         const { publicDir } = assertGeneratedLayout(project, "dev/场景测试");
         const index = fs.readFileSync(path.join(publicDir, "index.html"), "utf8");
-        assert.match(index, /src="\/node_modules\/@youzhikeji\/scenario-test\/dist\/scenario-test\.umd\.js"/);
+        assert.match(index, /src="\/node_modules\/@yc_yzkj\/scenario-test\/dist\/scenario-test\.umd\.js"/);
     } finally {
         fs.rmSync(project, { recursive: true, force: true });
     }

@@ -354,4 +354,4 @@ function createDbAdapter(config) {
 
 ---
 
-**更多用法见项目内已有适配器和测试用例。**
+**更多用法见 `src/registry.js`、`src/engine.js` 与测试用例。**

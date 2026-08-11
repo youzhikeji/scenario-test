@@ -101,12 +101,12 @@ test("对外接入文档使用当前版本且只要求复制一次 Prompt", () =
     const installPrompt = fs.readFileSync(path.resolve(import.meta.dirname, "../docs/AI_INSTALL_PROMPT.md"), "utf8");
     const scenarioPrompt = fs.readFileSync(path.resolve(import.meta.dirname, "../docs/AI_SCENARIO_PROMPT.md"), "utf8");
     const examplesIndex = fs.readFileSync(path.resolve(import.meta.dirname, "../examples/EXAMPLES_INDEX.md"), "utf8");
-    assert.match(installPrompt, /npm install -D @youzhikeji\/scenario-test/);
-    assert.match(installPrompt, /npx @youzhikeji\/scenario-test init/);
+    assert.match(installPrompt, /npm install -D @yc_yzkj\/scenario-test/);
+    assert.match(installPrompt, /npx @yc_yzkj\/scenario-test init/);
     assert.doesNotMatch(installPrompt, /releases\/download|临时 CLI/);
     assert.match(installPrompt, /AI 接入 Prompt（只需复制一次）/);
     assert.match(installPrompt, /不要要求用户复制或粘贴/);
-    assert.match(installPrompt, /npx @youzhikeji\/scenario-test doctor --config/);
+    assert.match(installPrompt, /npx @yc_yzkj\/scenario-test doctor --config/);
     assert.match(installPrompt, /scenario-test\/\.scenario-test\/AI_SCENARIO_PROMPT\.md/);
     assert.match(installPrompt, /你要测试哪个业务功能/);
     assert.match(scenarioPrompt, /仓库预览/);
@@ -116,7 +116,7 @@ test("对外接入文档使用当前版本且只要求复制一次 Prompt", () =
     assert.match(readme, /复制一次即可/);
     assert.match(readme, /AI_INSTALL_PROMPT\.md/);
     assert.match(readme, /用户不需要再次复制/);
-    assert.match(readme, /npm install -D @youzhikeji\/scenario-test/);
+    assert.match(readme, /npm install -D @yc_yzkj\/scenario-test/);
     assert.doesNotMatch(readme, /releases\/download/);
 
     const quickStart = examplesIndex.match(/^##\s+[^\n]*快速开始[^\n]*\n[\s\S]*?(?=^##\s|$(?![\s\S]))/mi)?.[0] ?? "";
@@ -133,9 +133,9 @@ test("对外接入文档使用当前版本且只要求复制一次 Prompt", () =
     const installPs1 = fs.readFileSync(path.resolve(import.meta.dirname, "../scripts/install.ps1"), "utf8");
     for (const script of [installSh, installPs1]) {
         assert.match(script, /npm install/);
-        assert.match(script, /@youzhikeji\/scenario-test/);
-        assert.match(script, /npx @youzhikeji\/scenario-test init/);
-        assert.match(script, /npx @youzhikeji\/scenario-test doctor/);
+        assert.match(script, /@yc_yzkj\/scenario-test/);
+        assert.match(script, /npx @yc_yzkj\/scenario-test init/);
+        assert.match(script, /npx @yc_yzkj\/scenario-test doctor/);
         assert.doesNotMatch(script, /releases\/download|scenario-test-cli\.cjs/);
     }
 });

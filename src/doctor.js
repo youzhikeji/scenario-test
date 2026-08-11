@@ -172,7 +172,7 @@ export function buildDoctorReport(options) {
     }
 
     // 6. AI 规则就绪检查（不依赖 config，可继续检查）
-    // 运行时由 npm 包 @youzhikeji/scenario-test 提供（npm 保证 CLI/UMD 版本一致），
+    // 运行时由 npm 包 @yc_yzkj/scenario-test 提供（npm 保证 CLI/UMD 版本一致），
     // doctor 不再做运行时版本握手，只确认项目内 .scenario-test/ 的 AI 规则与模式库存在。
     const layout = resolveLayoutFromConfigDir(configDir);
     checks.push({

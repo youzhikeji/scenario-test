@@ -129,7 +129,7 @@ export const contract = Object.freeze({
             project: { kind: "value", prop: "project", description: "init 目标项目根目录" },
             dir: { kind: "value", prop: "dir", description: "init 场景测试目录名" },
             all: { kind: "flag", prop: "all", description: "执行配置中的全部自动场景（默认排除 manual:true）" },
-            force: { kind: "flag", prop: "force", description: "init 强制覆盖已有文件" },
+            force: { kind: "flag", prop: "force", description: "init 覆盖已有文件（目标目录已存在时可交互选择）" },
             "fail-on-skip": { kind: "flag", prop: "failOnSkip", description: "存在任何 SKIP 步骤时最终退出码为 1" },
             "allow-external-plugins": { kind: "flag", prop: "allowExternalPlugins", description: "允许加载外部插件（有安全风险）" },
             json: { kind: "flag", prop: "json", description: "capabilities/doctor 输出机器可读 JSON（stdout 纯净）" },

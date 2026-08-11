@@ -249,4 +249,4 @@ examples/
 **更新时间**: 2026-08-10  
 **版本**: v0.5.2
 
-> 业务项目请从 [README](../README.md) 的“一次复制”流程开始。npm（`@youzhikeji/scenario-test`）是正式安装渠道；本页仅用于仓库示例的学习和维护。
+> 业务项目请从 [README](../README.md) 的“一次复制”流程开始。npm（`@yc_yzkj/scenario-test`）是正式安装渠道；本页仅用于仓库示例的学习和维护。
