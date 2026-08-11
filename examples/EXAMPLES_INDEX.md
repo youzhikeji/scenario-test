@@ -82,9 +82,9 @@ scenario-test 提供了多个示例帮助您快速上手。
 
 ## 🚀 业务项目快速开始
 
-业务项目只需复制一次 Prompt，不从克隆本仓库、安装依赖或构建源码开始：
+业务项目通过 npm 安装，只需复制一次 Prompt，不从克隆本仓库或源码构建开始：
 
-1. 在业务项目根目录打开 AI，将 [AI 接入 Prompt](../docs/AI_INSTALL_PROMPT.md) 全文复制给它。AI 自动完成固定 Release 安装、`init` 和 `doctor`。
+1. 在业务项目根目录打开 AI，将 [AI 接入 Prompt](../docs/AI_INSTALL_PROMPT.md) 全文复制给它。AI 自动完成 `npm install`、`npx init` 和 `doctor` 体检。
 2. 回答 AI 提出的业务功能问题，并提供页面、Controller、接口或已有测试中的任一入口；环境地址和测试凭据仅在 AI 询问时提供。
 3. AI 生成场景并给出命令后，再逐个调试或运行。
 
@@ -249,4 +249,4 @@ examples/
 **更新时间**: 2026-08-10  
 **版本**: v0.5.2
 
-> 业务项目请从 [README](../README.md) 的“一次复制”流程开始。GitHub Release（https://github.com/youzhikeji/scenario-test/releases）是正式安装渠道；本页仅用于仓库示例的学习和维护。
+> 业务项目请从 [README](../README.md) 的“一次复制”流程开始。npm（`@youzhikeji/scenario-test`）是正式安装渠道；本页仅用于仓库示例的学习和维护。

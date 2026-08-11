@@ -3,7 +3,7 @@
 // - 操作符/保留变量/类型名单（AssertionOperator、ReservedVar、GeneratedVarType 等）
 //   由 contract 投影生成，禁止手工复制名单导致漂移；构建/测试会校验一致。
 // - 手写部分仅为公共 API 形状（函数签名、接口结构）。
-// - 文件头部版本标记供 doctor 版本握手提取。
+// - 文件头部保留运行时与 contract 版本标记，便于识别构建产物。
 import fs from "node:fs";
 import path from "node:path";
 import { contract } from "../src/contract.js";

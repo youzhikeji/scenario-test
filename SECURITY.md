@@ -46,11 +46,11 @@
 
 ```bash
 # ❌ 旧方式（不推荐，但仍可用）
-node scenario-test-cli.cjs --authorization "Bearer token"
+npx @youzhikeji/scenario-test --authorization "Bearer token"
 
 # ✅ 新方式（推荐）
 export SCENARIO_AUTH="Bearer token"
-node scenario-test-cli.cjs --config scenario.config.js
+npx @youzhikeji/scenario-test --config scenario.config.js
 ```
 
 ### 3. 插件路径限制
@@ -176,10 +176,10 @@ runtime.vars.apiKey = "hacked";  // TypeError in strict mode
 
 ```bash
 # ✅ 项目内插件
-node scenario-test-cli.cjs --config scenario.config.js
+npx @youzhikeji/scenario-test --config scenario.config.js
 
 # ⚠️ 外部插件（需要明确允许）
-node scenario-test-cli.cjs --config scenario.config.js --allow-external-plugins
+npx @youzhikeji/scenario-test --config scenario.config.js --allow-external-plugins
 ```
 
 ---

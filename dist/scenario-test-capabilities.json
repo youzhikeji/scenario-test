@@ -187,10 +187,6 @@
         "kind": "value",
         "description": "init 场景测试目录名"
       },
-      "library-url": {
-        "kind": "value",
-        "description": "init 时 UMD 下载地址"
-      },
       "all": {
         "kind": "flag",
         "description": "执行配置中的全部自动场景（默认排除 manual:true）"

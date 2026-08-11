@@ -1,13 +1,11 @@
 # 发布流程
 
-> ⚠️ **内部/历史文档**：本指南是仓库维护者的发布流程。对外正式渠道是 **GitHub Release**
-> （https://github.com/youzhikeji/scenario-test/releases），对外安装指引见
+> ⚠️ **内部/历史文档**：本指南是仓库维护者的发布流程。对外正式渠道是 **npm**
+> （`@youzhikeji/scenario-test`），对外安装指引见
 > [README](../README.md) 与 [AI_INSTALL_PROMPT.md](AI_INSTALL_PROMPT.md)。
 > 仓库内的 `scripts/publish-release.mjs`（GitLab CI）仅用于内部镜像发布。
 
-`master` 只包含可发布代码。`dist/` 随版本提交，消费者通过 AI 接入 Prompt 下载 GitHub Release 中的 CLI 并在项目内执行 `init`，不依赖 npm、GitHub Pages 或其他静态资源服务。新项目的框架文件统一写入场景测试目录下的 `.scenario-test/`；旧平铺项目继续原位兼容。
-
-`dist/` 随每个版本 Tag 提交。CLI、UMD、d.ts、能力清单与完整压缩包作为 GitHub Release 资产上传；浏览器始终加载业务项目内由 `init` 写入的 UMD，不直接引用 GitHub 地址。
+`master` 只包含可发布代码。`dist/` 随版本提交，消费者通过 npm 安装 `@youzhikeji/scenario-test` 并用 `npx @youzhikeji/scenario-test` 执行命令。运行时（CLI、UMD、d.ts、能力清单）只存在于 npm 包，不写入业务项目；项目 `.scenario-test/` 仅保存 AI 规则与模式库。
 
 ## 发布步骤
 
@@ -23,15 +21,24 @@
 4. 创建并推送同名 Tag：
 
    ```powershell
-   git tag -a v0.5.0 -m "v0.5.0"
-   git push github v0.5.0
+   git tag -a vX.Y.Z -m "vX.Y.Z"
+   git push github vX.Y.Z
    ```
 
-5. 创建 GitHub Release，并上传 `scenario-test-cli.cjs`、`scenario-test.umd.js`、`scenario-test.esm.js`、`scenario-test.cjs`、`scenario-test.d.ts`、`scenario-test-capabilities.json` 和 SHA256 清单。
-6. AI 安装 Prompt 下载该 Release 的 CLI 后，`init` 会将 UMD 和 CLI 写入项目目录，由浏览器加载本地文件：
+5. 发布到 npm（scoped 包需 `--access public` 或私有 org）：
+
+   ```powershell
+   npm run build
+   npm publish --access public
+   ```
+
+   `files: ["dist"]` 保证只发布构建产物；`bin` 指向 `dist/scenario-test-cli.cjs`（带 shebang，支持 `npx @youzhikeji/scenario-test`）。
+6. （可选）创建 GitHub Release 作为源码归档与历史参考；业务项目不再依赖 Release 下载安装。
+
+业务项目由 `init` 生成 `index.html`，引用 npm 包内的 UMD，浏览器通过 `serve` 的 `/node_modules/@youzhikeji/scenario-test/dist/scenario-test.umd.js` 路由加载：
 
 ```html
-<script src="./.scenario-test/scenario-test.umd.js"></script>
+<script src="/node_modules/@youzhikeji/scenario-test/dist/scenario-test.umd.js"></script>
 ```
 
 已发布 Tag 不覆盖重推。修复通过新的 patch Tag 发布。

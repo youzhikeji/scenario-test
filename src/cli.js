@@ -1,11 +1,10 @@
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
-import crypto from "node:crypto";
 import { pathToFileURL } from "node:url";
 import * as ScenarioTest from "./node.js";
-import { DEFAULT_LIBRARY_URL, createProjectFiles } from "./init-templates.js";
-import { contract, CONTRACT_VERSION } from "./contract.js";
+import { createProjectFiles } from "./init-templates.js";
+import { contract } from "./contract.js";
 import { buildCapabilities, renderCapabilitiesText } from "./capabilities.js";
 import { buildDoctorReport, renderDoctorText } from "./doctor.js";
 import { VERSION } from "./version.generated.js";
@@ -33,7 +32,7 @@ for (const [name, spec] of Object.entries(contract.cli.options)) {
 }
 
 function parseArgs(argv) {
-    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", port: 4300, project: "", dir: "", libraryUrl: "", force: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false };
+    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", port: 4300, project: "", dir: "", force: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false };
     let start = 0;
     // 命令名单来自 contract.cli.commands
     if (contract.cli.commands.includes(argv[0])) { args.command = argv[0]; start = 1; }
@@ -122,9 +121,8 @@ Options:
 能力发现命令:
   capabilities          输出 DSL 能力清单（人类文本；--json 输出机器可读 JSON，
                         内容与 dist/scenario-test-capabilities.json 一致）
-  doctor                项目静态体检：Node 版本、配置/场景加载、DSL 校验、
-                        manual 提示与 CLI/UMD/d.ts/capabilities/版本锁版本握手；
-                        有 FAIL 时退出码 1
+  doctor                项目静态体检：Node 版本、配置/场景加载、DSL 校验
+                        与 AI 规则就绪检查；有 FAIL 时退出码 1
 
 认证选项:
   环境变量 SCENARIO_AUTH       推荐方式，设置授权令牌
@@ -137,7 +135,6 @@ Options:
 初始化选项:
   --project <path>      项目根目录
   --dir <name>          场景测试目录名
-  --library-url <url>   库文件下载地址
   --force               强制覆盖已有文件
 
 示例:
@@ -168,167 +165,14 @@ function resolveInitDirectory(projectRoot, value) {
     return directory;
 }
 
-function copyRuntimeCli(layout, force) {
-    const source = path.resolve(process.argv[1]);
-    const target = layout.frameworkPath(FRAMEWORK_FILES.cli);
-    if (fs.existsSync(target) && !force) return false;
-    if (!source.endsWith(".cjs")) return null;
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.copyFileSync(source, target);
-    return true;
-}
-
-async function copyRuntimeBrowser(layout, libraryUrl, force) {
-    const target = layout.frameworkPath(FRAMEWORK_FILES.umd);
-    if (fs.existsSync(target) && !force) return false;
-    const candidates = [
-        path.resolve(path.dirname(process.argv[1]), "scenario-test.umd.js"),
-        path.resolve(path.dirname(process.argv[1]), "../dist/scenario-test.umd.js")
-    ];
-    const source = candidates.find((candidate) => fs.existsSync(candidate));
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    if (source) {
-        fs.copyFileSync(source, target);
-        return true;
-    }
-    if (typeof __SCENARIO_TEST_UMD__ === "string" && __SCENARIO_TEST_UMD__) {
-        fs.writeFileSync(target, __SCENARIO_TEST_UMD__, "utf8");
-        return true;
-    }
-    const response = await fetch(libraryUrl);
-    if (!response.ok) throw new Error(`下载浏览器运行时失败: ${response.status} ${response.statusText}`);
-    fs.writeFileSync(target, Buffer.from(await response.arrayBuffer()));
-    return true;
-}
-
-// 框架管理文本产物（d.ts / capabilities.json）：优先复制 CLI 相邻同版文件，
-// 否则使用构建时注入 CLI 的当前版本内容（离线优先，不依赖网络与相邻目录）
-function copyFrameworkTextFile(layout, fileName, inlineContent, force) {
-    const target = layout.frameworkPath(fileName);
-    if (fs.existsSync(target) && !force) return false;
-    const candidates = [
-        path.resolve(path.dirname(process.argv[1]), fileName),
-        path.resolve(path.dirname(process.argv[1]), "../dist", fileName)
-    ];
-    const source = candidates.find((candidate) => fs.existsSync(candidate));
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    if (source) {
-        fs.copyFileSync(source, target);
-        return true;
-    }
-    if (typeof inlineContent === "string" && inlineContent) {
-        fs.writeFileSync(target, inlineContent, "utf8");
-        return true;
-    }
-    throw new Error(`无法获得 ${fileName}：请使用构建后的 dist/scenario-test-cli.cjs 执行 init`);
-}
-
-function sha256File(filePath) {
-    return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
-}
-
-const UMD_VERSION_PATTERN = /\/\*! scenario-test v(\d+\.\d+\.\d+) \*\//;
-const DTS_VERSION_PATTERN = /scenario-test v(\d+\.\d+\.\d+)/;
-
-function extractArtifactVersion(filePath) {
-    if (!fs.existsSync(filePath)) return null;
-    const head = fs.readFileSync(filePath, "utf8").slice(0, 4096);
-    const umdMatch = UMD_VERSION_PATTERN.exec(head);
-    if (umdMatch) return umdMatch[1];
-    const dtsMatch = DTS_VERSION_PATTERN.exec(head);
-    if (dtsMatch) return dtsMatch[1];
-    return null;
-}
-
-// 判断是否需要刷新框架管理文件。
-// 触发刷新的条件（满足任一）：
-//   - 显式 --force
-//   - 版本锁缺失（此时探测现有 UMD/d.ts 实际版本，与当前 CLI 不一致即刷新）
-//   - 版本锁损坏
-//   - 版本锁记录的 runtimeVersion/contractVersion 与当前 CLI 不一致
-//   - 版本锁版本一致但现有 UMD/d.ts 实际版本与当前 CLI 不一致（防止锁被手工改一致但文件是旧版）
-function shouldRefreshFramework(layout, force) {
-    if (force) return true;
-    const lockPath = layout.frameworkPath(FRAMEWORK_FILES.versionLock);
-    if (!fs.existsSync(lockPath)) {
-        // 锁缺失：探测现有框架文件实际版本，任一与当前不一致即刷新
-        const umdVersion = extractArtifactVersion(layout.frameworkPath(FRAMEWORK_FILES.umd));
-        const dtsVersion = extractArtifactVersion(layout.frameworkPath(FRAMEWORK_FILES.dts));
-        return (umdVersion !== null && umdVersion !== VERSION)
-            || (dtsVersion !== null && dtsVersion !== VERSION);
-    }
-    let lock;
-    try {
-        lock = JSON.parse(fs.readFileSync(lockPath, "utf8"));
-    } catch {
-        return true;
-    }
-    if (lock.runtimeVersion !== VERSION || lock.contractVersion !== CONTRACT_VERSION) return true;
-    // 锁版本一致：仍需校验文件实际版本，防止锁版本号被手工改一致但文件是旧版
-    const umdVersion = extractArtifactVersion(layout.frameworkPath(FRAMEWORK_FILES.umd));
-    const dtsVersion = extractArtifactVersion(layout.frameworkPath(FRAMEWORK_FILES.dts));
-    return (umdVersion !== null && umdVersion !== VERSION)
-        || (dtsVersion !== null && dtsVersion !== VERSION);
-}
-
-// 项目版本锁（框架管理文件）：不存在则创建；已存在但版本或文件哈希与当前不一致时更新
-// （init 负责维护版本锁，为未来 upgrade 命令建立所有权基础；手工替换过框架文件时，
-//   即使版本号一致也会重算 SHA256 刷新锁，保证 doctor 版本握手能恢复健康）。
-// source 不写本机路径。
-function writeVersionLock(layout) {
-    const target = layout.frameworkPath(FRAMEWORK_FILES.versionLock);
-    const files = {
-        cli: FRAMEWORK_FILES.cli,
-        umd: FRAMEWORK_FILES.umd,
-        dts: FRAMEWORK_FILES.dts,
-        capabilities: FRAMEWORK_FILES.capabilities
-    };
-    const sha256 = {};
-    for (const fileName of Object.values(files)) {
-        const filePath = layout.frameworkPath(fileName);
-        if (fs.existsSync(filePath)) sha256[fileName] = sha256File(filePath);
-    }
-    if (fs.existsSync(target)) {
-        try {
-            const existing = JSON.parse(fs.readFileSync(target, "utf8"));
-            if (existing.runtimeVersion === VERSION && existing.contractVersion === CONTRACT_VERSION) {
-                // 版本号一致时也校验框架管理文件哈希：所有文件哈希都一致才跳过写入；
-                // 任一文件被替换/缺失（哈希变化）时重新写入锁
-                const unchanged = Object.values(files).every(
-                    (fileName) => existing.sha256?.[fileName] !== undefined && existing.sha256[fileName] === sha256[fileName]
-                );
-                if (unchanged) return false;
-            }
-        } catch {
-            // 版本锁损坏：重新生成
-        }
-    }
-    const lock = {
-        runtimeVersion: VERSION,
-        contractVersion: CONTRACT_VERSION,
-        files,
-        sha256,
-        source: {
-            type: "github-release",
-            repository: "youzhikeji/scenario-test",
-            channel: "https://github.com/youzhikeji/scenario-test/releases"
-        },
-        generatedBy: `scenario-test init v${VERSION}`
-    };
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.writeFileSync(target, `${JSON.stringify(lock, null, 2)}\n`, "utf8");
-    return true;
-}
-
 async function initCommand(args) {
     const projectRoot = path.resolve(args.project || process.cwd());
     const directory = resolveInitDirectory(projectRoot, args.dir);
-    const libraryUrl = args.libraryUrl || DEFAULT_LIBRARY_URL;
     const projectName = path.basename(projectRoot).trim() || "project";
     const storagePrefix = `scenario-test.${projectName.replace(/[^\p{L}\p{N}._-]+/gu, "-")}`;
     const layout = resolveProjectLayout(projectRoot, directory);
-    const frameworkDirectory = layout.legacy ? "." : ".scenario-test";
-    const refreshFramework = shouldRefreshFramework(layout, args.force);
+    const frameworkDirectory = ".scenario-test";
+    // AI 规则/模式库是项目专属文件：重跑 init 时刷新（不覆盖用户项目配置与场景）
     const frameworkTemplatePaths = new Set([
         layout.frameworkRelativePath(FRAMEWORK_FILES.authoringPrompt),
         layout.frameworkRelativePath(FRAMEWORK_FILES.patterns)
@@ -336,38 +180,15 @@ async function initCommand(args) {
     const created = [];
     const skipped = [];
     for (const [relativePath, content] of Object.entries(createProjectFiles(directory, { storagePrefix, frameworkDirectory }))) {
-        const overwrite = args.force || (refreshFramework && frameworkTemplatePaths.has(relativePath));
+        const overwrite = args.force || frameworkTemplatePaths.has(relativePath);
         (writeProjectFile(projectRoot, relativePath, content, overwrite) ? created : skipped).push(relativePath);
     }
-    const cliPath = layout.frameworkRelativePath(FRAMEWORK_FILES.cli);
-    const runtimeCli = copyRuntimeCli(layout, refreshFramework);
-    if (runtimeCli === true) created.push(cliPath);
-    else if (runtimeCli === false) skipped.push(cliPath);
-    const browserPath = layout.frameworkRelativePath(FRAMEWORK_FILES.umd);
-    const runtimeBrowser = await copyRuntimeBrowser(layout, libraryUrl, refreshFramework);
-    if (runtimeBrowser === true) created.push(browserPath);
-    else if (runtimeBrowser === false) skipped.push(browserPath);
-    const dtsPath = layout.frameworkRelativePath(FRAMEWORK_FILES.dts);
-    if (copyFrameworkTextFile(layout, FRAMEWORK_FILES.dts, typeof __SCENARIO_TEST_DTS__ === "string" ? __SCENARIO_TEST_DTS__ : "", refreshFramework)) {
-        created.push(dtsPath);
-    } else {
-        skipped.push(dtsPath);
-    }
-    const capabilitiesPath = layout.frameworkRelativePath(FRAMEWORK_FILES.capabilities);
-    if (copyFrameworkTextFile(layout, FRAMEWORK_FILES.capabilities, typeof __SCENARIO_TEST_CAPABILITIES__ === "string" ? __SCENARIO_TEST_CAPABILITIES__ : "", refreshFramework)) {
-        created.push(capabilitiesPath);
-    } else {
-        skipped.push(capabilitiesPath);
-    }
-    const lockPath = layout.frameworkRelativePath(FRAMEWORK_FILES.versionLock);
-    if (writeVersionLock(layout)) created.push(lockPath);
-    else skipped.push(lockPath);
     console.log(`已初始化项目: ${projectRoot}`);
-    console.log(`项目布局: ${layout.legacy ? "兼容旧版平铺布局" : `内部文件位于 ${layout.frameworkRelativeDir}`}`);
+    console.log(`项目布局: 内部文件位于 ${layout.frameworkRelativeDir}`);
     if (created.length) console.log(`已创建: ${created.join(", ")}`);
     if (skipped.length) console.log(`已保留现有文件: ${skipped.join(", ")}`);
     console.log(`浏览器工作台: ${path.join(projectRoot, directory, "index.html")}`);
-    if (runtimeCli === null) console.log("提示: 请使用 dist/scenario-test-cli.cjs 执行 init，才能自动写入项目 CLI。");
+    console.log("提示: 运行时由 npm 包提供（@youzhikeji/scenario-test），使用 npx @youzhikeji/scenario-test 执行命令。");
 }
 
 function resolveConfigPath(value) {
@@ -534,8 +355,12 @@ async function serveCommand(args) {
             let filePath;
             if (pathname === "/__scenario-test__/scenario-test.umd.js") filePath = path.join(libraryDist, "scenario-test.umd.js");
             else if (pathname === "/dist/scenario-test.umd.js") {
-                // examples 的 index.html 引用 ../../dist/scenario-test.umd.js，浏览器会规范化为 /dist/...
-                // 从公共库 dist 提供该文件，保证示例在 serve 下可运行
+                // 仓库内示例的 index.html 引用 ../../dist/scenario-test.umd.js（浏览器规范化为 /dist/...）
+                filePath = path.join(libraryDist, "scenario-test.umd.js");
+            }
+            else if (pathname === "/node_modules/@youzhikeji/scenario-test/dist/scenario-test.umd.js") {
+                // 业务项目 index.html 引用 ../node_modules/@youzhikeji/scenario-test/dist/scenario-test.umd.js
+                // （浏览器规范化为 /node_modules/...）；运行时只存在于 npm 包，从 CLI 所在 dist 提供
                 filePath = path.join(libraryDist, "scenario-test.umd.js");
             }
             else {

@@ -101,27 +101,41 @@ test("对外接入文档使用当前版本且只要求复制一次 Prompt", () =
     const installPrompt = fs.readFileSync(path.resolve(import.meta.dirname, "../docs/AI_INSTALL_PROMPT.md"), "utf8");
     const scenarioPrompt = fs.readFileSync(path.resolve(import.meta.dirname, "../docs/AI_SCENARIO_PROMPT.md"), "utf8");
     const examplesIndex = fs.readFileSync(path.resolve(import.meta.dirname, "../examples/EXAMPLES_INDEX.md"), "utf8");
-    assert.match(installPrompt, new RegExp(`releases/download/v${contract.runtimeVersion}/scenario-test-cli\\.cjs`));
-    assert.doesNotMatch(installPrompt, /v0\.2\.13|v0\.3\.0|v0\.4\.0/);
+    assert.match(installPrompt, /npm install -D @youzhikeji\/scenario-test/);
+    assert.match(installPrompt, /npx @youzhikeji\/scenario-test init/);
+    assert.doesNotMatch(installPrompt, /releases\/download|临时 CLI/);
     assert.match(installPrompt, /AI 接入 Prompt（只需复制一次）/);
     assert.match(installPrompt, /不要要求用户复制或粘贴/);
-    assert.match(installPrompt, /scenario-test\/\.scenario-test\/scenario-test-cli\.cjs doctor/);
+    assert.match(installPrompt, /npx @youzhikeji\/scenario-test doctor --config/);
     assert.match(installPrompt, /scenario-test\/\.scenario-test\/AI_SCENARIO_PROMPT\.md/);
     assert.match(installPrompt, /你要测试哪个业务功能/);
     assert.match(scenarioPrompt, /仓库预览/);
     assert.match(scenarioPrompt, /业务用户不要直接复制本文件/);
-    // README 只链接唯一的版本化接入 Prompt，不再维护第二份安装命令
+    // README 内联与 docs 同源的接入 Prompt：只允许 npm 安装，禁止残留 Release 下载兜底。
     const readme = fs.readFileSync(path.resolve(import.meta.dirname, "../README.md"), "utf8");
     assert.match(readme, /复制一次即可/);
     assert.match(readme, /AI_INSTALL_PROMPT\.md/);
     assert.match(readme, /用户不需要再次复制/);
-    assert.doesNotMatch(readme, /两次 Prompt|releases\/download\/v/);
+    assert.match(readme, /npm install -D @youzhikeji\/scenario-test/);
+    assert.doesNotMatch(readme, /releases\/download/);
 
     const quickStart = examplesIndex.match(/^##\s+[^\n]*快速开始[^\n]*\n[\s\S]*?(?=^##\s|$(?![\s\S]))/mi)?.[0] ?? "";
     assert.ok(quickStart, "示例索引缺少业务接入快速开始章节");
-    assert.doesNotMatch(quickStart, /\bgit\s+clone\b|\bnpm\s+install\b|\bnpm\s+run\s+build\b/);
+    // npm 已是主安装路径，允许 npm install；仍禁止克隆源码或从源码构建
+    assert.doesNotMatch(quickStart, /\bgit\s+clone\b|\bnpm\s+run\s+build\b/);
     assert.match(quickStart, /AI_INSTALL_PROMPT\.md|AI 接入 Prompt/);
     assert.match(quickStart, /AI_SCENARIO_PROMPT\.md/);
     assert.match(quickStart, /用户不需要再次复制/);
     assert.doesNotMatch(examplesIndex, /两次 Prompt/);
+
+    // 一键安装脚本必须使用 npm 包与 npx，不得保留 Release CLI 下载路径。
+    const installSh = fs.readFileSync(path.resolve(import.meta.dirname, "../scripts/install.sh"), "utf8");
+    const installPs1 = fs.readFileSync(path.resolve(import.meta.dirname, "../scripts/install.ps1"), "utf8");
+    for (const script of [installSh, installPs1]) {
+        assert.match(script, /npm install/);
+        assert.match(script, /@youzhikeji\/scenario-test/);
+        assert.match(script, /npx @youzhikeji\/scenario-test init/);
+        assert.match(script, /npx @youzhikeji\/scenario-test doctor/);
+        assert.doesNotMatch(script, /releases\/download|scenario-test-cli\.cjs/);
+    }
 });

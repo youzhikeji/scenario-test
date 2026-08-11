@@ -11,7 +11,7 @@
 在项目根目录运行：
 
 ```bash
-node scenario-test-cli.cjs init --project . --dir "scenario-test"
+npx @youzhikeji/scenario-test init --project . --dir "scenario-test"
 ```
 
 ### 2. 编写场景
@@ -40,10 +40,10 @@ ScenarioTest.registerScenario("user-query", ScenarioTest.defineScenario({
 
 ```bash
 # 命令行运行
-node scenario-test/.scenario-test/scenario-test-cli.cjs --config scenario-test/scenario.config.js --env local --all
+npx @youzhikeji/scenario-test --config scenario-test/scenario.config.js --env local --all
 
 # 浏览器运行
-node scenario-test/.scenario-test/scenario-test-cli.cjs serve --config scenario-test/scenario.config.js
+npx @youzhikeji/scenario-test serve --config scenario-test/scenario.config.js
 ```
 
 ---
@@ -185,7 +185,7 @@ variables: [
 
 // 运行时
 export SCENARIO_API_KEY=your-key
-node scenario-test-cli.cjs --all
+npx @youzhikeji/scenario-test --all
 ```
 
 ---

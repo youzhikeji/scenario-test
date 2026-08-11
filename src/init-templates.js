@@ -1,5 +1,4 @@
 import { contract } from "./contract.js";
-import { VERSION } from "./version.generated.js";
 
 // 能力名单从 contract 投影：AI Prompt / Patterns / README 禁止手抄操作符名单
 const OPERATOR_NAMES = Object.keys(contract.assertions.operators);
@@ -7,15 +6,13 @@ const OPERATORS_TEXT = OPERATOR_NAMES.join("、");
 const OPERATORS_BACKTICK = OPERATOR_NAMES.map((name) => `\`${name}\``).join("、");
 const GLOBALS_TYPES_BACKTICK = contract.globals.types.map((type) => `\`${type}\``).join(" / ");
 
-export const DEFAULT_LIBRARY_URL = `https://github.com/youzhikeji/scenario-test/releases/download/v${VERSION}/scenario-test.umd.js`;
-
 const AUTHORING_PROMPT = `# AI 业务功能场景生成规则
 
-本文件由安装会话中的 AI 自动读取；新会话中的 AI 应按用户要求从项目目录直接读取。用户不需要复制或粘贴本文件。开始前必须已完成安装和 doctor，并存在本目录及运行时文件。
+本文件由安装会话中的 AI 自动读取；新会话中的 AI 应按用户要求从项目目录直接读取。用户不需要复制或粘贴本文件。开始前必须已完成 npm 安装和 doctor。
 
 本阶段只根据当前项目中与目标业务功能直接相关的真实证据生成或维护 HTTP 场景，不负责安装、升级或构建 scenario-test，不启动服务，也不实际调用业务接口。
 
-请针对用户本次指定的一个业务功能生成 scenario-test 场景用例。先定位场景测试根目录：新布局中本文件位于 \`.scenario-test/\`，根目录是上一级；旧版平铺布局中根目录就是本文件所在目录。随后读取根目录的 \`README.md\`、\`scenario.config.js\` 和已有 \`scenarios/\`，并读取本文件同目录的 \`SCENARIO_PATTERNS.md\`，再分析与目标功能直接相关的 Controller、OpenAPI/Swagger、前端 API 调用、接口文档和已有自动化测试。若用户尚未明确指定业务功能，先询问功能名称及可定位的代码、页面或接口入口；得到答复前不扫描整个项目、不创建场景文件。
+请针对用户本次指定的一个业务功能生成 scenario-test 场景用例。本文件位于项目场景测试根目录的 \`.scenario-test/\`，根目录是上一级。随后读取根目录的 \`README.md\`、\`scenario.config.js\` 和已有 \`scenarios/\`，并读取本文件同目录的 \`SCENARIO_PATTERNS.md\`，再分析与目标功能直接相关的 Controller、OpenAPI/Swagger、前端 API 调用、接口文档和已有自动化测试。若用户尚未明确指定业务功能，先询问功能名称及可定位的代码、页面或接口入口；得到答复前不扫描整个项目、不创建场景文件。
 
 不要猜测接口路径、字段、认证方式、响应结构、状态枚举、请求枚举或错误响应字段；没有代码或文档依据时列为待确认项。示例中的 SUCCESS、PDF、pdf、错误码等都只是占位结构，不是可直接采用的默认值，也不能改成另一种大小写后使用。
 
@@ -138,11 +135,9 @@ const SCENARIO_PATTERNS = [
 
 export function createProjectFiles(directory = "scenario-test", options = {}) {
     const storagePrefix = options.storagePrefix || "scenario-test.project";
-    const frameworkDirectory = options.frameworkDirectory === "." ? "." : ".scenario-test";
-    const frameworkPrefix = frameworkDirectory === "." ? directory : `${directory}/${frameworkDirectory}`;
-    const frameworkUrlPrefix = frameworkDirectory === "." ? "." : `./${frameworkDirectory}`;
-    const frameworkDisplay = frameworkDirectory === "." ? "当前目录（旧版兼容布局）" : `${frameworkDirectory}/`;
-    const cliPath = `${frameworkPrefix}/scenario-test-cli.cjs`;
+    // 运行时只存在于 npm 包（node_modules）；项目 .scenario-test/ 仅放 AI 规则与模式库
+    const frameworkPrefix = `${directory}/.scenario-test`;
+    const frameworkDisplay = `.scenario-test/`;
     const authoringPromptPath = `${frameworkPrefix}/AI_SCENARIO_PROMPT.md`;
     return {
         [`${directory}/index.html`]: `<!doctype html>
@@ -154,7 +149,8 @@ export function createProjectFiles(directory = "scenario-test", options = {}) {
 </head>
 <body style="margin:0">
     <div id="scenario-test" style="height:100vh"></div>
-    <script src="${frameworkUrlPrefix}/scenario-test.umd.js"></script>
+    <!-- 运行时来自 npm 包 @youzhikeji/scenario-test（serve 提供 /node_modules/... 路由） -->
+    <script src="/node_modules/@youzhikeji/scenario-test/dist/scenario-test.umd.js"></script>
     <script src="./scenario.config.js"></script>
     <script>
         ScenarioTest.createApp({ mount: "#scenario-test", config: ScenarioTest.getConfig() });
@@ -162,7 +158,7 @@ export function createProjectFiles(directory = "scenario-test", options = {}) {
 </body>
 </html>
 `,
-        [`${directory}/scenario.config.js`]: `/// <reference path="${frameworkUrlPrefix}/scenario-test.d.ts" />
+        [`${directory}/scenario.config.js`]: `/// <reference types="@youzhikeji/scenario-test" />
 ScenarioTest.registerConfig(ScenarioTest.defineConfig({
     envs: [
         {
@@ -185,9 +181,9 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
         [`${frameworkPrefix}/SCENARIO_PATTERNS.md`]: SCENARIO_PATTERNS,
         [`${directory}/README.md`]: `# 场景测试
 
-本目录是当前项目的场景测试入口。它与业务代码同仓维护：环境地址、测试变量、场景文件和项目专属插件放在这里；浏览器工作台与 CLI 固定为已下载的同一版本运行时。
+本目录是当前项目的场景测试入口。它与业务代码同仓维护：环境地址、测试变量、场景文件和项目专属插件放在这里；浏览器工作台与 CLI 由 npm 包 @youzhikeji/scenario-test 提供。
 
-不需要克隆公共库源码、不需要 \`npm install\`，也不要让浏览器直接引用 GitLab Raw 地址。框架运行文件集中在 \`${frameworkDisplay}\`，业务人员通常不需要打开或修改。
+运行时通过 npm 安装（\`npm install -D @youzhikeji/scenario-test\`）后由 \`npx @youzhikeji/scenario-test\` 调用；项目内 \`${frameworkDisplay}\` 只保存 AI 规则与模式库，业务人员通常不需要打开或修改。
 
 ## 开始使用
 
@@ -213,7 +209,7 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
 | \`scenario.config.js\` | 环境、测试变量和场景清单；通常由 AI 按用户提供的信息维护 | 按需 |
 | \`scenarios/\` | 按业务功能建子目录；目录内一个文件对应该功能的一条独立验证路径 | 由 AI 维护 |
 | \`plugins/\` | 仅当前项目需要的文件、Excel 或业务扩展 | 按需新建 |
-| \`${frameworkDisplay}\` | CLI、浏览器运行时、AI 规则、类型声明、能力清单和版本锁 | 不需要用户修改 |
+| \`${frameworkDisplay}\` | AI 规则与模式库（运行时在 npm 包中） | 不需要用户修改 |
 
 ## 配置环境和变量
 
@@ -311,14 +307,14 @@ ScenarioTest.registerScenario("order-create-success", ScenarioTest.defineScenari
 - 默认失败即停止；只有同一验证路径确实需要继续收集后续步骤结果时，才在场景上设 \`failurePolicy: "continue"\`。
 - SKIP 步骤不计入通过/执行统计，全跳过时场景状态为 SKIPPED；写数据类场景在配置清单中加 \`manual: true\`，\`--all\` 会默认排除，需用 \`--scenario <id>\` 显式执行。
 
-完整 DSL 与示例见公共库 README；项目内新增用例由 AI 读取 \`${frameworkDirectory}/AI_SCENARIO_PROMPT.md\` 和同目录的模式库后生成。
+完整 DSL 与示例见公共库 README；项目内新增用例由 AI 读取 \`${frameworkDisplay}AI_SCENARIO_PROMPT.md\` 和同目录的模式库后生成。
 
 ## 浏览器工作台
 
 在本目录启动本地服务，再打开终端输出的地址：
 
 \`\`\`powershell
-node ${cliPath} serve --config ${directory}/scenario.config.js --port 4300
+npx @youzhikeji/scenario-test serve --config ${directory}/scenario.config.js --port 4300
 \`\`\`
 
 浏览器页面可切换环境和场景，填写并保存当前环境的变量覆盖，单步执行、全量执行、取消执行，并查看实际请求、响应和变量。不要双击直接打开 \`index.html\`：浏览器对本地文件加载场景 JS 有限制，应通过 \`serve\` 启动。
@@ -328,20 +324,20 @@ node ${cliPath} serve --config ${directory}/scenario.config.js --port 4300
 执行配置中全部场景：
 
 \`\`\`powershell
-node ${cliPath} --config ${directory}/scenario.config.js --env local --all
+npx @youzhikeji/scenario-test --config ${directory}/scenario.config.js --env local --all
 \`\`\`
 
 执行单个场景时，使用配置中的场景 id：
 
 \`\`\`powershell
-node ${cliPath} --config ${directory}/scenario.config.js --env local --scenario order-create-success
+npx @youzhikeji/scenario-test --config ${directory}/scenario.config.js --env local --scenario order-create-success
 \`\`\`
 
 在 PowerShell 中为一次执行临时覆盖凭据：
 
 \`\`\`powershell
 $env:SCENARIO_CLIENT_SECRET = "temporary-value"
-node ${cliPath} --config ${directory}/scenario.config.js --env local --all
+npx @youzhikeji/scenario-test --config ${directory}/scenario.config.js --env local --all
 Remove-Item Env:SCENARIO_CLIENT_SECRET
 \`\`\`
 
@@ -351,7 +347,7 @@ Remove-Item Env:SCENARIO_CLIENT_SECRET
 
 ### 页面提示 ScenarioTest 未定义或脚本加载失败
 
-确认 \`index.html\` 加载的是 \`${frameworkUrlPrefix}/scenario-test.umd.js\`，且 \`${frameworkDirectory}/\` 中存在该文件。不要把 GitLab Raw URL 直接写进 \`script src\`，它可能以浏览器拒绝的 MIME 类型返回。
+确认已执行 \`npm install -D @youzhikeji/scenario-test\`，\`index.html\` 加载的是 \`/node_modules/@youzhikeji/scenario-test/dist/scenario-test.umd.js\`，并通过 \`npx @youzhikeji/scenario-test serve\` 启动工作台。
 
 ### 页面能打开但场景没有加载
 
@@ -363,11 +359,11 @@ Remove-Item Env:SCENARIO_CLIENT_SECRET
 
 ### 新业务功能不知道如何设计场景
 
-不要先扫描整个项目或按接口批量建文件。先选定一个业务功能，并把功能名称及可定位的页面、Controller、OpenAPI 节点、前端 API 模块或已有测试入口交给 AI；AI 会读取 \`${frameworkDirectory}/\` 中的项目规则，先输出功能卡片和场景矩阵。没有依据的业务规则、接口和字段列为待确认项。
+不要先扫描整个项目或按接口批量建文件。先选定一个业务功能，并把功能名称及可定位的页面、Controller、OpenAPI 节点、前端 API 模块或已有测试入口交给 AI；AI 会读取 \`${frameworkDisplay}\` 中的项目规则，先输出功能卡片和场景矩阵。没有依据的业务规则、接口和字段列为待确认项。
 
 ## 升级运行时
 
-场景、配置和项目插件属于本项目，升级时不要覆盖它们。使用新版 CLI 对当前目录执行 \`init\` 且不传 \`--force\`；CLI 会按当前项目已采用的新隐藏布局或旧平铺布局更新对应的内部文件。升级后先运行 doctor 和一个代表性业务场景，再提交本项目改动。
+场景、配置和项目插件属于本项目，升级时不要覆盖它们。使用新版 CLI 对当前目录执行 \`init\` 且不传 \`--force\`；CLI 只会刷新 \`${frameworkDisplay}\` 中的 AI 规则与模式库。升级后先运行 doctor 和一个代表性业务场景，再提交本项目改动。
 
 公共运行时不保存业务地址、账号、Token、Secret 或测试数据；这些仅能放在当前私有项目的配置和受控环境变量中。
 `

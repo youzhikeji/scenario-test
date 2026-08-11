@@ -1,6 +1,6 @@
 # AI 业务功能场景生成规则（仓库预览）
 
-本文件是场景生成规则的仓库预览，供维护者评审。业务用户不要直接复制本文件：先使用 [AI 接入 Prompt](AI_INSTALL_PROMPT.md)，新项目会在 `scenario-test/.scenario-test/AI_SCENARIO_PROMPT.md` 生成与安装版本匹配的规则；旧平铺项目继续使用 `scenario-test/AI_SCENARIO_PROMPT.md`。安装会话中的 AI 会自动读取实际生成的文件。
+本文件是场景生成规则的仓库预览，供维护者评审。业务用户不要直接复制本文件：先使用 [AI 接入 Prompt](AI_INSTALL_PROMPT.md)，新项目会在 `scenario-test/.scenario-test/AI_SCENARIO_PROMPT.md` 生成与安装版本匹配的规则。安装会话中的 AI 会自动读取实际生成的文件。
 
 如果安装会话已经关闭，只需在业务项目的新会话中要求 AI 读取项目内的 Prompt，并提供一个明确业务功能及其页面、Controller、接口或已有测试入口。下面内容不负责安装、升级、构建、启动服务或调用业务接口。
 
@@ -53,8 +53,8 @@
 需要核对操作符、when 来源、保留变量、extract 语义时，以当前版本 CLI 的实际输出为准：
 
 ```powershell
-node scenario-test/.scenario-test/scenario-test-cli.cjs capabilities          # 人类文本
-node scenario-test/.scenario-test/scenario-test-cli.cjs capabilities --json   # 机器可读
+npx @youzhikeji/scenario-test capabilities          # 人类文本
+npx @youzhikeji/scenario-test capabilities --json   # 机器可读
 ```
 
 不要依据旧版本文档或记忆手抄操作符名单。

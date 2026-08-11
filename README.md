@@ -4,20 +4,47 @@
 
 ## 给业务同事：复制一次即可
 
-不需要克隆本仓库、执行 `npm install` 或学习 DSL。使用流程只有四步：
+不需要克隆本仓库或学习 DSL。在**业务项目根目录**打开 AI 助手，把下面 Prompt 全文复制给 AI（内容与 [AI 接入 Prompt](docs/AI_INSTALL_PROMPT.md) 同源）。AI 会优先通过 npm 安装并完成初始化、体检，然后主动询问要测试的业务功能：
 
-1. 在**业务项目根目录**打开 AI 助手。
-2. 将 [AI 接入 Prompt](docs/AI_INSTALL_PROMPT.md) 全文复制给 AI。AI 会自动安装、执行 `init` 和 `doctor`。
-3. 回答 AI 的问题：要测试哪个业务功能，并提供页面、Controller、接口或已有测试中的任一入口；环境地址、测试账号或 Token 等信息仅在 AI 询问时提供。
-4. AI 生成该功能的场景并给出命令后，再运行单个场景或打开浏览器工作台调试。
+```text
+请在当前项目根目录安装 @youzhikeji/scenario-test。目标目录为 scenario-test。
 
-整个会话只需复制一次接入 Prompt。`scenario-test/.scenario-test/AI_SCENARIO_PROMPT.md` 是 init 生成给 AI 使用的内部规则，用户不需要再次复制。若安装会话已经关闭，在业务项目的新会话中直接输入：
+执行要求：
+1. 先确认当前目录是项目根目录，且 Node.js 版本不低于 18；不满足时停止并说明原因。
+2. 不克隆公共库源码，不修改业务代码、构建配置或已有场景文件；不启动服务、不调用业务接口、不写入 Token、Secret 或真实测试数据。
+3. 通过 npm 安装并初始化：
+   a. 在项目根目录执行 npm install -D @youzhikeji/scenario-test。
+   b. 执行 npx @youzhikeji/scenario-test init --project . --dir "scenario-test" 完成初始化；不要传 --force。
+4. 运行项目体检确认安装完整：
+   npx @youzhikeji/scenario-test doctor --config scenario-test/scenario.config.js
+   有 FAIL 时停止并报告，不继续后续步骤。
+5. doctor 通过后，读取刚生成的 scenario-test/.scenario-test/AI_SCENARIO_PROMPT.md，将其作为后续场景设计规则，不要要求用户复制或粘贴。
+6. 最后报告安装和 doctor 结果，然后只询问：“你要测试哪个业务功能？请提供功能名称，以及页面、Controller、接口或已有测试中的任一入口。”此时不要扫描整个项目、生成场景、启动服务或调用业务接口。
+7. 用户回答业务功能后，严格按第 5 步找到的 AI_SCENARIO_PROMPT.md 执行：一次只处理这一个功能；需要环境地址、测试账号、Token、枚举值或测试数据时再集中询问；由你维护 scenario.config.js 和场景文件，最后给出逐个场景的运行命令，但不要实际运行。
+
+如果 npm、Node.js 检查、初始化或 doctor 任一失败，停止并报告具体原因，不尝试替代安装方式。
+```
+
+如果不使用 AI，也可以手动安装：
+
+```powershell
+# 在业务项目根目录
+npm install -D @youzhikeji/scenario-test
+npx @youzhikeji/scenario-test init --project . --dir "scenario-test"
+```
+
+### 安装之后
+
+1. AI 会主动询问要测试哪个业务功能；回答功能名称，并提供页面、Controller、接口或已有测试中的任一入口。环境地址、测试账号或 Token 等信息仅在 AI 询问时提供。
+2. AI 生成该功能的场景并给出命令后，再运行单个场景或打开浏览器工作台调试。
+
+整个会话只需复制一次上面的 Prompt。`scenario-test/.scenario-test/AI_SCENARIO_PROMPT.md` 是 init 生成给 AI 使用的内部规则，用户不需要再次复制。若安装会话已经关闭，在业务项目的新会话中直接输入：
 
 ```text
 请读取 scenario-test/.scenario-test/AI_SCENARIO_PROMPT.md，为“<业务功能名称>”设计场景测试。入口：<页面、Controller、接口或已有测试路径>。
 ```
 
-旧平铺项目重跑 v0.5.2 `init` 后仍保留原布局；这类项目让 AI 读取 `scenario-test/AI_SCENARIO_PROMPT.md`。
+旧版 `.scenario-test/` 运行时副本（scenario-test-cli.cjs、scenario-test.umd.js 等）已不再生成；运行时统一由 npm 包提供。
 
 每次只处理一个业务功能。业务功能是设计边界，场景是该功能下的一条独立验证路径，例如成功、校验、权限、边界或状态流转；不要让 AI 扫描整个项目批量生成，也不要把多个业务功能串成一个大场景。
 
@@ -29,9 +56,8 @@
 
 ## 运行要求
 
-- 消费端：Node.js 18+ 或现代 Chromium 浏览器。
+- 消费端：Node.js 18+ 或现代 Chromium 浏览器。通过 npm 安装 `@youzhikeji/scenario-test`，使用 `npx @youzhikeji/scenario-test` 执行命令。
 - 构建端：Node.js 18+ 与 npm。
-- 消费者只需要 `dist/`，无需安装 npm 依赖。
 
 ## 维护者构建
 
@@ -40,6 +66,7 @@ npm install
 npm run build
 npm test
 npm run test:browser
+npm publish --access public   # 发布到 npm（scoped 包需 public 或私有 org）
 ```
 
 构建产物：
@@ -56,19 +83,18 @@ npm run test:browser
 
 三方（或 AI）不应靠猜或手工比对多份文档。本项目以 `src/contract.js` 的不可变 DSL Contract 为唯一能力真相，投影到以下入口：
 
-- **`capabilities` 命令**：`node scenario-test-cli.cjs capabilities` 输出人类可读能力清单（版本、contractVersion、断言操作符及简述、when、extract、保留变量、manual、CLI 命令与参数）；`capabilities --json` 输出机器可读 JSON，内容与 `dist/scenario-test-capabilities.json` 完全一致。
-- **`doctor` 命令**：`node scenario-test-cli.cjs doctor --config scenario.config.js [--json]` 对项目做静态体检（Node 版本、配置/场景加载、DSL 校验、manual 提示、CLI/UMD/d.ts/capabilities/版本锁版本握手），汇总所有可继续检查的错误；有 FAIL 退出码 1。
-- **`scenario-test.d.ts`**：init 会复制到项目场景测试目录的 `.scenario-test/` 内部目录；纯 JS 项目仍可获得全局 `ScenarioTest` 类型提示，无需 npm install。
-- **`.scenario-test-version.json`（项目版本锁）**：init 生成在 `.scenario-test/` 内部目录，记录 runtimeVersion、contractVersion、预期文件名、产物 SHA256 与 source/release 信息；doctor 据此做本地固定版本握手。旧项目的平铺版本锁继续兼容。
-- **固定版本升级原则**：只使用已发布 Tag 的固定版本产物，不使用 `master`/latest；升级时用新版 CLI 重新执行 `init`（不传 `--force`，不会覆盖项目配置与场景），随后运行 `doctor` 验证版本一致。`upgrade` 命令尚未实现，版本锁仅建立未来升级所需的所有权基础。
+- **`capabilities` 命令**：`npx @youzhikeji/scenario-test capabilities` 输出人类可读能力清单（版本、contractVersion、断言操作符及简述、when、extract、保留变量、manual、CLI 命令与参数）；`capabilities --json` 输出机器可读 JSON，内容与 `dist/scenario-test-capabilities.json` 完全一致。
+- **`doctor` 命令**：`npx @youzhikeji/scenario-test doctor --config scenario.config.js [--json]` 对项目做静态体检（Node 版本、配置/场景加载、DSL 校验、manual 提示、`.scenario-test/` AI 规则就绪），汇总所有可继续检查的错误；有 FAIL 退出码 1。
+- **`scenario-test.d.ts`**：随 npm 包发布（`package.json` 的 `types` 指向 `dist/scenario-test.d.ts`），init 生成的 `scenario.config.js` 通过 `/// <reference types="@youzhikeji/scenario-test" />` 引用；纯 JS 项目仍可获得全局 `ScenarioTest` 类型提示，无需额外安装类型包。
+- **版本一致性由 npm 保证**：CLI、UMD 与 d.ts 来自同一个 npm 包版本，不再有项目内版本锁与 SHA256 握手。升级时用新版 CLI 重新执行 `init`（不传 `--force`，刷新 `.scenario-test/` 内 AI 规则），随后运行 `doctor` 验证。
 
-GitHub Release（https://github.com/youzhikeji/scenario-test/releases）是对外正式安装渠道；仓库内 GitLab 相关文档与脚本仅用于内部/历史发布流程，不作为对外安装指引。
+npm（`@youzhikeji/scenario-test`）是对外正式安装渠道；GitHub Release 与仓库内 GitLab 相关文档仅用于源码维护与历史参考，不作为对外安装指引。
 
 ## 浏览器接入
 
 ```html
 <div id="scenario-test" style="height: 100vh"></div>
-<script src="./.scenario-test/scenario-test.umd.js"></script>
+<script src="/node_modules/@youzhikeji/scenario-test/dist/scenario-test.umd.js"></script>
 <script src="./scenario.config.js"></script>
 <script>
     ScenarioTest.createApp({
@@ -119,28 +145,28 @@ ScenarioTest.registerScenario("health", ScenarioTest.defineScenario({
 
 `vars` 是启动初始值。私有项目可在此保存团队测试凭据，浏览器页面中的变量可按项目 `storagePrefix` 和环境覆盖它，覆盖值保存在浏览器 LocalStorage。不同项目必须使用不同的 `storagePrefix`，`init` 会自动生成。CLI/CI 中同名 `variables[].env` 环境变量优先于 `vars`；其后依次是 `vars`、场景 `vars` 和 `variables[].defaultValue`。公共库、示例和构建产物不得写入真实业务凭据。
 
-业务项目通过 `init` 使用隐藏内部目录中的本地 UMD：
+业务项目由 init 生成 `index.html`，引用 npm 包内的 UMD：
 
 ```html
-<script src="./.scenario-test/scenario-test.umd.js"></script>
+<script src="/node_modules/@youzhikeji/scenario-test/dist/scenario-test.umd.js"></script>
 ```
 
-GitLab Raw 用于下载而不是浏览器直接加载，因为其响应 MIME 类型可能被浏览器拒绝。不要引用 `master`，应固定使用已发布的 Tag。
+必须用 `npx @youzhikeji/scenario-test serve` 启动工作台：`serve` 提供 `/node_modules/@youzhikeji/scenario-test/dist/scenario-test.umd.js` 路由（从 npm 包内的 dist 提供），并从 `file://` 直接打开时浏览器会拦截跨源请求，无法执行场景。不要把 GitLab Raw URL 写进 `script src`，其响应 MIME 类型可能被浏览器拒绝。
 
 ## 初始化项目
 
-CLI 可创建业务项目所需的最小目录、浏览器入口、配置和空场景清单，并把当前版本 CLI 写入项目：
+CLI 可创建业务项目所需的最小目录、浏览器入口、配置和空场景清单：
 
 ```powershell
-node scenario-test-cli.cjs init --project D:\project --dir "scenario-test"
+npx @youzhikeji/scenario-test init --project D:\project --dir "scenario-test"
 ```
 
-`--dir` 决定场景测试在项目中的目录，默认是 `scenario-test`。现有项目可继续显式使用 `--dir "dev/场景测试"`。新项目只在根层创建 `README.md`、`index.html` 和 `scenario.config.js`，框架运行时、CLI、AI 规则、类型声明、能力清单和版本锁统一放入 `.scenario-test/`；场景由 AI 后续写入 `scenarios/`。`--library-url <url>` 只用于获取同版本 UMD 的私有镜像，不能用于跨版本替换，否则 `doctor` 会报告版本不一致。已有旧平铺项目重跑 init 时继续使用原布局，不强制迁移、不混用文件。
+`--dir` 决定场景测试在项目中的目录，默认是 `scenario-test`。现有项目可继续显式使用 `--dir "dev/场景测试"`。新项目只在根层创建 `README.md`、`index.html` 和 `scenario.config.js`，`.scenario-test/` 只保存 AI 规则与模式库；场景由 AI 后续写入 `scenarios/`。运行时（CLI、浏览器 UMD、类型声明、能力清单）由 npm 包提供，不写入项目。重跑 init（不传 `--force`）会刷新 `.scenario-test/` 内 AI 规则，不覆盖项目配置与场景。
 
 ## CLI
 
 ```powershell
-node D:\path\to\scenario-test\dist\scenario-test-cli.cjs `
+npx @youzhikeji/scenario-test `
   --config D:\project\dev\场景测试\scenario.config.js `
   --env local --all
 ```
@@ -148,7 +174,7 @@ node D:\path\to\scenario-test\dist\scenario-test-cli.cjs `
 启动浏览器工作台：
 
 ```powershell
-node D:\path\to\scenario-test\dist\scenario-test-cli.cjs serve `
+npx @youzhikeji/scenario-test serve `
   --config D:\project\dev\场景测试\scenario.config.js `
   --port 4300
 ```
@@ -165,7 +191,7 @@ CLI 从变量定义的 `env` 字段读取环境变量。私有项目可将联调
 - 环境变量覆盖、场景变量、请求体与路径模板。
 - `retryUntil`、`when` 跳过、`failurePolicy: "continue"`。
 
-先运行 `node .\\examples\\complete\\mock-server.cjs`，再按 [完整示例说明](examples/complete/README.md) 启动工作台或 CLI。
+示例与源码同仓，未包含在 npm 包内，需要先克隆本仓库再查看。先运行 `node .\\examples\\complete\\mock-server.cjs`，再按 [完整示例说明](examples/complete/README.md) 启动工作台或 CLI。
 
 ## DSL
 
@@ -193,6 +219,16 @@ CLI 从变量定义的 `env` 字段读取环境变量。私有项目可将联调
 - 使用环境变量传递敏感信息
 
 ## 升级指南
+
+### 升级到下一版本（运行时改走 npm）
+
+运行时（CLI、浏览器 UMD、d.ts、能力清单）不再写入项目的 `.scenario-test/`，统一由 npm 包 `@youzhikeji/scenario-test` 提供；`.scenario-test/` 只保存 AI 规则与模式库。项目版本锁（`.scenario-test-version.json`）已移除，`doctor` 不再做运行时版本握手，改为检查 AI 规则就绪。旧平铺布局不再兼容，统一使用 `.scenario-test/` 布局。请参考 [CHANGELOG.md](CHANGELOG.md)。
+
+**迁移步骤**:
+1. 在项目根目录执行 `npm install -D @youzhikeji/scenario-test`。
+2. 执行 `npx @youzhikeji/scenario-test init --project . --dir "scenario-test"`（不传 `--force`，刷新 AI 规则）。
+3. 执行 `npx @youzhikeji/scenario-test doctor --config scenario-test/scenario.config.js` 验证。
+4. 可手动删除旧的 `.scenario-test/` 运行时文件（scenario-test-cli.cjs、scenario-test.umd.js、scenario-test.d.ts、scenario-test-capabilities.json、.scenario-test-version.json）；`scenario.config.js`、`scenarios/` 与项目 README 保持不变。
 
 ### 升级到 v0.5.2
 

@@ -2,7 +2,7 @@
 //
 // 本模块是运行时（core/registry/engine/cli）与对外投影
 // （capabilities 命令、dist/scenario-test-capabilities.json、scenario-test.d.ts、
-//  init 生成的 AI Prompt / Patterns / README、doctor 版本握手）共同消费的
+//  init 生成的 AI Prompt / Patterns / README、doctor AI 规则检查）共同消费的
 // 机器可读契约。README / AI Prompt 只能描述 contract，不能反向驱动代码。
 //
 // 规则：
@@ -128,7 +128,6 @@ export const contract = Object.freeze({
             port: { kind: "value", prop: "port", parse: "number", description: "浏览器服务端口，默认 4300" },
             project: { kind: "value", prop: "project", description: "init 目标项目根目录" },
             dir: { kind: "value", prop: "dir", description: "init 场景测试目录名" },
-            "library-url": { kind: "value", prop: "libraryUrl", description: "init 时 UMD 下载地址" },
             all: { kind: "flag", prop: "all", description: "执行配置中的全部自动场景（默认排除 manual:true）" },
             force: { kind: "flag", prop: "force", description: "init 强制覆盖已有文件" },
             "fail-on-skip": { kind: "flag", prop: "failOnSkip", description: "存在任何 SKIP 步骤时最终退出码为 1" },

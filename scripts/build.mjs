@@ -24,7 +24,6 @@ const capabilitiesJson = `${JSON.stringify(capabilities, null, 2)}\n`;
 fs.writeFileSync(path.join(dist, "scenario-test-capabilities.json"), capabilitiesJson, "utf8");
 
 await import(pathToFileURL(path.join(root, "scripts/generate-dts.mjs")).href);
-const dtsContent = fs.readFileSync(path.join(dist, "scenario-test.d.ts"), "utf8");
 
 const tailwindResult = await postcss([
     tailwindcss({
@@ -87,10 +86,6 @@ await build({
     platform: "node",
     format: "cjs",
     target: ["node18"],
-    define: {
-        __SCENARIO_TEST_UMD__: JSON.stringify(fs.readFileSync(path.join(dist, "scenario-test.umd.js"), "utf8")),
-        // 内嵌 d.ts 与能力清单：单文件 CLI 可离线完成 init（d.ts/capabilities/版本锁）
-        __SCENARIO_TEST_DTS__: JSON.stringify(dtsContent),
-        __SCENARIO_TEST_CAPABILITIES__: JSON.stringify(capabilitiesJson)
-    }
+    // CLI 产物作为 npm bin：需要 shebang 才能被 npx/命令行直接执行
+    banner: { js: `#!/usr/bin/env node\n/*! scenario-test v${packageInfo.version} */` }
 });

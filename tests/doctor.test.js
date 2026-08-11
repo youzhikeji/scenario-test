@@ -52,10 +52,12 @@ test("doctor：健康项目全 PASS + manual INFO，退出码 0", () => {
         assert.match(result.stdout, /\[PASS\] config-load/);
         assert.match(result.stdout, /\[PASS\] scenario-register/);
         assert.match(result.stdout, /\[PASS\] cli/);
-        assert.match(result.stdout, /\[PASS\] umd/);
-        assert.match(result.stdout, /\[PASS\] dts/);
-        assert.match(result.stdout, /\[PASS\] capabilities/);
-        assert.match(result.stdout, /\[PASS\] version-lock/);
+        assert.match(result.stdout, /\[PASS\] authoringPrompt/);
+        assert.match(result.stdout, /\[PASS\] patterns/);
+        assert.doesNotMatch(result.stdout, /\[PASS\] umd/);
+        assert.doesNotMatch(result.stdout, /\[PASS\] dts/);
+        assert.doesNotMatch(result.stdout, /\[PASS\] capabilities/);
+        assert.doesNotMatch(result.stdout, /version-lock/);
         assert.match(result.stdout, /\[INFO\] manual-scenario/);
         assert.match(result.stdout, /seed/);
         assert.doesNotMatch(result.stdout, /\[FAIL\]/);
@@ -65,17 +67,13 @@ test("doctor：健康项目全 PASS + manual INFO，退出码 0", () => {
     }
 });
 
-test("doctor：新布局缺文件时不从旧平铺位置拼接产物", () => {
+test("doctor：项目内不再从旧平铺位置拼接运行时", () => {
     const { project, dir } = initProject();
     try {
-        const internalUmd = path.join(dir, ".scenario-test", "scenario-test.umd.js");
-        fs.copyFileSync(internalUmd, path.join(dir, "scenario-test.umd.js"));
-        fs.rmSync(internalUmd);
-
+        fs.writeFileSync(path.join(dir, "scenario-test.umd.js"), "legacy", "utf8");
         const result = runDoctor(dir);
         assert.equal(result.status, 0, result.stdout + result.stderr);
-        assert.match(result.stdout, /\[WARN\] umd: 缺少框架管理文件/);
-        assert.doesNotMatch(result.stdout, /\[PASS\] umd/);
+        assert.doesNotMatch(result.stdout, /umd/);
     } finally {
         cleanup(project);
     }
@@ -123,37 +121,18 @@ test("doctor：多文件错误汇总（文件缺失 + 未知操作符同时报�
     }
 });
 
-test("doctor：缺少版本锁只 WARN 不失败，并给出补齐提示", () => {
+test("doctor：项目内不再生成版本锁", () => {
     const { project, dir } = initProject();
     try {
-        fs.rmSync(path.join(dir, ".scenario-test", ".scenario-test-version.json"));
+        assert.equal(fs.existsSync(path.join(dir, ".scenario-test", ".scenario-test-version.json")), false);
         const result = runDoctor(dir);
         assert.equal(result.status, 0, result.stdout + result.stderr);
-        assert.match(result.stdout, /\[WARN\] version-lock/);
-        assert.match(result.stdout, /缺少框架管理文件 \.scenario-test-version\.json/);
-        assert.match(result.stdout, /如何修/);
-        assert.doesNotMatch(result.stdout, /\[FAIL\] version-lock/);
+        assert.doesNotMatch(result.stdout, /version-lock/);
     } finally {
         cleanup(project);
     }
 });
 
-test("doctor：版本锁版本不一致为 error（退出码 1）", () => {
-    const { project, dir } = initProject();
-    try {
-        const lockPath = path.join(dir, ".scenario-test", ".scenario-test-version.json");
-        const lock = JSON.parse(fs.readFileSync(lockPath, "utf8"));
-        lock.runtimeVersion = "0.4.0";
-        fs.writeFileSync(lockPath, JSON.stringify(lock, null, 2), "utf8");
-        const result = runDoctor(dir);
-        assert.equal(result.status, 1);
-        assert.match(result.stdout, /\[FAIL\] version-lock/);
-        assert.match(result.stdout, /版本不一致/);
-        assert.match(result.stdout, /重新 init/);
-    } finally {
-        cleanup(project);
-    }
-});
 
 test("doctor --json：配置文件缺失时输出结构化 JSON 且退出码 1，其余检查继续执行", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-doctor-missing-"));

@@ -1,13 +1,19 @@
 {
-  "name": "scenario-test",
+  "name": "@youzhikeji/scenario-test",
   "version": "0.5.3",
-  "private": true,
   "description": "Reusable browser and Node.js scenario testing library",
   "type": "module",
   "main": "dist/scenario-test.cjs",
   "module": "dist/scenario-test.esm.js",
   "browser": "dist/scenario-test.umd.js",
   "types": "dist/scenario-test.d.ts",
+  "files": [
+    "dist"
+  ],
+  "bin": {
+    "scenario-test": "dist/scenario-test-cli.cjs"
+  },
+  "license": "MIT",
   "scripts": {
     "build": "node scripts/build.mjs",
     "dev": "node scripts/dev.mjs",
