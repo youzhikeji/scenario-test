@@ -1,4 +1,4 @@
-/*! scenario-test v0.5.7 */
+/*! scenario-test v0.5.8 */
 var ScenarioTest = (() => {
   var __create = Object.create;
   var __defProp = Object.defineProperty;
@@ -303,7 +303,7 @@ var ScenarioTest = (() => {
   var import_blueimp_md5 = __toESM(require_md5(), 1);
 
   // src/version.generated.js
-  var VERSION = "0.5.7";
+  var VERSION = "0.5.8";
 
   // src/contract.js
   var CONTRACT_VERSION = 1;

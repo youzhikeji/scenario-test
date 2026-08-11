@@ -105,6 +105,7 @@ test("对外接入文档使用当前版本且只要求复制一次 Prompt", () =
     const examplesIndex = fs.readFileSync(path.resolve(import.meta.dirname, "../examples/EXAMPLES_INDEX.md"), "utf8");
     // 默认免 npm：Prompt 指示 AI 直接跑官方安装脚本，npm 仅在用户明确要求时切换
     assert.match(installPrompt, /默认.*免 npm|免 npm.*默认/);
+    assert.match(installPrompt, /不要搜索安装地址/);
     assert.match(installPrompt, /install\.ps1|install\.sh/);
     assert.match(installPrompt, /scenario-test-cli\.cjs/);
     assert.match(installPrompt, /不混用/);
@@ -132,6 +133,11 @@ test("对外接入文档使用当前版本且只要求复制一次 Prompt", () =
     assert.match(readme, /SCENARIO_TEST_USE_NPM|-UseNpm/);
     assert.match(readme, /npm install -D @yc_yzkj\/scenario-test/);
     assert.match(readme, /reference path="\.\/\.scenario-test\/scenario-test\.d\.ts"/);
+    const inlineInstallPrompt = readme.match(/## 快速接入[\s\S]*?```text\n([\s\S]*?)```/)?.[1] ?? "";
+    assert.ok(inlineInstallPrompt, "README 快速接入缺少可复制 Prompt");
+    assert.match(inlineInstallPrompt, /不要搜索安装地址/);
+    assert.match(inlineInstallPrompt, new RegExp(`scenario-test@v${VERSION}/scripts/install\\.ps1`));
+    assert.match(inlineInstallPrompt, new RegExp(`scenario-test@v${VERSION}/scripts/install\\.sh`));
 
     const quickStart = examplesIndex.match(/^##\s+[^\n]*快速开始[^\n]*\n[\s\S]*?(?=^##\s|$(?![\s\S]))/mi)?.[0] ?? "";
     assert.ok(quickStart, "示例索引缺少业务接入快速开始章节");

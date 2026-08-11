@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.8] - 2026-03-15
+
+### ✨ Integration Experience
+
+1. **快速接入 Prompt 直接给固定脚本地址，禁止 AI 搜索安装地址**
+   - README 快速接入与 AI 接入 Prompt 补全固定版本脚本 URL（Windows `install.ps1`、macOS/Linux `install.sh`），并明确禁止 AI 搜索安装地址、GitHub Release 或 npm 最新版本，安装脚本与示例 URL 同步固定为 `v0.5.8`。
+
 ## [0.5.7] - 2026-03-15
 
 ### 🐛 Bug Fixes
