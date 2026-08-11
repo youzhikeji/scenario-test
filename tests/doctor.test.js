@@ -54,10 +54,12 @@ test("doctor：健康项目全 PASS + manual INFO，退出码 0", () => {
         assert.match(result.stdout, /\[PASS\] cli/);
         assert.match(result.stdout, /\[PASS\] authoringPrompt/);
         assert.match(result.stdout, /\[PASS\] patterns/);
-        assert.doesNotMatch(result.stdout, /\[PASS\] umd/);
-        assert.doesNotMatch(result.stdout, /\[PASS\] dts/);
-        assert.doesNotMatch(result.stdout, /\[PASS\] capabilities/);
-        assert.doesNotMatch(result.stdout, /version-lock/);
+        assert.match(result.stdout, /\[PASS\] umd/);
+        assert.match(result.stdout, /\[PASS\] dts/);
+        assert.match(result.stdout, /\[PASS\] capabilities/);
+        assert.match(result.stdout, /\[PASS\] version-lock/);
+        // src 环境运行 init 时没有发行版 CLI（.cjs）可复制，副本缺失仅 WARN，不导致失败
+        assert.match(result.stdout, /\[WARN\] runtime-cli/);
         assert.match(result.stdout, /\[INFO\] manual-scenario/);
         assert.match(result.stdout, /seed/);
         assert.doesNotMatch(result.stdout, /\[FAIL\]/);
@@ -67,13 +69,15 @@ test("doctor：健康项目全 PASS + manual INFO，退出码 0", () => {
     }
 });
 
-test("doctor：项目内不再从旧平铺位置拼接运行时", () => {
+test("doctor：平铺旧文件不被识别，运行时检查只走 .scenario-test/ 副本", () => {
     const { project, dir } = initProject();
     try {
         fs.writeFileSync(path.join(dir, "scenario-test.umd.js"), "legacy", "utf8");
         const result = runDoctor(dir);
         assert.equal(result.status, 0, result.stdout + result.stderr);
-        assert.doesNotMatch(result.stdout, /umd/);
+        // 平铺旧文件不影响 .scenario-test/ 内副本的版本握手
+        assert.match(result.stdout, /\[PASS\] umd/);
+        assert.match(result.stdout, /运行时副本就绪/);
     } finally {
         cleanup(project);
     }
@@ -121,13 +125,40 @@ test("doctor：多文件错误汇总（文件缺失 + 未知操作符同时报�
     }
 });
 
-test("doctor：项目内不再生成版本锁", () => {
+test("doctor：版本锁由 init 生成且版本一致 PASS", () => {
     const { project, dir } = initProject();
     try {
-        assert.equal(fs.existsSync(path.join(dir, ".scenario-test", ".scenario-test-version.json")), false);
+        const lockPath = path.join(dir, ".scenario-test", ".scenario-test-version.json");
+        assert.equal(fs.existsSync(lockPath), true);
+        const lock = JSON.parse(fs.readFileSync(lockPath, "utf8"));
+        assert.equal(lock.runtimeVersion, VERSION);
+        assert.equal(lock.contractVersion, CONTRACT_VERSION);
+        assert.ok(lock.files.cli && lock.files.umd && lock.files.dts && lock.files.capabilities);
         const result = runDoctor(dir);
         assert.equal(result.status, 0, result.stdout + result.stderr);
-        assert.doesNotMatch(result.stdout, /version-lock/);
+        assert.match(result.stdout, /\[PASS\] version-lock/);
+        assert.match(result.stdout, /版本一致/);
+    } finally {
+        cleanup(project);
+    }
+});
+
+test("doctor：UMD 版本不一致 FAIL；SHA256 被替换 WARN", () => {
+    const { project, dir } = initProject();
+    try {
+        const umdPath = path.join(dir, ".scenario-test", "scenario-test.umd.js");
+        fs.writeFileSync(umdPath, "/*! scenario-test v0.0.1 */", "utf8");
+        let result = runDoctor(dir);
+        assert.equal(result.status, 1);
+        assert.match(result.stdout, /\[FAIL\] umd/);
+        assert.match(result.stdout, /版本不一致/);
+
+        // 恢复版本头但改内容：版本一致、SHA256 不一致 → WARN（可被刷新）
+        fs.writeFileSync(umdPath, `/*! scenario-test v${VERSION} */ tampered`, "utf8");
+        result = runDoctor(dir);
+        assert.equal(result.status, 0, result.stdout + result.stderr);
+        assert.match(result.stdout, /SHA256 与版本锁记录不一致/);
+        assert.match(result.stdout, /\[WARN\] version-lock/);
     } finally {
         cleanup(project);
     }

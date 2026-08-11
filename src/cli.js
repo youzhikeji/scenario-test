@@ -1,11 +1,12 @@
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
+import crypto from "node:crypto";
 import { createInterface } from "node:readline/promises";
 import { pathToFileURL } from "node:url";
 import * as ScenarioTest from "./node.js";
-import { createProjectFiles } from "./init-templates.js";
-import { contract } from "./contract.js";
+import { createProjectFiles, DEFAULT_LIBRARY_URL } from "./init-templates.js";
+import { contract, CONTRACT_VERSION } from "./contract.js";
 import { buildCapabilities, renderCapabilitiesText } from "./capabilities.js";
 import { buildDoctorReport, renderDoctorText } from "./doctor.js";
 import { VERSION } from "./version.generated.js";
@@ -187,6 +188,109 @@ async function askInitMode(directory) {
     }
 }
 
+function sha256File(filePath) {
+    return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+}
+
+function runtimeSourceCandidates(fileName) {
+    return [
+        path.resolve(path.dirname(process.argv[1]), fileName),
+        path.resolve(path.dirname(process.argv[1]), "../dist", fileName)
+    ];
+}
+
+// 把当前 CLI 自身复制为项目运行时副本（npx 与本地 CLI 均可用，source 以 .cjs 结尾为准）
+function copyRuntimeCli(layout, force) {
+    const target = layout.frameworkPath(FRAMEWORK_FILES.cli);
+    if (fs.existsSync(target) && !force) return false;
+    const source = path.resolve(process.argv[1]);
+    if (!source.endsWith(".cjs")) return null;
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.copyFileSync(source, target);
+    return true;
+}
+
+// UMD 运行时副本：本机 dist 拷贝优先，--library-url 远程下载兜底
+async function copyRuntimeBrowser(layout, libraryUrl, force) {
+    const target = layout.frameworkPath(FRAMEWORK_FILES.umd);
+    if (fs.existsSync(target) && !force) return false;
+    const source = runtimeSourceCandidates("scenario-test.umd.js").find((candidate) => fs.existsSync(candidate));
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    if (source) {
+        fs.copyFileSync(source, target);
+        return true;
+    }
+    if (!libraryUrl) return null;
+    try {
+        const response = await fetch(libraryUrl);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        fs.writeFileSync(target, Buffer.from(await response.arrayBuffer()));
+        return true;
+    } catch (error) {
+        console.warn(`警告: UMD 运行时下载失败（${error.message}），可稍后重跑 init 补齐`);
+        return null;
+    }
+}
+
+// d.ts / capabilities 同为发行产物，从本机 dist 拷贝
+function copyRuntimeTextFile(layout, fileName, force) {
+    const target = layout.frameworkPath(fileName);
+    if (fs.existsSync(target) && !force) return false;
+    const source = runtimeSourceCandidates(fileName).find((candidate) => fs.existsSync(candidate));
+    if (!source) return null;
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.copyFileSync(source, target);
+    return true;
+}
+
+// 版本锁：记录 runtimeVersion/contractVersion 与各运行时文件 SHA256，doctor 据此握手
+function writeVersionLock(layout) {
+    const target = layout.frameworkPath(FRAMEWORK_FILES.versionLock);
+    const fileNames = [FRAMEWORK_FILES.cli, FRAMEWORK_FILES.umd, FRAMEWORK_FILES.dts, FRAMEWORK_FILES.capabilities];
+    const sha256 = {};
+    for (const fileName of fileNames) {
+        const filePath = layout.frameworkPath(fileName);
+        if (fs.existsSync(filePath)) sha256[fileName] = sha256File(filePath);
+    }
+    const lock = {
+        runtimeVersion: VERSION,
+        contractVersion: CONTRACT_VERSION,
+        files: {
+            cli: FRAMEWORK_FILES.cli,
+            umd: FRAMEWORK_FILES.umd,
+            dts: FRAMEWORK_FILES.dts,
+            capabilities: FRAMEWORK_FILES.capabilities
+        },
+        sha256
+    };
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, `${JSON.stringify(lock, null, 2)}\n`, "utf8");
+    return true;
+}
+
+// 锁缺失/损坏/版本不一致或任一运行时文件缺失时刷新副本
+function shouldRefreshFramework(layout, force) {
+    if (force) return true;
+    const runtimeFileNames = [FRAMEWORK_FILES.cli, FRAMEWORK_FILES.umd, FRAMEWORK_FILES.dts, FRAMEWORK_FILES.capabilities];
+    const lockPath = layout.frameworkPath(FRAMEWORK_FILES.versionLock);
+    if (!fs.existsSync(lockPath)) {
+        return runtimeFileNames.some((fileName) => !fs.existsSync(layout.frameworkPath(fileName)));
+    }
+    let lock;
+    try {
+        lock = JSON.parse(fs.readFileSync(lockPath, "utf8"));
+    } catch {
+        return true;
+    }
+    if (lock.runtimeVersion !== VERSION || lock.contractVersion !== CONTRACT_VERSION) return true;
+    return runtimeFileNames.some((fileName) => !fs.existsSync(layout.frameworkPath(fileName)));
+}
+
+function recordRuntimeResult(created, skipped, relativePath, status) {
+    if (status === true) created.push(relativePath);
+    else if (status === false) skipped.push(relativePath);
+}
+
 async function initCommand(args) {
     const projectRoot = path.resolve(args.project || process.cwd());
     const directory = resolveInitDirectory(projectRoot, args.dir);
@@ -204,7 +308,8 @@ async function initCommand(args) {
         }
         force = mode === "overwrite";
     }
-    // AI 规则/模式库是项目专属文件：重跑 init 时刷新（不覆盖用户项目配置与场景）
+    // 运行时副本在锁缺失/版本不一致/文件缺失时刷新；AI 规则/模式库随副本刷新（不覆盖用户项目配置与场景）
+    const refreshFramework = shouldRefreshFramework(layout, force);
     const frameworkTemplatePaths = new Set([
         layout.frameworkRelativePath(FRAMEWORK_FILES.authoringPrompt),
         layout.frameworkRelativePath(FRAMEWORK_FILES.patterns)
@@ -212,15 +317,21 @@ async function initCommand(args) {
     const created = [];
     const skipped = [];
     for (const [relativePath, content] of Object.entries(createProjectFiles(directory, { storagePrefix, frameworkDirectory }))) {
-        const overwrite = force || frameworkTemplatePaths.has(relativePath);
+        const overwrite = force || (refreshFramework && frameworkTemplatePaths.has(relativePath));
         (writeProjectFile(projectRoot, relativePath, content, overwrite) ? created : skipped).push(relativePath);
     }
+    const libraryUrl = args.libraryUrl || DEFAULT_LIBRARY_URL;
+    recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.cli), copyRuntimeCli(layout, refreshFramework));
+    recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.umd), await copyRuntimeBrowser(layout, libraryUrl, refreshFramework));
+    recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.dts), copyRuntimeTextFile(layout, FRAMEWORK_FILES.dts, refreshFramework));
+    recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.capabilities), copyRuntimeTextFile(layout, FRAMEWORK_FILES.capabilities, refreshFramework));
+    recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.versionLock), writeVersionLock(layout));
     console.log(`已初始化项目: ${projectRoot}`);
     console.log(`项目布局: 内部文件位于 ${layout.frameworkRelativeDir}`);
     if (created.length) console.log(`已创建: ${created.join(", ")}`);
     if (skipped.length) console.log(`已保留现有文件: ${skipped.join(", ")}`);
     console.log(`浏览器工作台: ${path.join(projectRoot, directory, "index.html")}`);
-    console.log("提示: 运行时由 npm 包提供（@yc_yzkj/scenario-test），使用 npx @yc_yzkj/scenario-test 执行命令。");
+    console.log("提示: 双击 start-scenario-test.cmd 启动工作台（含接口代理）；接口 baseUrl 留空即走代理，绕开浏览器 CORS。");
 }
 
 function resolveConfigPath(value) {
@@ -377,10 +488,39 @@ function contentType(filePath) {
     })[path.extname(filePath).toLowerCase()] || "application/octet-stream";
 }
 
+function resolveServeProxyTarget(config, envKey) {
+    // 同源代理目标：浏览器 baseUrl 留空时请求落到 serve 自身，服务端转发到所选环境的 baseUrl
+    if (config.envs?.length) {
+        const environment = config.envs.find((item) => item.key === (envKey || config.defaultEnvKey)) || config.envs[0];
+        return String(environment.baseUrl || "").replace(/\/+$/, "");
+    }
+    return String(config.baseUrl || "").replace(/\/+$/, "");
+}
+
+function proxyRequest(request, response, targetUrl) {
+    const headers = { ...request.headers };
+    delete headers.host;
+    delete headers.connection;
+    const upstream = http.request(targetUrl + request.url, {
+        method: request.method,
+        headers
+    }, (upstreamResponse) => {
+        response.writeHead(upstreamResponse.statusCode || 502, upstreamResponse.headers);
+        upstreamResponse.pipe(response);
+    });
+    upstream.on("error", () => {
+        response.writeHead(502, { "Content-Type": "text/plain; charset=utf-8" });
+        response.end("Bad Gateway: 无法连接接口代理目标");
+    });
+    request.pipe(upstream);
+}
+
 async function serveCommand(args) {
     const configPath = resolveConfigPath(args.config);
     const workspace = path.dirname(configPath);
     const libraryDist = path.dirname(path.resolve(process.argv[1]));
+    const config = ScenarioTest.loadConfigFile(configPath, ScenarioTest);
+    const proxyTarget = resolveServeProxyTarget(config, args.env);
     const server = http.createServer((request, response) => {
         try {
             const pathname = decodeURIComponent(new URL(request.url, "http://127.0.0.1").pathname);
@@ -391,8 +531,7 @@ async function serveCommand(args) {
                 filePath = path.join(libraryDist, "scenario-test.umd.js");
             }
             else if (pathname === "/node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js") {
-                // 业务项目 index.html 引用 ../node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js
-                // （浏览器规范化为 /node_modules/...）；运行时只存在于 npm 包，从 CLI 所在 dist 提供
+                // 兼容 npm 包路径引用；运行时副本优先由项目 .scenario-test/ 提供
                 filePath = path.join(libraryDist, "scenario-test.umd.js");
             }
             else {
@@ -401,7 +540,11 @@ async function serveCommand(args) {
             }
             if (!filePath) { response.writeHead(403); response.end("Forbidden"); return; }
             fs.stat(filePath, (error, stat) => {
-                if (error || !stat.isFile()) { response.writeHead(404); response.end("Not Found"); return; }
+                if (error || !stat.isFile()) {
+                    // 静态文件未命中且配置了接口代理时，按同源请求转发到后端，绕开浏览器 CORS
+                    if (proxyTarget) { proxyRequest(request, response, proxyTarget); return; }
+                    response.writeHead(404); response.end("Not Found"); return;
+                }
                 response.writeHead(200, { "Cache-Control": "no-store", "Content-Type": contentType(filePath) });
                 fs.createReadStream(filePath).pipe(response);
             });
@@ -413,6 +556,8 @@ async function serveCommand(args) {
     server.listen(args.port, "127.0.0.1", () => {
         console.log(`场景测试工作台: http://127.0.0.1:${args.port}/`);
         console.log(`配置目录: ${workspace}`);
+        if (proxyTarget) console.log(`接口代理: ${args.env || config.defaultEnvKey || "default"} -> ${proxyTarget}`);
+        console.log("提示: 浏览器 baseUrl 留空即走接口代理；双击项目内 start-scenario-test.cmd 可一键启动。");
     });
 }
 

@@ -1,4 +1,4 @@
-/*! scenario-test v0.5.4 */
+/*! scenario-test v0.5.5 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -307,7 +307,7 @@ module.exports = __toCommonJS(node_exports);
 var import_blueimp_md5 = __toESM(require_md5(), 1);
 
 // src/version.generated.js
-var VERSION = "0.5.4";
+var VERSION = "0.5.5";
 
 // src/contract.js
 var CONTRACT_VERSION = 1;
@@ -427,6 +427,7 @@ var contract = Object.freeze({
       port: { kind: "value", prop: "port", parse: "number", description: "\u6D4F\u89C8\u5668\u670D\u52A1\u7AEF\u53E3\uFF0C\u9ED8\u8BA4 4300" },
       project: { kind: "value", prop: "project", description: "init \u76EE\u6807\u9879\u76EE\u6839\u76EE\u5F55" },
       dir: { kind: "value", prop: "dir", description: "init \u573A\u666F\u6D4B\u8BD5\u76EE\u5F55\u540D" },
+      "library-url": { kind: "value", prop: "libraryUrl", description: "init \u65F6 UMD \u4E0B\u8F7D\u5730\u5740\uFF08\u9ED8\u8BA4 GitHub Release\uFF09" },
       all: { kind: "flag", prop: "all", description: "\u6267\u884C\u914D\u7F6E\u4E2D\u7684\u5168\u90E8\u81EA\u52A8\u573A\u666F\uFF08\u9ED8\u8BA4\u6392\u9664 manual:true\uFF09" },
       force: { kind: "flag", prop: "force", description: "init \u8986\u76D6\u5DF2\u6709\u6587\u4EF6\uFF08\u76EE\u6807\u76EE\u5F55\u5DF2\u5B58\u5728\u65F6\u53EF\u4EA4\u4E92\u9009\u62E9\uFF09" },
       "fail-on-skip": { kind: "flag", prop: "failOnSkip", description: "\u5B58\u5728\u4EFB\u4F55 SKIP \u6B65\u9AA4\u65F6\u6700\u7EC8\u9000\u51FA\u7801\u4E3A 1" },

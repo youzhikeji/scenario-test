@@ -41,13 +41,15 @@
    ```
 
    GitLab Release 同步提供 `start-scenario-test.ps1` 下载资产，脚本与该版本的 CLI、UMD 保持一致。
-6. （可选）创建 GitHub Release 作为源码归档与历史参考；业务项目不再依赖 Release 下载安装。
+6. （可选）创建 GitHub Release 作为源码归档；Release 的 `dist/` 资产同时是 `init --library-url` 的 UMD 下载源（GitHub Release 与 GitLab Raw URL 均可）。
 
-业务项目由 `init` 生成 `index.html`，引用 npm 包内的 UMD，浏览器通过 `serve` 的 `/node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js` 路由加载：
+业务项目由 `init` 生成 `index.html`，引用项目内运行时副本：
 
 ```html
-<script src="/node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js"></script>
+<script src="./.scenario-test/scenario-test.umd.js"></script>
 ```
+
+`init` 优先从本机 npm 包 `dist/` 拷贝副本；CLI 不在本机时可用 `--library-url` 指定下载地址（默认指向 GitHub Release 的 `scenario-test.umd.js`）。人工场景测试通过 `start-scenario-test.cmd` 启动，`serve` 把接口请求代理到环境 `baseUrl`（页面 `baseUrl` 留空即走代理），无需后端放行 CORS。
 
 已发布 Tag 不覆盖重推。修复通过新的 patch Tag 发布。
 

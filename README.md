@@ -36,7 +36,7 @@ npx @yc_yzkj/scenario-test init --project . --dir "scenario-test"   # 若目标�
 ### 安装之后
 
 1. AI 会主动询问要测试哪个业务功能；回答功能名称，并提供页面、Controller、接口或已有测试中的任一入口。环境地址、测试账号或 Token 等信息仅在 AI 询问时提供。
-2. AI 生成该功能的场景并给出命令后，再运行单个场景或打开浏览器工作台调试。
+2. AI 生成该功能的场景并给出命令后，双击 `scenario-test/start-scenario-test.cmd`。脚本用项目内运行时副本启动工作台并把接口请求代理到所选环境（`baseUrl` 留空即走代理），无需后端放行 CORS。
 
 整个会话只需复制一次上面的 Prompt。`scenario-test/.scenario-test/AI_SCENARIO_PROMPT.md` 是 init 生成给 AI 使用的内部规则，用户不需要再次复制。若安装会话已经关闭，在业务项目的新会话中直接输入：
 
@@ -83,9 +83,9 @@ npm publish --access public   # 发布到 npm（scoped 包需 public 或私有 o
 三方（或 AI）不应靠猜或手工比对多份文档。本项目以 `src/contract.js` 的不可变 DSL Contract 为唯一能力真相，投影到以下入口：
 
 - **`capabilities` 命令**：`npx @yc_yzkj/scenario-test capabilities` 输出人类可读能力清单（版本、contractVersion、断言操作符及简述、when、extract、保留变量、manual、CLI 命令与参数）；`capabilities --json` 输出机器可读 JSON，内容与 `dist/scenario-test-capabilities.json` 完全一致。
-- **`doctor` 命令**：`npx @yc_yzkj/scenario-test doctor --config scenario.config.js [--json]` 对项目做静态体检（Node 版本、配置/场景加载、DSL 校验、manual 提示、`.scenario-test/` AI 规则就绪），汇总所有可继续检查的错误；有 FAIL 退出码 1。
+- **`doctor` 命令**：`npx @yc_yzkj/scenario-test doctor --config scenario.config.js [--json]` 对项目做静态体检（Node 版本、配置/场景加载、DSL 校验、manual 提示、`.scenario-test/` AI 规则就绪与运行时副本版本握手），汇总所有可继续检查的错误；有 FAIL 退出码 1。
 - **`scenario-test.d.ts`**：随 npm 包发布（`package.json` 的 `types` 指向 `dist/scenario-test.d.ts`），init 生成的 `scenario.config.js` 通过 `/// <reference types="@yc_yzkj/scenario-test" />` 引用；纯 JS 项目仍可获得全局 `ScenarioTest` 类型提示，无需额外安装类型包。
-- **版本一致性由 npm 保证**：CLI、UMD 与 d.ts 来自同一个 npm 包版本。升级时用新版 CLI 重新执行 `init`（刷新 `.scenario-test/` 内 AI 规则），随后运行 `doctor` 验证。
+- **版本一致性由 npm 保证，项目内副本由 init 落盘并校验**：init 会把 CLI、UMD、d.ts 与能力清单复制到 `scenario-test/.scenario-test/`，写入 `.scenario-test-version.json`（版本 + SHA256）；doctor 校验副本版本与文件指纹。升级时用新版 CLI 重新执行 `init`（刷新副本与 AI 规则），随后运行 `doctor` 验证。
 
 npm（`@yc_yzkj/scenario-test`）是对外正式安装渠道；GitHub Release 与仓库内 GitLab 相关文档仅用于源码维护与历史参考，不作为对外安装指引。
 
@@ -93,7 +93,8 @@ npm（`@yc_yzkj/scenario-test`）是对外正式安装渠道；GitHub Release �
 
 ```html
 <div id="scenario-test" style="height: 100vh"></div>
-<script src="/node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js"></script>
+<!-- 运行时副本由 init 落盘到 .scenario-test/ -->
+<script src="./.scenario-test/scenario-test.umd.js"></script>
 <script src="./scenario.config.js"></script>
 <script>
     ScenarioTest.createApp({
@@ -144,23 +145,23 @@ ScenarioTest.registerScenario("health", ScenarioTest.defineScenario({
 
 `vars` 是启动初始值。私有项目可在此保存团队测试凭据，浏览器页面中的变量可按项目 `storagePrefix` 和环境覆盖它，覆盖值保存在浏览器 LocalStorage。不同项目必须使用不同的 `storagePrefix`，`init` 会自动生成。CLI/CI 中同名 `variables[].env` 环境变量优先于 `vars`；其后依次是 `vars`、场景 `vars` 和 `variables[].defaultValue`。公共库、示例和构建产物不得写入真实业务凭据。
 
-业务项目由 init 生成 `index.html`，引用 npm 包内的 UMD：
+业务项目由 init 生成 `index.html`，引用项目内运行时副本：
 
 ```html
-<script src="/node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js"></script>
+<script src="./.scenario-test/scenario-test.umd.js"></script>
 ```
 
-必须用 `npx @yc_yzkj/scenario-test serve` 启动工作台：`serve` 提供 `/node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js` 路由（从 npm 包内的 dist 提供），并从 `file://` 直接打开时浏览器会拦截跨源请求，无法执行场景。不要把 GitLab Raw URL 写进 `script src`，其响应 MIME 类型可能被浏览器拒绝。
+人工场景测试双击 `scenario-test/start-scenario-test.cmd`：脚本使用副本 CLI 启动本地 HTTP Server 并自动打开浏览器；`serve` 会把非静态请求代理到配置中当前环境的 `baseUrl`（页面 `baseUrl` 留空即走代理），因此后端无需放行 CORS。不要从 `file://` 直接打开 `index.html`，页面虽可加载但接口请求会被浏览器 CORS 拦截。
 
 ## 初始化项目
 
-CLI 可创建业务项目所需的最小目录、浏览器入口、配置和空场景清单：
+CLI 可创建业务项目所需的最小目录、浏览器入口、配置、运行时副本和空场景清单：
 
 ```powershell
 npx @yc_yzkj/scenario-test init --project D:\project --dir "scenario-test"
 ```
 
-`--dir` 决定场景测试在项目中的目录，默认是 `scenario-test`。现有项目可继续显式使用 `--dir "dev/场景测试"`。新项目只在根层创建 `README.md`、`index.html` 和 `scenario.config.js`，`.scenario-test/` 只保存 AI 规则与模式库；场景由 AI 后续写入 `scenarios/`。运行时（CLI、浏览器 UMD、类型声明、能力清单）由 npm 包提供，不写入项目。目标目录已存在时，`init` 会询问：`o` 覆盖已有文件（等价 `--force`）、`k` 保留现有文件（默认：刷新 `.scenario-test/` 内 AI 规则，不覆盖项目配置与场景）、`c` 取消；CI 等非交互环境自动采用默认保留。
+`--dir` 决定场景测试在项目中的目录，默认是 `scenario-test`。现有项目可继续显式使用 `--dir "dev/场景测试"`。新项目创建 `README.md`、`index.html` 和 `scenario.config.js`，`.scenario-test/` 保存 AI 规则、模式库与运行时副本（CLI、UMD、d.ts、能力清单、版本锁）。副本优先从本机 npm 包 `dist/` 拷贝，CLI 不在本机时可用 `--library-url <url>` 指定 UMD 下载地址（默认 GitHub Release）。目标目录已存在时，`init` 会询问：`o` 覆盖已有文件（等价 `--force`）、`k` 保留现有文件（默认：刷新 AI 规则与运行时副本，不覆盖项目配置与场景）、`c` 取消；CI 等非交互环境自动采用默认保留。
 
 ## CLI
 
@@ -219,7 +220,7 @@ CLI 从变量定义的 `env` 字段读取环境变量。私有项目可将联调
 
 ## 升级指南
 
-历史版本变更与迁移说明见 [CHANGELOG.md](CHANGELOG.md)。升级到最新版本：在项目根目录执行 `npm install -D @yc_yzkj/scenario-test`，重跑 `npx @yc_yzkj/scenario-test init --project . --dir "scenario-test"`（默认保留现有配置与场景，仅刷新 AI 规则），再运行 `doctor` 验证。
+历史版本变更与迁移说明见 [CHANGELOG.md](CHANGELOG.md)。升级到最新版本：在项目根目录执行 `npm install -D @yc_yzkj/scenario-test`，重跑 `npx @yc_yzkj/scenario-test init --project . --dir "scenario-test"`（默认保留现有配置与场景，刷新 AI 规则与运行时副本），再运行 `doctor` 验证。
 
 公共库不得包含项目地址、真实机构或个人数据、API Key、Secret，以及任何项目专属接口清理逻辑。
 

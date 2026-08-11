@@ -6,11 +6,163 @@
 //   - 有 FAIL 时退出码 1；只有 WARN/INFO 时退出码 0
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { contract, CONTRACT_VERSION } from "./contract.js";
 import { VERSION } from "./version.generated.js";
 import { validatePath } from "./utils/path-validator.js";
 import { loadConfigFile, loadScenarioFile } from "./node/loader.js";
 import { FRAMEWORK_FILES, resolveLayoutFromConfigDir } from "./project-layout.js";
+
+const UMD_VERSION_PATTERN = /\/\*! scenario-test v(\d+\.\d+\.\d+) \*\//;
+const DTS_VERSION_PATTERN = /scenario-test v(\d+\.\d+\.\d+)/;
+
+function extractArtifactVersion(filePath, pattern) {
+    const head = fs.readFileSync(filePath, "utf8").slice(0, 4096);
+    const match = pattern.exec(head);
+    return match ? match[1] : null;
+}
+
+function sha256Of(filePath) {
+    return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+}
+
+function checkRuntimeArtifact(filePath, fileName, key, pattern) {
+    if (!fs.existsSync(filePath)) {
+        return {
+            name: key,
+            status: "WARN",
+            message: `缺少运行时副本 ${fileName}（${filePath}）`,
+            fix: "运行 init 补齐（不传 --force 不会覆盖项目文件）"
+        };
+    }
+    const version = pattern ? extractArtifactVersion(filePath, pattern) : null;
+    if (version !== null && version !== VERSION) {
+        return {
+            name: key,
+            status: "FAIL",
+            message: `版本不一致：${fileName} 是 v${version}，当前 CLI 是 v${VERSION}`,
+            fix: `用 v${VERSION} 的 CLI 重新 init 刷新运行时副本`
+        };
+    }
+    return {
+        name: key,
+        status: "PASS",
+        message: `运行时副本就绪: ${fileName}${version ? `（v${version}）` : ""}`,
+        fix: ""
+    };
+}
+
+function checkCapabilitiesFile(filePath) {
+    if (!fs.existsSync(filePath)) {
+        return {
+            name: "capabilities",
+            status: "WARN",
+            message: "缺少运行时副本 scenario-test-capabilities.json",
+            fix: "运行 init 补齐（不传 --force 不会覆盖项目文件）"
+        };
+    }
+    try {
+        const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+        if (parsed.schema !== "scenario-test-capabilities") {
+            return {
+                name: "capabilities",
+                status: "FAIL",
+                message: "scenario-test-capabilities.json 不是合法的能力清单（schema 不匹配）",
+                fix: "用当前版本 CLI 重新 init 生成"
+            };
+        }
+        if (parsed.version !== VERSION || parsed.contractVersion !== CONTRACT_VERSION) {
+            return {
+                name: "capabilities",
+                status: "FAIL",
+                message: `版本不一致：capabilities.json 是 v${parsed.version}（contract v${parsed.contractVersion}），当前 CLI 是 v${VERSION}（contract v${CONTRACT_VERSION}）`,
+                fix: `用 v${VERSION} 的 CLI 重新 init 生成 scenario-test-capabilities.json`
+            };
+        }
+        return { name: "capabilities", status: "PASS", message: `版本一致（v${parsed.version}，contract v${parsed.contractVersion}）`, fix: "" };
+    } catch (error) {
+        return {
+            name: "capabilities",
+            status: "FAIL",
+            message: `scenario-test-capabilities.json 解析失败: ${error.message}`,
+            fix: "用当前版本 CLI 重新 init 生成"
+        };
+    }
+}
+
+function checkVersionLock(filePath) {
+    if (!fs.existsSync(filePath)) {
+        return {
+            name: "version-lock",
+            status: "WARN",
+            message: "缺少项目版本锁 .scenario-test-version.json",
+            fix: "运行 init 写入版本锁（不传 --force 不会覆盖项目文件）"
+        };
+    }
+    let lock;
+    try {
+        lock = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    } catch (error) {
+        return {
+            name: "version-lock",
+            status: "FAIL",
+            message: `.scenario-test-version.json 解析失败: ${error.message}`,
+            fix: "修复或删除版本锁后用当前版本 CLI 重新 init 生成"
+        };
+    }
+    if (lock.runtimeVersion !== VERSION || lock.contractVersion !== CONTRACT_VERSION) {
+        return {
+            name: "version-lock",
+            status: "FAIL",
+            message: `版本不一致：版本锁记录 v${lock.runtimeVersion}（contract v${lock.contractVersion}），当前 CLI 是 v${VERSION}（contract v${CONTRACT_VERSION}）`,
+            fix: `使用 v${VERSION} 的 CLI 重新 init（自动刷新运行时副本与版本锁，不覆盖项目配置/场景）`
+        };
+    }
+    const extras = [];
+    const files = lock.files && typeof lock.files === "object" ? lock.files : null;
+    if (!files) {
+        extras.push({
+            name: "version-lock",
+            status: "WARN",
+            message: "版本锁缺少 files 字段（预期文件名清单）",
+            fix: "用当前版本 CLI 重新 init 刷新版本锁"
+        });
+    } else {
+        for (const [kind, fileName] of Object.entries(files)) {
+            const target = path.join(path.dirname(filePath), String(fileName));
+            if (!fs.existsSync(target)) {
+                extras.push({
+                    name: "version-lock",
+                    status: "WARN",
+                    message: `版本锁声明 ${kind} 文件 ${fileName} 不存在`,
+                    fix: `运行 init 补齐 ${fileName}（不传 --force 不会覆盖项目文件）`
+                });
+            }
+        }
+    }
+    const sha256 = lock.sha256 && typeof lock.sha256 === "object" ? lock.sha256 : null;
+    if (sha256) {
+        for (const [fileName, expected] of Object.entries(sha256)) {
+            const target = path.join(path.dirname(filePath), fileName);
+            if (!fs.existsSync(target)) continue;
+            if (sha256Of(target) !== expected) {
+                extras.push({
+                    name: "version-lock",
+                    status: "WARN",
+                    message: `${fileName} 的 SHA256 与版本锁记录不一致（可能被替换）`,
+                    fix: "若是有意替换运行时文件，用当前版本 CLI 重新 init 刷新版本锁；否则检查文件来源"
+                });
+            }
+        }
+    }
+    return {
+        name: "version-lock",
+        status: "PASS",
+        message: `版本一致（v${lock.runtimeVersion}，contract v${lock.contractVersion}）`,
+        fix: "",
+        extra: extras
+    };
+}
 
 function satisfiesNodeEngine(version, range) {
     const match = /^>=\s*(\d+)(?:\.(\d+)(?:\.(\d+))?)?/.exec(String(range || "").trim());
@@ -172,8 +324,6 @@ export function buildDoctorReport(options) {
     }
 
     // 6. AI 规则就绪检查（不依赖 config，可继续检查）
-    // 运行时由 npm 包 @yc_yzkj/scenario-test 提供（npm 保证 CLI/UMD 版本一致），
-    // doctor 不再做运行时版本握手，只确认项目内 .scenario-test/ 的 AI 规则与模式库存在。
     const layout = resolveLayoutFromConfigDir(configDir);
     checks.push({
         name: "cli",
@@ -181,9 +331,18 @@ export function buildDoctorReport(options) {
         message: `CLI 版本 v${VERSION}（contract v${CONTRACT_VERSION}）`,
         fix: ""
     });
-    for (const [key, fileName] of Object.entries(FRAMEWORK_FILES)) {
+    for (const [key, fileName] of Object.entries({ authoringPrompt: FRAMEWORK_FILES.authoringPrompt, patterns: FRAMEWORK_FILES.patterns })) {
         checks.push(checkReadableFile(layout.frameworkPath(fileName), key, fileName));
     }
+
+    // 7. 运行时副本握手：UMD/d.ts 版本、能力清单、版本锁（含文件存在性与 SHA256）
+    checks.push(checkRuntimeArtifact(layout.frameworkPath(FRAMEWORK_FILES.cli), FRAMEWORK_FILES.cli, "runtime-cli", null));
+    checks.push(checkRuntimeArtifact(layout.frameworkPath(FRAMEWORK_FILES.umd), FRAMEWORK_FILES.umd, "umd", UMD_VERSION_PATTERN));
+    checks.push(checkRuntimeArtifact(layout.frameworkPath(FRAMEWORK_FILES.dts), FRAMEWORK_FILES.dts, "dts", DTS_VERSION_PATTERN));
+    checks.push(checkCapabilitiesFile(layout.frameworkPath(FRAMEWORK_FILES.capabilities)));
+    const lockResult = checkVersionLock(layout.frameworkPath(FRAMEWORK_FILES.versionLock));
+    checks.push({ name: lockResult.name, status: lockResult.status, message: lockResult.message, fix: lockResult.fix });
+    if (lockResult.extra) checks.push(...lockResult.extra);
 
     const summary = { passed: 0, warned: 0, failed: 0, info: info.length };
     for (const check of checks) {

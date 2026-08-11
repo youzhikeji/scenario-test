@@ -2,7 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.5.5] - 2026-03-15
+
+### ✨ Integration Experience
+
+1. **运行时副本随 init 落盘，离线双击可用**
+   - `init` 把 CLI、UMD、d.ts、能力清单复制到项目 `.scenario-test/`，写入 `.scenario-test-version.json`（版本 + SHA256 版本锁）；副本优先从本机 npm 包 `dist/` 拷贝，`--library-url` 可指定远程下载地址（默认 GitHub Release）。
+   - `index.html` 改为引用 `./.scenario-test/scenario-test.umd.js`；`start-scenario-test.cmd` 使用副本 CLI 启动工作台，不依赖 npx 与网络。
+   - `doctor` 恢复运行时握手：UMD/d.ts 版本一致、能力清单 schema/版本、版本锁文件存在性与 SHA256 指纹。
+
+2. **serve 新增同源接口代理，绕开浏览器 CORS**
+   - `serve` 对非静态请求按当前环境 `baseUrl` 服务端转发（页面 `baseUrl` 留空即走代理），后端无需放行 CORS；静态文件优先，代理目标不可达返回 502。
+   - 启动日志打印代理目标：`接口代理: <envKey> -> <baseUrl>`。
 
 ## [0.5.4] - 2026-03-14
 

@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
+import { CONTRACT_VERSION } from "../src/index.js";
+import { VERSION } from "../src/version.generated.js";
 
 const root = path.resolve(import.meta.dirname, "..");
 const cli = path.join(root, "src/cli.js");
@@ -15,25 +17,32 @@ function runInit(project, ...args) {
 function assertGeneratedLayout(project, directory = "scenario-test") {
     const publicDir = path.join(project, ...directory.split("/"));
     const frameworkDir = path.join(publicDir, ".scenario-test");
-    assert.deepEqual(fs.readdirSync(publicDir).sort(), [".scenario-test", "README.md", "index.html", "scenario.config.js"]);
-    assert.deepEqual(fs.readdirSync(frameworkDir).sort(), ["AI_SCENARIO_PROMPT.md", "SCENARIO_PATTERNS.md"]);
+    assert.deepEqual(fs.readdirSync(publicDir).sort(), [".scenario-test", "README.md", "index.html", "scenario.config.js", "start-scenario-test.cmd"]);
+    // src 环境运行 init：无发行版 CLI（.cjs）可复制，其余运行时副本与版本锁落盘
+    assert.deepEqual(fs.readdirSync(frameworkDir).sort(), [
+        ".scenario-test-version.json",
+        "AI_SCENARIO_PROMPT.md",
+        "SCENARIO_PATTERNS.md",
+        "scenario-test-capabilities.json",
+        "scenario-test.d.ts",
+        "scenario-test.umd.js"
+    ]);
     assert.match(
         fs.readFileSync(path.join(publicDir, "index.html"), "utf8"),
-        /\/node_modules\/@yc_yzkj\/scenario-test\/dist\/scenario-test\.umd\.js/
+        /src="\.\/\.scenario-test\/scenario-test\.umd\.js"/
     );
+    const startScript = fs.readFileSync(path.join(publicDir, "start-scenario-test.cmd"), "utf8");
+    assert.ok(startScript.includes('"%~dp0.scenario-test\\scenario-test-cli.cjs" serve'), "cmd 应调用 .scenario-test 内 CLI 副本");
+    assert.match(startScript, /scenario\.config\.js/);
+    assert.match(startScript, /Start-Process/);
     assert.match(
         fs.readFileSync(path.join(publicDir, "scenario.config.js"), "utf8"),
         /reference types="@yc_yzkj\/scenario-test"/
     );
-    for (const fileName of [
-        "scenario-test-cli.cjs",
-        "scenario-test.umd.js",
-        "scenario-test.d.ts",
-        "scenario-test-capabilities.json",
-        ".scenario-test-version.json"
-    ]) {
-        assert.equal(fs.existsSync(path.join(frameworkDir, fileName)), false, `${fileName} 不应写入项目`);
-    }
+    const lock = JSON.parse(fs.readFileSync(path.join(frameworkDir, ".scenario-test-version.json"), "utf8"));
+    assert.equal(lock.runtimeVersion, VERSION);
+    assert.equal(lock.contractVersion, CONTRACT_VERSION);
+    assert.ok(lock.files.umd && lock.files.dts && lock.files.capabilities);
     return { publicDir, frameworkDir };
 }
 
@@ -133,7 +142,7 @@ test("init 支持嵌套项目内场景目录，浏览器 UMD 使用根路径", (
         assert.equal(result.status, 0, result.stderr);
         const { publicDir } = assertGeneratedLayout(project, "dev/场景测试");
         const index = fs.readFileSync(path.join(publicDir, "index.html"), "utf8");
-        assert.match(index, /src="\/node_modules\/@yc_yzkj\/scenario-test\/dist\/scenario-test\.umd\.js"/);
+        assert.match(index, /src="\.\/\.scenario-test\/scenario-test\.umd\.js"/);
     } finally {
         fs.rmSync(project, { recursive: true, force: true });
     }
@@ -152,7 +161,9 @@ test("init 统一迁移到 .scenario-test，不再采用旧平铺布局", () => 
         assert.equal(fs.existsSync(path.join(publicDir, ".scenario-test", "AI_SCENARIO_PROMPT.md")), true);
         assert.equal(fs.readFileSync(path.join(publicDir, "AI_SCENARIO_PROMPT.md"), "utf8"), "# 旧平铺规则\n");
         assert.equal(fs.readFileSync(path.join(publicDir, "index.html"), "utf8"), '<script src="./scenario-test.umd.js"></script>\n');
-        assert.equal(fs.existsSync(path.join(publicDir, ".scenario-test", "scenario-test.umd.js")), false);
+        // 运行时副本仍按当前版本落盘到 .scenario-test/（平铺旧文件不删除，由用户决定清理）
+        assert.equal(fs.existsSync(path.join(publicDir, ".scenario-test", "scenario-test.umd.js")), true);
+        assert.equal(fs.existsSync(path.join(publicDir, ".scenario-test", ".scenario-test-version.json")), true);
     } finally {
         fs.rmSync(project, { recursive: true, force: true });
     }

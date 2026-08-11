@@ -1,4 +1,8 @@
 import { contract } from "./contract.js";
+import { VERSION } from "./version.generated.js";
+
+// init 下载 UMD 兜底地址；正常路径从本机 npm 包 dist/ 拷贝，只有 CLI 不在本机时才走下载
+export const DEFAULT_LIBRARY_URL = `https://github.com/youzhikeji/scenario-test/releases/download/v${VERSION}/scenario-test.umd.js`;
 
 // 能力名单从 contract 投影：AI Prompt / Patterns / README 禁止手抄操作符名单
 const OPERATOR_NAMES = Object.keys(contract.assertions.operators);
@@ -149,14 +153,28 @@ export function createProjectFiles(directory = "scenario-test", options = {}) {
 </head>
 <body style="margin:0">
     <div id="scenario-test" style="height:100vh"></div>
-    <!-- 运行时来自 npm 包 @yc_yzkj/scenario-test（serve 提供 /node_modules/... 路由） -->
-    <script src="/node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js"></script>
+    <!-- 运行时为项目内副本 .scenario-test/scenario-test.umd.js（init 落盘，离线可用）；接口通过 serve 代理访问 -->
+    <script src="./.scenario-test/scenario-test.umd.js"></script>
     <script src="./scenario.config.js"></script>
     <script>
         ScenarioTest.createApp({ mount: "#scenario-test", config: ScenarioTest.getConfig() });
     </script>
 </body>
 </html>
+`,
+        [`${directory}/start-scenario-test.cmd`]: `@echo off
+setlocal
+cd /d "%~dp0"
+
+set "SCENARIO_TEST_URL=http://127.0.0.1:4300/"
+start "" powershell.exe -NoProfile -WindowStyle Hidden -Command "Start-Sleep -Milliseconds 700; Start-Process '%SCENARIO_TEST_URL%'"
+call node "%~dp0.scenario-test\\scenario-test-cli.cjs" serve --config "%~dp0scenario.config.js" --port 4300
+
+if errorlevel 1 (
+    echo.
+    echo Scenario Test failed to start. Run init first to generate runtime files.
+    pause
+)
 `,
         [`${directory}/scenario.config.js`]: `/// <reference types="@yc_yzkj/scenario-test" />
 ScenarioTest.registerConfig(ScenarioTest.defineConfig({
@@ -206,6 +224,7 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
 | 路径 | 作用 | 是否应修改 |
 | --- | --- | --- |
 | \`index.html\` | 浏览器工作台入口 | 通常不需要 |
+| \`start-scenario-test.cmd\` | Windows 人工测试入口；双击后启动 HTTP Server 并打开工作台 | 通常不需要 |
 | \`scenario.config.js\` | 环境、测试变量和场景清单；通常由 AI 按用户提供的信息维护 | 按需 |
 | \`scenarios/\` | 按业务功能建子目录；目录内一个文件对应该功能的一条独立验证路径 | 由 AI 维护 |
 | \`plugins/\` | 仅当前项目需要的文件、Excel 或业务扩展 | 按需新建 |
@@ -311,13 +330,15 @@ ScenarioTest.registerScenario("order-create-success", ScenarioTest.defineScenari
 
 ## 浏览器工作台
 
-在本目录启动本地服务，再打开终端输出的地址：
+双击本目录中的 \`start-scenario-test.cmd\` 启动工作台：脚本使用项目内运行时副本启动本地 HTTP Server，自动打开 \`index.html\`，并把接口请求代理到所选环境的 \`baseUrl\`（页面 \`baseUrl\` 留空即走代理），无需后端放行 CORS。人工测试结束后按 \`Ctrl+C\` 停止服务。
+
+也可以在项目根目录执行：
 
 \`\`\`powershell
-npx @yc_yzkj/scenario-test serve --config ${directory}/scenario.config.js --port 4300
+.\\scenario-test\\start-scenario-test.cmd
 \`\`\`
 
-浏览器页面可切换环境和场景，填写并保存当前环境的变量覆盖，单步执行、全量执行、取消执行，并查看实际请求、响应和变量。不要双击直接打开 \`index.html\`：浏览器对本地文件加载场景 JS 有限制，应通过 \`serve\` 启动。
+不要直接双击 \`index.html\`：页面虽可加载，但接口请求会被浏览器 CORS 拦截，必须通过 \`serve\` 的同源代理执行。
 
 ## CLI 执行
 
@@ -347,11 +368,11 @@ Remove-Item Env:SCENARIO_CLIENT_SECRET
 
 ### 页面提示 ScenarioTest 未定义或脚本加载失败
 
-确认已执行 \`npm install -D @yc_yzkj/scenario-test\`，\`index.html\` 加载的是 \`/node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js\`，并通过 \`npx @yc_yzkj/scenario-test serve\` 启动工作台。
+确认项目 \`${frameworkDisplay}\` 中存在 \`scenario-test.umd.js\`（运行时副本，由 init 落盘）；\`index.html\` 加载的是 \`./.scenario-test/scenario-test.umd.js\`。文件缺失时运行 \`npx @yc_yzkj/scenario-test init\` 补齐，再通过 \`start-scenario-test.cmd\` 启动工作台。
 
 ### 页面能打开但场景没有加载
 
-使用上面的 \`serve\` 命令启动，不要从 \`file:///\` 直接打开页面；再检查 \`scenario.config.js\` 的场景 \`id\`、\`url\` 与场景文件里的 \`registerScenario(id, ...)\` 是否一致。
+通过 \`start-scenario-test.cmd\` 启动工作台，不要从 \`file:///\` 直接打开页面；再检查 \`scenario.config.js\` 的场景 \`id\`、\`url\` 与场景文件里的 \`registerScenario(id, ...)\` 是否一致。
 
 ### CLI 的变量和页面不一致
 

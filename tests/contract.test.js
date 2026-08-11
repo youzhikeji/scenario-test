@@ -69,6 +69,8 @@ test("config/scenario 关键字段含 manual；CLI 命令与参数含 capabiliti
     assert.equal(contract.cli.options.json.kind, "flag");
     assert.deepEqual(contract.cli.options.token.aliases, ["authorization"]);
     assert.equal(contract.cli.options.config.kind, "value");
+    assert.equal(contract.cli.options["library-url"].kind, "value");
+    assert.equal(contract.cli.options["library-url"].prop, "libraryUrl");
 });
 
 test("contract.engines 与 package.json engines 一致", () => {

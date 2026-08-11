@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/*! scenario-test v0.5.4 */
+/*! scenario-test v0.5.5 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -243,6 +243,7 @@ var require_md5 = __commonJS({
 var import_node_fs5 = __toESM(require("node:fs"), 1);
 var import_node_http = __toESM(require("node:http"), 1);
 var import_node_path6 = __toESM(require("node:path"), 1);
+var import_node_crypto2 = __toESM(require("node:crypto"), 1);
 var import_promises = require("node:readline/promises");
 var import_node_url = require("node:url");
 
@@ -313,7 +314,7 @@ __export(node_exports, {
 var import_blueimp_md5 = __toESM(require_md5(), 1);
 
 // src/version.generated.js
-var VERSION = "0.5.4";
+var VERSION = "0.5.5";
 
 // src/contract.js
 var CONTRACT_VERSION = 1;
@@ -433,6 +434,7 @@ var contract = Object.freeze({
       port: { kind: "value", prop: "port", parse: "number", description: "\u6D4F\u89C8\u5668\u670D\u52A1\u7AEF\u53E3\uFF0C\u9ED8\u8BA4 4300" },
       project: { kind: "value", prop: "project", description: "init \u76EE\u6807\u9879\u76EE\u6839\u76EE\u5F55" },
       dir: { kind: "value", prop: "dir", description: "init \u573A\u666F\u6D4B\u8BD5\u76EE\u5F55\u540D" },
+      "library-url": { kind: "value", prop: "libraryUrl", description: "init \u65F6 UMD \u4E0B\u8F7D\u5730\u5740\uFF08\u9ED8\u8BA4 GitHub Release\uFF09" },
       all: { kind: "flag", prop: "all", description: "\u6267\u884C\u914D\u7F6E\u4E2D\u7684\u5168\u90E8\u81EA\u52A8\u573A\u666F\uFF08\u9ED8\u8BA4\u6392\u9664 manual:true\uFF09" },
       force: { kind: "flag", prop: "force", description: "init \u8986\u76D6\u5DF2\u6709\u6587\u4EF6\uFF08\u76EE\u6807\u76EE\u5F55\u5DF2\u5B58\u5728\u65F6\u53EF\u4EA4\u4E92\u9009\u62E9\uFF09" },
       "fail-on-skip": { kind: "flag", prop: "failOnSkip", description: "\u5B58\u5728\u4EFB\u4F55 SKIP \u6B65\u9AA4\u65F6\u6700\u7EC8\u9000\u51FA\u7801\u4E3A 1" },
@@ -4419,6 +4421,7 @@ function loadScenarioFile(filePath, id, api) {
 }
 
 // src/init-templates.js
+var DEFAULT_LIBRARY_URL = `https://github.com/youzhikeji/scenario-test/releases/download/v${VERSION}/scenario-test.umd.js`;
 var OPERATOR_NAMES = Object.keys(contract.assertions.operators);
 var OPERATORS_TEXT = OPERATOR_NAMES.join("\u3001");
 var OPERATORS_BACKTICK = OPERATOR_NAMES.map((name) => `\`${name}\``).join("\u3001");
@@ -4563,14 +4566,28 @@ function createProjectFiles(directory = "scenario-test", options = {}) {
 </head>
 <body style="margin:0">
     <div id="scenario-test" style="height:100vh"></div>
-    <!-- \u8FD0\u884C\u65F6\u6765\u81EA npm \u5305 @yc_yzkj/scenario-test\uFF08serve \u63D0\u4F9B /node_modules/... \u8DEF\u7531\uFF09 -->
-    <script src="/node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js"></script>
+    <!-- \u8FD0\u884C\u65F6\u4E3A\u9879\u76EE\u5185\u526F\u672C .scenario-test/scenario-test.umd.js\uFF08init \u843D\u76D8\uFF0C\u79BB\u7EBF\u53EF\u7528\uFF09\uFF1B\u63A5\u53E3\u901A\u8FC7 serve \u4EE3\u7406\u8BBF\u95EE -->
+    <script src="./.scenario-test/scenario-test.umd.js"></script>
     <script src="./scenario.config.js"></script>
     <script>
         ScenarioTest.createApp({ mount: "#scenario-test", config: ScenarioTest.getConfig() });
     </script>
 </body>
 </html>
+`,
+    [`${directory}/start-scenario-test.cmd`]: `@echo off
+setlocal
+cd /d "%~dp0"
+
+set "SCENARIO_TEST_URL=http://127.0.0.1:4300/"
+start "" powershell.exe -NoProfile -WindowStyle Hidden -Command "Start-Sleep -Milliseconds 700; Start-Process '%SCENARIO_TEST_URL%'"
+call node "%~dp0.scenario-test\\scenario-test-cli.cjs" serve --config "%~dp0scenario.config.js" --port 4300
+
+if errorlevel 1 (
+    echo.
+    echo Scenario Test failed to start. Run init first to generate runtime files.
+    pause
+)
 `,
     [`${directory}/scenario.config.js`]: `/// <reference types="@yc_yzkj/scenario-test" />
 ScenarioTest.registerConfig(ScenarioTest.defineConfig({
@@ -4620,6 +4637,7 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
 | \u8DEF\u5F84 | \u4F5C\u7528 | \u662F\u5426\u5E94\u4FEE\u6539 |
 | --- | --- | --- |
 | \`index.html\` | \u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0\u5165\u53E3 | \u901A\u5E38\u4E0D\u9700\u8981 |
+| \`start-scenario-test.cmd\` | Windows \u4EBA\u5DE5\u6D4B\u8BD5\u5165\u53E3\uFF1B\u53CC\u51FB\u540E\u542F\u52A8 HTTP Server \u5E76\u6253\u5F00\u5DE5\u4F5C\u53F0 | \u901A\u5E38\u4E0D\u9700\u8981 |
 | \`scenario.config.js\` | \u73AF\u5883\u3001\u6D4B\u8BD5\u53D8\u91CF\u548C\u573A\u666F\u6E05\u5355\uFF1B\u901A\u5E38\u7531 AI \u6309\u7528\u6237\u63D0\u4F9B\u7684\u4FE1\u606F\u7EF4\u62A4 | \u6309\u9700 |
 | \`scenarios/\` | \u6309\u4E1A\u52A1\u529F\u80FD\u5EFA\u5B50\u76EE\u5F55\uFF1B\u76EE\u5F55\u5185\u4E00\u4E2A\u6587\u4EF6\u5BF9\u5E94\u8BE5\u529F\u80FD\u7684\u4E00\u6761\u72EC\u7ACB\u9A8C\u8BC1\u8DEF\u5F84 | \u7531 AI \u7EF4\u62A4 |
 | \`plugins/\` | \u4EC5\u5F53\u524D\u9879\u76EE\u9700\u8981\u7684\u6587\u4EF6\u3001Excel \u6216\u4E1A\u52A1\u6269\u5C55 | \u6309\u9700\u65B0\u5EFA |
@@ -4725,13 +4743,15 @@ ScenarioTest.registerScenario("order-create-success", ScenarioTest.defineScenari
 
 ## \u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0
 
-\u5728\u672C\u76EE\u5F55\u542F\u52A8\u672C\u5730\u670D\u52A1\uFF0C\u518D\u6253\u5F00\u7EC8\u7AEF\u8F93\u51FA\u7684\u5730\u5740\uFF1A
+\u53CC\u51FB\u672C\u76EE\u5F55\u4E2D\u7684 \`start-scenario-test.cmd\` \u542F\u52A8\u5DE5\u4F5C\u53F0\uFF1A\u811A\u672C\u4F7F\u7528\u9879\u76EE\u5185\u8FD0\u884C\u65F6\u526F\u672C\u542F\u52A8\u672C\u5730 HTTP Server\uFF0C\u81EA\u52A8\u6253\u5F00 \`index.html\`\uFF0C\u5E76\u628A\u63A5\u53E3\u8BF7\u6C42\u4EE3\u7406\u5230\u6240\u9009\u73AF\u5883\u7684 \`baseUrl\`\uFF08\u9875\u9762 \`baseUrl\` \u7559\u7A7A\u5373\u8D70\u4EE3\u7406\uFF09\uFF0C\u65E0\u9700\u540E\u7AEF\u653E\u884C CORS\u3002\u4EBA\u5DE5\u6D4B\u8BD5\u7ED3\u675F\u540E\u6309 \`Ctrl+C\` \u505C\u6B62\u670D\u52A1\u3002
+
+\u4E5F\u53EF\u4EE5\u5728\u9879\u76EE\u6839\u76EE\u5F55\u6267\u884C\uFF1A
 
 \`\`\`powershell
-npx @yc_yzkj/scenario-test serve --config ${directory}/scenario.config.js --port 4300
+.\\scenario-test\\start-scenario-test.cmd
 \`\`\`
 
-\u6D4F\u89C8\u5668\u9875\u9762\u53EF\u5207\u6362\u73AF\u5883\u548C\u573A\u666F\uFF0C\u586B\u5199\u5E76\u4FDD\u5B58\u5F53\u524D\u73AF\u5883\u7684\u53D8\u91CF\u8986\u76D6\uFF0C\u5355\u6B65\u6267\u884C\u3001\u5168\u91CF\u6267\u884C\u3001\u53D6\u6D88\u6267\u884C\uFF0C\u5E76\u67E5\u770B\u5B9E\u9645\u8BF7\u6C42\u3001\u54CD\u5E94\u548C\u53D8\u91CF\u3002\u4E0D\u8981\u53CC\u51FB\u76F4\u63A5\u6253\u5F00 \`index.html\`\uFF1A\u6D4F\u89C8\u5668\u5BF9\u672C\u5730\u6587\u4EF6\u52A0\u8F7D\u573A\u666F JS \u6709\u9650\u5236\uFF0C\u5E94\u901A\u8FC7 \`serve\` \u542F\u52A8\u3002
+\u4E0D\u8981\u76F4\u63A5\u53CC\u51FB \`index.html\`\uFF1A\u9875\u9762\u867D\u53EF\u52A0\u8F7D\uFF0C\u4F46\u63A5\u53E3\u8BF7\u6C42\u4F1A\u88AB\u6D4F\u89C8\u5668 CORS \u62E6\u622A\uFF0C\u5FC5\u987B\u901A\u8FC7 \`serve\` \u7684\u540C\u6E90\u4EE3\u7406\u6267\u884C\u3002
 
 ## CLI \u6267\u884C
 
@@ -4761,11 +4781,11 @@ Remove-Item Env:SCENARIO_CLIENT_SECRET
 
 ### \u9875\u9762\u63D0\u793A ScenarioTest \u672A\u5B9A\u4E49\u6216\u811A\u672C\u52A0\u8F7D\u5931\u8D25
 
-\u786E\u8BA4\u5DF2\u6267\u884C \`npm install -D @yc_yzkj/scenario-test\`\uFF0C\`index.html\` \u52A0\u8F7D\u7684\u662F \`/node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js\`\uFF0C\u5E76\u901A\u8FC7 \`npx @yc_yzkj/scenario-test serve\` \u542F\u52A8\u5DE5\u4F5C\u53F0\u3002
+\u786E\u8BA4\u9879\u76EE \`${frameworkDisplay}\` \u4E2D\u5B58\u5728 \`scenario-test.umd.js\`\uFF08\u8FD0\u884C\u65F6\u526F\u672C\uFF0C\u7531 init \u843D\u76D8\uFF09\uFF1B\`index.html\` \u52A0\u8F7D\u7684\u662F \`./.scenario-test/scenario-test.umd.js\`\u3002\u6587\u4EF6\u7F3A\u5931\u65F6\u8FD0\u884C \`npx @yc_yzkj/scenario-test init\` \u8865\u9F50\uFF0C\u518D\u901A\u8FC7 \`start-scenario-test.cmd\` \u542F\u52A8\u5DE5\u4F5C\u53F0\u3002
 
 ### \u9875\u9762\u80FD\u6253\u5F00\u4F46\u573A\u666F\u6CA1\u6709\u52A0\u8F7D
 
-\u4F7F\u7528\u4E0A\u9762\u7684 \`serve\` \u547D\u4EE4\u542F\u52A8\uFF0C\u4E0D\u8981\u4ECE \`file:///\` \u76F4\u63A5\u6253\u5F00\u9875\u9762\uFF1B\u518D\u68C0\u67E5 \`scenario.config.js\` \u7684\u573A\u666F \`id\`\u3001\`url\` \u4E0E\u573A\u666F\u6587\u4EF6\u91CC\u7684 \`registerScenario(id, ...)\` \u662F\u5426\u4E00\u81F4\u3002
+\u901A\u8FC7 \`start-scenario-test.cmd\` \u542F\u52A8\u5DE5\u4F5C\u53F0\uFF0C\u4E0D\u8981\u4ECE \`file:///\` \u76F4\u63A5\u6253\u5F00\u9875\u9762\uFF1B\u518D\u68C0\u67E5 \`scenario.config.js\` \u7684\u573A\u666F \`id\`\u3001\`url\` \u4E0E\u573A\u666F\u6587\u4EF6\u91CC\u7684 \`registerScenario(id, ...)\` \u662F\u5426\u4E00\u81F4\u3002
 
 ### CLI \u7684\u53D8\u91CF\u548C\u9875\u9762\u4E0D\u4E00\u81F4
 
@@ -4787,6 +4807,7 @@ Remove-Item Env:SCENARIO_CLIENT_SECRET
 // src/doctor.js
 var import_node_fs4 = __toESM(require("node:fs"), 1);
 var import_node_path5 = __toESM(require("node:path"), 1);
+var import_node_crypto = __toESM(require("node:crypto"), 1);
 
 // src/project-layout.js
 var import_node_fs3 = __toESM(require("node:fs"), 1);
@@ -4794,7 +4815,12 @@ var import_node_path4 = __toESM(require("node:path"), 1);
 var INTERNAL_DIRECTORY = ".scenario-test";
 var FRAMEWORK_FILES = Object.freeze({
   authoringPrompt: "AI_SCENARIO_PROMPT.md",
-  patterns: "SCENARIO_PATTERNS.md"
+  patterns: "SCENARIO_PATTERNS.md",
+  cli: "scenario-test-cli.cjs",
+  umd: "scenario-test.umd.js",
+  dts: "scenario-test.d.ts",
+  capabilities: "scenario-test-capabilities.json",
+  versionLock: ".scenario-test-version.json"
 });
 function toRelativePath(...segments) {
   return import_node_path4.default.join(...segments).replace(/\\/g, "/");
@@ -4831,6 +4857,151 @@ function resolveLayoutFromConfigDir(configDir) {
 }
 
 // src/doctor.js
+var UMD_VERSION_PATTERN = /\/\*! scenario-test v(\d+\.\d+\.\d+) \*\//;
+var DTS_VERSION_PATTERN = /scenario-test v(\d+\.\d+\.\d+)/;
+function extractArtifactVersion(filePath, pattern) {
+  const head = import_node_fs4.default.readFileSync(filePath, "utf8").slice(0, 4096);
+  const match = pattern.exec(head);
+  return match ? match[1] : null;
+}
+function sha256Of(filePath) {
+  return import_node_crypto.default.createHash("sha256").update(import_node_fs4.default.readFileSync(filePath)).digest("hex");
+}
+function checkRuntimeArtifact(filePath, fileName, key, pattern) {
+  if (!import_node_fs4.default.existsSync(filePath)) {
+    return {
+      name: key,
+      status: "WARN",
+      message: `\u7F3A\u5C11\u8FD0\u884C\u65F6\u526F\u672C ${fileName}\uFF08${filePath}\uFF09`,
+      fix: "\u8FD0\u884C init \u8865\u9F50\uFF08\u4E0D\u4F20 --force \u4E0D\u4F1A\u8986\u76D6\u9879\u76EE\u6587\u4EF6\uFF09"
+    };
+  }
+  const version = pattern ? extractArtifactVersion(filePath, pattern) : null;
+  if (version !== null && version !== VERSION) {
+    return {
+      name: key,
+      status: "FAIL",
+      message: `\u7248\u672C\u4E0D\u4E00\u81F4\uFF1A${fileName} \u662F v${version}\uFF0C\u5F53\u524D CLI \u662F v${VERSION}`,
+      fix: `\u7528 v${VERSION} \u7684 CLI \u91CD\u65B0 init \u5237\u65B0\u8FD0\u884C\u65F6\u526F\u672C`
+    };
+  }
+  return {
+    name: key,
+    status: "PASS",
+    message: `\u8FD0\u884C\u65F6\u526F\u672C\u5C31\u7EEA: ${fileName}${version ? `\uFF08v${version}\uFF09` : ""}`,
+    fix: ""
+  };
+}
+function checkCapabilitiesFile(filePath) {
+  if (!import_node_fs4.default.existsSync(filePath)) {
+    return {
+      name: "capabilities",
+      status: "WARN",
+      message: "\u7F3A\u5C11\u8FD0\u884C\u65F6\u526F\u672C scenario-test-capabilities.json",
+      fix: "\u8FD0\u884C init \u8865\u9F50\uFF08\u4E0D\u4F20 --force \u4E0D\u4F1A\u8986\u76D6\u9879\u76EE\u6587\u4EF6\uFF09"
+    };
+  }
+  try {
+    const parsed = JSON.parse(import_node_fs4.default.readFileSync(filePath, "utf8"));
+    if (parsed.schema !== "scenario-test-capabilities") {
+      return {
+        name: "capabilities",
+        status: "FAIL",
+        message: "scenario-test-capabilities.json \u4E0D\u662F\u5408\u6CD5\u7684\u80FD\u529B\u6E05\u5355\uFF08schema \u4E0D\u5339\u914D\uFF09",
+        fix: "\u7528\u5F53\u524D\u7248\u672C CLI \u91CD\u65B0 init \u751F\u6210"
+      };
+    }
+    if (parsed.version !== VERSION || parsed.contractVersion !== CONTRACT_VERSION) {
+      return {
+        name: "capabilities",
+        status: "FAIL",
+        message: `\u7248\u672C\u4E0D\u4E00\u81F4\uFF1Acapabilities.json \u662F v${parsed.version}\uFF08contract v${parsed.contractVersion}\uFF09\uFF0C\u5F53\u524D CLI \u662F v${VERSION}\uFF08contract v${CONTRACT_VERSION}\uFF09`,
+        fix: `\u7528 v${VERSION} \u7684 CLI \u91CD\u65B0 init \u751F\u6210 scenario-test-capabilities.json`
+      };
+    }
+    return { name: "capabilities", status: "PASS", message: `\u7248\u672C\u4E00\u81F4\uFF08v${parsed.version}\uFF0Ccontract v${parsed.contractVersion}\uFF09`, fix: "" };
+  } catch (error) {
+    return {
+      name: "capabilities",
+      status: "FAIL",
+      message: `scenario-test-capabilities.json \u89E3\u6790\u5931\u8D25: ${error.message}`,
+      fix: "\u7528\u5F53\u524D\u7248\u672C CLI \u91CD\u65B0 init \u751F\u6210"
+    };
+  }
+}
+function checkVersionLock(filePath) {
+  if (!import_node_fs4.default.existsSync(filePath)) {
+    return {
+      name: "version-lock",
+      status: "WARN",
+      message: "\u7F3A\u5C11\u9879\u76EE\u7248\u672C\u9501 .scenario-test-version.json",
+      fix: "\u8FD0\u884C init \u5199\u5165\u7248\u672C\u9501\uFF08\u4E0D\u4F20 --force \u4E0D\u4F1A\u8986\u76D6\u9879\u76EE\u6587\u4EF6\uFF09"
+    };
+  }
+  let lock;
+  try {
+    lock = JSON.parse(import_node_fs4.default.readFileSync(filePath, "utf8"));
+  } catch (error) {
+    return {
+      name: "version-lock",
+      status: "FAIL",
+      message: `.scenario-test-version.json \u89E3\u6790\u5931\u8D25: ${error.message}`,
+      fix: "\u4FEE\u590D\u6216\u5220\u9664\u7248\u672C\u9501\u540E\u7528\u5F53\u524D\u7248\u672C CLI \u91CD\u65B0 init \u751F\u6210"
+    };
+  }
+  if (lock.runtimeVersion !== VERSION || lock.contractVersion !== CONTRACT_VERSION) {
+    return {
+      name: "version-lock",
+      status: "FAIL",
+      message: `\u7248\u672C\u4E0D\u4E00\u81F4\uFF1A\u7248\u672C\u9501\u8BB0\u5F55 v${lock.runtimeVersion}\uFF08contract v${lock.contractVersion}\uFF09\uFF0C\u5F53\u524D CLI \u662F v${VERSION}\uFF08contract v${CONTRACT_VERSION}\uFF09`,
+      fix: `\u4F7F\u7528 v${VERSION} \u7684 CLI \u91CD\u65B0 init\uFF08\u81EA\u52A8\u5237\u65B0\u8FD0\u884C\u65F6\u526F\u672C\u4E0E\u7248\u672C\u9501\uFF0C\u4E0D\u8986\u76D6\u9879\u76EE\u914D\u7F6E/\u573A\u666F\uFF09`
+    };
+  }
+  const extras = [];
+  const files = lock.files && typeof lock.files === "object" ? lock.files : null;
+  if (!files) {
+    extras.push({
+      name: "version-lock",
+      status: "WARN",
+      message: "\u7248\u672C\u9501\u7F3A\u5C11 files \u5B57\u6BB5\uFF08\u9884\u671F\u6587\u4EF6\u540D\u6E05\u5355\uFF09",
+      fix: "\u7528\u5F53\u524D\u7248\u672C CLI \u91CD\u65B0 init \u5237\u65B0\u7248\u672C\u9501"
+    });
+  } else {
+    for (const [kind, fileName] of Object.entries(files)) {
+      const target = import_node_path5.default.join(import_node_path5.default.dirname(filePath), String(fileName));
+      if (!import_node_fs4.default.existsSync(target)) {
+        extras.push({
+          name: "version-lock",
+          status: "WARN",
+          message: `\u7248\u672C\u9501\u58F0\u660E ${kind} \u6587\u4EF6 ${fileName} \u4E0D\u5B58\u5728`,
+          fix: `\u8FD0\u884C init \u8865\u9F50 ${fileName}\uFF08\u4E0D\u4F20 --force \u4E0D\u4F1A\u8986\u76D6\u9879\u76EE\u6587\u4EF6\uFF09`
+        });
+      }
+    }
+  }
+  const sha256 = lock.sha256 && typeof lock.sha256 === "object" ? lock.sha256 : null;
+  if (sha256) {
+    for (const [fileName, expected] of Object.entries(sha256)) {
+      const target = import_node_path5.default.join(import_node_path5.default.dirname(filePath), fileName);
+      if (!import_node_fs4.default.existsSync(target)) continue;
+      if (sha256Of(target) !== expected) {
+        extras.push({
+          name: "version-lock",
+          status: "WARN",
+          message: `${fileName} \u7684 SHA256 \u4E0E\u7248\u672C\u9501\u8BB0\u5F55\u4E0D\u4E00\u81F4\uFF08\u53EF\u80FD\u88AB\u66FF\u6362\uFF09`,
+          fix: "\u82E5\u662F\u6709\u610F\u66FF\u6362\u8FD0\u884C\u65F6\u6587\u4EF6\uFF0C\u7528\u5F53\u524D\u7248\u672C CLI \u91CD\u65B0 init \u5237\u65B0\u7248\u672C\u9501\uFF1B\u5426\u5219\u68C0\u67E5\u6587\u4EF6\u6765\u6E90"
+        });
+      }
+    }
+  }
+  return {
+    name: "version-lock",
+    status: "PASS",
+    message: `\u7248\u672C\u4E00\u81F4\uFF08v${lock.runtimeVersion}\uFF0Ccontract v${lock.contractVersion}\uFF09`,
+    fix: "",
+    extra: extras
+  };
+}
 function satisfiesNodeEngine(version, range) {
   const match = /^>=\s*(\d+)(?:\.(\d+)(?:\.(\d+))?)?/.exec(String(range || "").trim());
   if (!match) return false;
@@ -4982,9 +5153,16 @@ function buildDoctorReport(options) {
     message: `CLI \u7248\u672C v${VERSION}\uFF08contract v${CONTRACT_VERSION}\uFF09`,
     fix: ""
   });
-  for (const [key, fileName] of Object.entries(FRAMEWORK_FILES)) {
+  for (const [key, fileName] of Object.entries({ authoringPrompt: FRAMEWORK_FILES.authoringPrompt, patterns: FRAMEWORK_FILES.patterns })) {
     checks.push(checkReadableFile(layout.frameworkPath(fileName), key, fileName));
   }
+  checks.push(checkRuntimeArtifact(layout.frameworkPath(FRAMEWORK_FILES.cli), FRAMEWORK_FILES.cli, "runtime-cli", null));
+  checks.push(checkRuntimeArtifact(layout.frameworkPath(FRAMEWORK_FILES.umd), FRAMEWORK_FILES.umd, "umd", UMD_VERSION_PATTERN));
+  checks.push(checkRuntimeArtifact(layout.frameworkPath(FRAMEWORK_FILES.dts), FRAMEWORK_FILES.dts, "dts", DTS_VERSION_PATTERN));
+  checks.push(checkCapabilitiesFile(layout.frameworkPath(FRAMEWORK_FILES.capabilities)));
+  const lockResult = checkVersionLock(layout.frameworkPath(FRAMEWORK_FILES.versionLock));
+  checks.push({ name: lockResult.name, status: lockResult.status, message: lockResult.message, fix: lockResult.fix });
+  if (lockResult.extra) checks.push(...lockResult.extra);
   const summary = { passed: 0, warned: 0, failed: 0, info: info.length };
   for (const check of checks) {
     if (check.status === "PASS") summary.passed += 1;
@@ -5188,6 +5366,97 @@ async function askInitMode(directory) {
     rl.close();
   }
 }
+function sha256File(filePath) {
+  return import_node_crypto2.default.createHash("sha256").update(import_node_fs5.default.readFileSync(filePath)).digest("hex");
+}
+function runtimeSourceCandidates(fileName) {
+  return [
+    import_node_path6.default.resolve(import_node_path6.default.dirname(process.argv[1]), fileName),
+    import_node_path6.default.resolve(import_node_path6.default.dirname(process.argv[1]), "../dist", fileName)
+  ];
+}
+function copyRuntimeCli(layout, force) {
+  const target = layout.frameworkPath(FRAMEWORK_FILES.cli);
+  if (import_node_fs5.default.existsSync(target) && !force) return false;
+  const source = import_node_path6.default.resolve(process.argv[1]);
+  if (!source.endsWith(".cjs")) return null;
+  import_node_fs5.default.mkdirSync(import_node_path6.default.dirname(target), { recursive: true });
+  import_node_fs5.default.copyFileSync(source, target);
+  return true;
+}
+async function copyRuntimeBrowser(layout, libraryUrl, force) {
+  const target = layout.frameworkPath(FRAMEWORK_FILES.umd);
+  if (import_node_fs5.default.existsSync(target) && !force) return false;
+  const source = runtimeSourceCandidates("scenario-test.umd.js").find((candidate) => import_node_fs5.default.existsSync(candidate));
+  import_node_fs5.default.mkdirSync(import_node_path6.default.dirname(target), { recursive: true });
+  if (source) {
+    import_node_fs5.default.copyFileSync(source, target);
+    return true;
+  }
+  if (!libraryUrl) return null;
+  try {
+    const response = await fetch(libraryUrl);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    import_node_fs5.default.writeFileSync(target, Buffer.from(await response.arrayBuffer()));
+    return true;
+  } catch (error) {
+    console.warn(`\u8B66\u544A: UMD \u8FD0\u884C\u65F6\u4E0B\u8F7D\u5931\u8D25\uFF08${error.message}\uFF09\uFF0C\u53EF\u7A0D\u540E\u91CD\u8DD1 init \u8865\u9F50`);
+    return null;
+  }
+}
+function copyRuntimeTextFile(layout, fileName, force) {
+  const target = layout.frameworkPath(fileName);
+  if (import_node_fs5.default.existsSync(target) && !force) return false;
+  const source = runtimeSourceCandidates(fileName).find((candidate) => import_node_fs5.default.existsSync(candidate));
+  if (!source) return null;
+  import_node_fs5.default.mkdirSync(import_node_path6.default.dirname(target), { recursive: true });
+  import_node_fs5.default.copyFileSync(source, target);
+  return true;
+}
+function writeVersionLock(layout) {
+  const target = layout.frameworkPath(FRAMEWORK_FILES.versionLock);
+  const fileNames = [FRAMEWORK_FILES.cli, FRAMEWORK_FILES.umd, FRAMEWORK_FILES.dts, FRAMEWORK_FILES.capabilities];
+  const sha256 = {};
+  for (const fileName of fileNames) {
+    const filePath = layout.frameworkPath(fileName);
+    if (import_node_fs5.default.existsSync(filePath)) sha256[fileName] = sha256File(filePath);
+  }
+  const lock = {
+    runtimeVersion: VERSION,
+    contractVersion: CONTRACT_VERSION,
+    files: {
+      cli: FRAMEWORK_FILES.cli,
+      umd: FRAMEWORK_FILES.umd,
+      dts: FRAMEWORK_FILES.dts,
+      capabilities: FRAMEWORK_FILES.capabilities
+    },
+    sha256
+  };
+  import_node_fs5.default.mkdirSync(import_node_path6.default.dirname(target), { recursive: true });
+  import_node_fs5.default.writeFileSync(target, `${JSON.stringify(lock, null, 2)}
+`, "utf8");
+  return true;
+}
+function shouldRefreshFramework(layout, force) {
+  if (force) return true;
+  const runtimeFileNames = [FRAMEWORK_FILES.cli, FRAMEWORK_FILES.umd, FRAMEWORK_FILES.dts, FRAMEWORK_FILES.capabilities];
+  const lockPath = layout.frameworkPath(FRAMEWORK_FILES.versionLock);
+  if (!import_node_fs5.default.existsSync(lockPath)) {
+    return runtimeFileNames.some((fileName) => !import_node_fs5.default.existsSync(layout.frameworkPath(fileName)));
+  }
+  let lock;
+  try {
+    lock = JSON.parse(import_node_fs5.default.readFileSync(lockPath, "utf8"));
+  } catch {
+    return true;
+  }
+  if (lock.runtimeVersion !== VERSION || lock.contractVersion !== CONTRACT_VERSION) return true;
+  return runtimeFileNames.some((fileName) => !import_node_fs5.default.existsSync(layout.frameworkPath(fileName)));
+}
+function recordRuntimeResult(created, skipped, relativePath, status) {
+  if (status === true) created.push(relativePath);
+  else if (status === false) skipped.push(relativePath);
+}
 async function initCommand(args) {
   const projectRoot = import_node_path6.default.resolve(args.project || process.cwd());
   const directory = resolveInitDirectory(projectRoot, args.dir);
@@ -5204,6 +5473,7 @@ async function initCommand(args) {
     }
     force = mode === "overwrite";
   }
+  const refreshFramework = shouldRefreshFramework(layout, force);
   const frameworkTemplatePaths = /* @__PURE__ */ new Set([
     layout.frameworkRelativePath(FRAMEWORK_FILES.authoringPrompt),
     layout.frameworkRelativePath(FRAMEWORK_FILES.patterns)
@@ -5211,15 +5481,21 @@ async function initCommand(args) {
   const created = [];
   const skipped = [];
   for (const [relativePath, content] of Object.entries(createProjectFiles(directory, { storagePrefix, frameworkDirectory }))) {
-    const overwrite = force || frameworkTemplatePaths.has(relativePath);
+    const overwrite = force || refreshFramework && frameworkTemplatePaths.has(relativePath);
     (writeProjectFile(projectRoot, relativePath, content, overwrite) ? created : skipped).push(relativePath);
   }
+  const libraryUrl = args.libraryUrl || DEFAULT_LIBRARY_URL;
+  recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.cli), copyRuntimeCli(layout, refreshFramework));
+  recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.umd), await copyRuntimeBrowser(layout, libraryUrl, refreshFramework));
+  recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.dts), copyRuntimeTextFile(layout, FRAMEWORK_FILES.dts, refreshFramework));
+  recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.capabilities), copyRuntimeTextFile(layout, FRAMEWORK_FILES.capabilities, refreshFramework));
+  recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.versionLock), writeVersionLock(layout));
   console.log(`\u5DF2\u521D\u59CB\u5316\u9879\u76EE: ${projectRoot}`);
   console.log(`\u9879\u76EE\u5E03\u5C40: \u5185\u90E8\u6587\u4EF6\u4F4D\u4E8E ${layout.frameworkRelativeDir}`);
   if (created.length) console.log(`\u5DF2\u521B\u5EFA: ${created.join(", ")}`);
   if (skipped.length) console.log(`\u5DF2\u4FDD\u7559\u73B0\u6709\u6587\u4EF6: ${skipped.join(", ")}`);
   console.log(`\u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0: ${import_node_path6.default.join(projectRoot, directory, "index.html")}`);
-  console.log("\u63D0\u793A: \u8FD0\u884C\u65F6\u7531 npm \u5305\u63D0\u4F9B\uFF08@yc_yzkj/scenario-test\uFF09\uFF0C\u4F7F\u7528 npx @yc_yzkj/scenario-test \u6267\u884C\u547D\u4EE4\u3002");
+  console.log("\u63D0\u793A: \u53CC\u51FB start-scenario-test.cmd \u542F\u52A8\u5DE5\u4F5C\u53F0\uFF08\u542B\u63A5\u53E3\u4EE3\u7406\uFF09\uFF1B\u63A5\u53E3 baseUrl \u7559\u7A7A\u5373\u8D70\u4EE3\u7406\uFF0C\u7ED5\u5F00\u6D4F\u89C8\u5668 CORS\u3002");
 }
 function resolveConfigPath(value) {
   const candidate = import_node_path6.default.resolve(value || "scenario.config.js");
@@ -5364,10 +5640,36 @@ function contentType(filePath) {
     ".txt": "text/plain; charset=utf-8"
   }[import_node_path6.default.extname(filePath).toLowerCase()] || "application/octet-stream";
 }
+function resolveServeProxyTarget(config, envKey) {
+  if (config.envs?.length) {
+    const environment = config.envs.find((item) => item.key === (envKey || config.defaultEnvKey)) || config.envs[0];
+    return String(environment.baseUrl || "").replace(/\/+$/, "");
+  }
+  return String(config.baseUrl || "").replace(/\/+$/, "");
+}
+function proxyRequest(request, response, targetUrl) {
+  const headers = { ...request.headers };
+  delete headers.host;
+  delete headers.connection;
+  const upstream = import_node_http.default.request(targetUrl + request.url, {
+    method: request.method,
+    headers
+  }, (upstreamResponse) => {
+    response.writeHead(upstreamResponse.statusCode || 502, upstreamResponse.headers);
+    upstreamResponse.pipe(response);
+  });
+  upstream.on("error", () => {
+    response.writeHead(502, { "Content-Type": "text/plain; charset=utf-8" });
+    response.end("Bad Gateway: \u65E0\u6CD5\u8FDE\u63A5\u63A5\u53E3\u4EE3\u7406\u76EE\u6807");
+  });
+  request.pipe(upstream);
+}
 async function serveCommand(args) {
   const configPath = resolveConfigPath(args.config);
   const workspace = import_node_path6.default.dirname(configPath);
   const libraryDist = import_node_path6.default.dirname(import_node_path6.default.resolve(process.argv[1]));
+  const config = loadConfigFile(configPath, node_exports);
+  const proxyTarget = resolveServeProxyTarget(config, args.env);
   const server = import_node_http.default.createServer((request, response) => {
     try {
       const pathname = decodeURIComponent(new URL(request.url, "http://127.0.0.1").pathname);
@@ -5388,6 +5690,10 @@ async function serveCommand(args) {
       }
       import_node_fs5.default.stat(filePath, (error, stat) => {
         if (error || !stat.isFile()) {
+          if (proxyTarget) {
+            proxyRequest(request, response, proxyTarget);
+            return;
+          }
           response.writeHead(404);
           response.end("Not Found");
           return;
@@ -5403,6 +5709,8 @@ async function serveCommand(args) {
   server.listen(args.port, "127.0.0.1", () => {
     console.log(`\u573A\u666F\u6D4B\u8BD5\u5DE5\u4F5C\u53F0: http://127.0.0.1:${args.port}/`);
     console.log(`\u914D\u7F6E\u76EE\u5F55: ${workspace}`);
+    if (proxyTarget) console.log(`\u63A5\u53E3\u4EE3\u7406: ${args.env || config.defaultEnvKey || "default"} -> ${proxyTarget}`);
+    console.log("\u63D0\u793A: \u6D4F\u89C8\u5668 baseUrl \u7559\u7A7A\u5373\u8D70\u63A5\u53E3\u4EE3\u7406\uFF1B\u53CC\u51FB\u9879\u76EE\u5185 start-scenario-test.cmd \u53EF\u4E00\u952E\u542F\u52A8\u3002");
   });
 }
 function capabilitiesCommand(args) {
