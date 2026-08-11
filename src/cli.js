@@ -4,7 +4,6 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { pathToFileURL } from "node:url";
 import * as ScenarioTest from "./node.js";
-import { createXlsxAdapter, readWorkbookRows } from "./adapters/xlsx.js";
 import { DEFAULT_LIBRARY_URL, createProjectFiles } from "./init-templates.js";
 import { contract, CONTRACT_VERSION } from "./contract.js";
 import { buildCapabilities, renderCapabilitiesText } from "./capabilities.js";
@@ -228,16 +227,48 @@ function sha256File(filePath) {
     return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
 }
 
+const UMD_VERSION_PATTERN = /\/\*! scenario-test v(\d+\.\d+\.\d+) \*\//;
+const DTS_VERSION_PATTERN = /scenario-test v(\d+\.\d+\.\d+)/;
+
+function extractArtifactVersion(filePath) {
+    if (!fs.existsSync(filePath)) return null;
+    const head = fs.readFileSync(filePath, "utf8").slice(0, 4096);
+    const umdMatch = UMD_VERSION_PATTERN.exec(head);
+    if (umdMatch) return umdMatch[1];
+    const dtsMatch = DTS_VERSION_PATTERN.exec(head);
+    if (dtsMatch) return dtsMatch[1];
+    return null;
+}
+
+// 判断是否需要刷新框架管理文件。
+// 触发刷新的条件（满足任一）：
+//   - 显式 --force
+//   - 版本锁缺失（此时探测现有 UMD/d.ts 实际版本，与当前 CLI 不一致即刷新）
+//   - 版本锁损坏
+//   - 版本锁记录的 runtimeVersion/contractVersion 与当前 CLI 不一致
+//   - 版本锁版本一致但现有 UMD/d.ts 实际版本与当前 CLI 不一致（防止锁被手工改一致但文件是旧版）
 function shouldRefreshFramework(layout, force) {
     if (force) return true;
     const lockPath = layout.frameworkPath(FRAMEWORK_FILES.versionLock);
-    if (!fs.existsSync(lockPath)) return false;
+    if (!fs.existsSync(lockPath)) {
+        // 锁缺失：探测现有框架文件实际版本，任一与当前不一致即刷新
+        const umdVersion = extractArtifactVersion(layout.frameworkPath(FRAMEWORK_FILES.umd));
+        const dtsVersion = extractArtifactVersion(layout.frameworkPath(FRAMEWORK_FILES.dts));
+        return (umdVersion !== null && umdVersion !== VERSION)
+            || (dtsVersion !== null && dtsVersion !== VERSION);
+    }
+    let lock;
     try {
-        const lock = JSON.parse(fs.readFileSync(lockPath, "utf8"));
-        return lock.runtimeVersion !== VERSION || lock.contractVersion !== CONTRACT_VERSION;
+        lock = JSON.parse(fs.readFileSync(lockPath, "utf8"));
     } catch {
         return true;
     }
+    if (lock.runtimeVersion !== VERSION || lock.contractVersion !== CONTRACT_VERSION) return true;
+    // 锁版本一致：仍需校验文件实际版本，防止锁版本号被手工改一致但文件是旧版
+    const umdVersion = extractArtifactVersion(layout.frameworkPath(FRAMEWORK_FILES.umd));
+    const dtsVersion = extractArtifactVersion(layout.frameworkPath(FRAMEWORK_FILES.dts));
+    return (umdVersion !== null && umdVersion !== VERSION)
+        || (dtsVersion !== null && dtsVersion !== VERSION);
 }
 
 // 项目版本锁（框架管理文件）：不存在则创建；已存在但版本或文件哈希与当前不一致时更新
@@ -368,7 +399,7 @@ async function loadPlugins(config, configDir, options = {}) {
 
         const imported = await import(pathToFileURL(absolutePath).href);
         const factory = imported.default || imported;
-        const pluginApi = { ...ScenarioTest, readWorkbookRows };
+        const pluginApi = { ...ScenarioTest };
         const plugin = typeof factory === "function" ? await factory(pluginApi) : factory;
         plugins.push(plugin);
     }
@@ -421,7 +452,7 @@ async function runCommand(args) {
         throw new Error(args.scenario ? `未找到场景: ${args.scenario}` : "配置中没有可自动执行的场景");
     }
     const plugins = await loadPlugins(config, configDir, { allowExternalPlugins: args.allowExternalPlugins });
-    const adapters = { xlsx: createXlsxAdapter({ workspace: configDir }) };
+    const adapters = {};
     for (const plugin of plugins) Object.assign(adapters, plugin?.adapters || {});
     const baseOptions = {
         config,

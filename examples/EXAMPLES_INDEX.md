@@ -37,29 +37,7 @@ scenario-test 提供了多个示例帮助您快速上手。
 
 ---
 
-### 3. XLSX Adapter - Excel 操作示例 ⭐⭐⭐
-**路径**: `examples/xlsx-adapter/`
-
-**适合**: 需要生成 Excel 报表的用户
-
-**内容**:
-- 销售报表生成 (sales-report.js)
-- 用户列表导出 (user-list.js)
-- Excel 模板使用
-
-**功能**:
-- ✅ 使用模板生成报表
-- ✅ 动态数据填充
-- ✅ 变量和响应数据引用
-- ✅ 安全路径验证（v0.3.0）
-
-**学习时间**: 20 分钟
-
-**相关文档**: [XLSX 适配器 README](xlsx-adapter/README.md)
-
----
-
-### 4. Security Best Practices - 安全最佳实践 ⭐⭐⭐
+### 3. Security Best Practices - 安全最佳实践 ⭐⭐⭐
 **路径**: `examples/security-best-practices/`
 
 **适合**: 所有用户（必读）
@@ -129,9 +107,6 @@ node examples/complete/mock-server.cjs
 # 新终端
 node dist/scenario-test-cli.cjs --config examples/complete/scenario.config.js --all
 
-# XLSX 示例
-node dist/scenario-test-cli.cjs --config examples/xlsx-adapter/scenario.config.js --all
-
 # 安全示例
 export SCENARIO_AUTH="Bearer demo-token"
 export DEMO_API_KEY="demo-key"
@@ -149,9 +124,8 @@ node dist/scenario-test-cli.cjs --config examples/security-best-practices/scenar
 3. ✅ Security 示例 - 学习安全实践
 
 ### 中级（2 小时）
-4. ✅ XLSX Adapter - 掌握 Excel 操作
-5. ✅ 阅读 [README.md](../README.md) - 完整 API 文档
-6. ✅ 阅读 [CHANGELOG.md](../CHANGELOG.md) - 了解版本变化
+4. ✅ 阅读 [README.md](../README.md) - 完整 API 文档
+5. ✅ 阅读 [CHANGELOG.md](../CHANGELOG.md) - 了解版本变化
 
 ### 高级（3+ 小时）
 7. ✅ 编写自定义场景
@@ -163,7 +137,6 @@ node dist/scenario-test-cli.cjs --config examples/security-best-practices/scenar
 ## 🆕 v0.3.0 新增内容
 
 ### 示例更新
-- ✅ **XLSX Adapter** 示例（新增）
 - ✅ **Security Best Practices** 示例（新增）
 
 ### 安全改进
@@ -192,12 +165,6 @@ examples/
 │   ├── mock-server.cjs
 │   ├── scenario.config.js
 │   ├── index.html
-│   └── README.md
-│
-├── xlsx-adapter/                   # Excel 操作（新增 v0.3.0）
-│   ├── templates/
-│   ├── scenarios/
-│   ├── scenario.config.js
 │   └── README.md
 │
 ├── security-best-practices/        # 安全实践（新增 v0.3.0）
@@ -275,7 +242,6 @@ examples/
 | 认证流程 | ✅ Complete | 完成 |
 | 重试机制 | ✅ Complete | 完成 |
 | 条件跳过 | ✅ Complete | 完成 |
-| Excel 操作 | ✅ XLSX Adapter | 完成 |
 | 安全实践 | ✅ Security | 完成 |
 | 文件上传 | ⏳ 计划中 | 待补充 |
 | 自定义插件 | ⏳ 计划中 | 待补充 |

@@ -48,7 +48,7 @@ node ../../dist/scenario-test-cli.cjs serve \
 # http://127.0.0.1:4300/
 ```
 
-或者直接打开 `index.html` 文件。
+浏览器工作台必须通过上面的 `serve` 命令启动，请勿直接打开 `index.html`。
 
 **注意**: 浏览器环境无法读取系统环境变量，需要在配置中直接设置 `vars`（仅用于开发测试）。
 

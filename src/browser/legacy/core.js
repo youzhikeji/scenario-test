@@ -302,7 +302,7 @@ const legacyCore = (function (globalRoot) {
         if (def.matches !== undefined) {
             expected = resolve(def.matches, runtime);
             // 隐式默认断言（无显式 status/assertions 时追加的 HTTP 2xx 检查）仅对数字
-            // HTTP 状态码生效；本地适配器（如 prepareXlsx 返回 status: 'LOCAL'）不参与匹配
+            // HTTP 状态码生效；本地适配器（返回 status: 'LOCAL'）不参与匹配
             if (!(def.implicit === true && typeof actual !== 'number')) {
                 try {
                     passed = passed && new RegExp(String(expected)).test(String(actual == null ? '' : actual));

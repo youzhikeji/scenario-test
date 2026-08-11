@@ -52,8 +52,6 @@ npm run test:browser
 | `dist/scenario-test-cli.cjs` | CLI 与本地浏览器服务 |
 | `dist/scenario-test.d.ts` | 类型声明（零安装：纯 JS 项目用 JSDoc/IDE 补全） |
 | `dist/scenario-test-capabilities.json` | 机器可读 DSL 能力清单（与 `capabilities --json` 同源） |
-| `dist/adapters/xlsx.cjs` | 可选 Excel 适配器 |
-
 ## 三方能力发现
 
 三方（或 AI）不应靠猜或手工比对多份文档。本项目以 `src/contract.js` 的不可变 DSL Contract 为唯一能力真相，投影到以下入口：
@@ -70,7 +68,7 @@ GitHub Release（https://github.com/youzhikeji/scenario-test/releases）是对�
 
 ```html
 <div id="scenario-test" style="height: 100vh"></div>
-<script src="/libs/scenario-test.umd.js"></script>
+<script src="./.scenario-test/scenario-test.umd.js"></script>
 <script src="./scenario.config.js"></script>
 <script>
     ScenarioTest.createApp({

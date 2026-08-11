@@ -112,6 +112,7 @@ test("公共库和产物不包含敏感信息", () => {
     const files = [];
 
     // 注意: examples 目录包含安全教学的反面教材（注释中的错误示范），因此排除
+    // docs/archive/ 是已归档的历史过程文档，不再参与当前发布，也排除
     for (const folder of ["src", "dist", "docs"]) {
         const folderPath = path.join(root, folder);
         if (!fs.existsSync(folderPath)) continue;
@@ -120,6 +121,7 @@ test("公共库和产物不包含敏感信息", () => {
             for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
                 const filePath = path.join(directory, entry.name);
                 if (entry.isDirectory()) {
+                    if (path.relative(root, filePath).replace(/\\/g, "/").startsWith("docs/archive")) continue;
                     walk(filePath);
                 } else if (/\.(?:js|cjs|mjs|html|md|json)$/.test(entry.name)) {
                     files.push(filePath);

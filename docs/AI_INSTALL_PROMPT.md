@@ -3,13 +3,13 @@
 在目标业务项目根目录打开 AI 助手，将下面内容完整粘贴。AI 会完成安装和体检，然后主动询问要测试的业务功能；用户不需要克隆公共库、安装 npm 依赖、学习 DSL 或再次复制场景 Prompt。
 
 ```text
-请在当前项目根目录安装 scenario-test v0.5.2。目标目录为 scenario-test。
+请在当前项目根目录安装 scenario-test v0.5.3。目标目录为 scenario-test。
 
 执行要求：
 1. 先确认当前目录是项目根目录，且 Node.js 版本不低于 18；不满足时停止并说明原因。
 2. 不克隆公共库源码，不执行 npm install，不修改业务代码、构建配置或已有场景文件。
 3. 仅从以下固定版本地址下载 CLI 到系统临时目录：
-   https://github.com/youzhikeji/scenario-test/releases/download/v0.5.2/scenario-test-cli.cjs
+   https://github.com/youzhikeji/scenario-test/releases/download/v0.5.3/scenario-test-cli.cjs
 4. 使用 node <临时 CLI 路径> init --project . --dir "scenario-test" 执行初始化；不要传 --force。
 5. init 会保留已有文件。检查并报告：
    - scenario-test/README.md

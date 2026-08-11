@@ -161,7 +161,7 @@ ScenarioTest.registerAdapter("database", createDatabaseAdapter({
         sql: "SELECT * FROM users WHERE id = {{vars.userId}}"
     },
     assertions: [
-        { path: "rowCount", operator: "gt", value: 0 }
+        { path: "rowCount", gt: 0 }
     ]
 }
 

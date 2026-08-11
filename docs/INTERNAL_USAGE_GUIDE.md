@@ -43,29 +43,7 @@ ScenarioTest.registerScenario("user-query", ScenarioTest.defineScenario({
 node scenario-test/.scenario-test/scenario-test-cli.cjs --config scenario-test/scenario.config.js --env local --all
 
 # 浏览器运行
-# 打开 scenario-test/index.html
-```
-
----
-
-## 内置适配器
-
-### XLSX 适配器
-
-用于生成测试数据的 Excel 文件：
-
-```javascript
-{
-    name: "准备 Excel",
-    prepareXlsx: {
-        template: "templates/users.xlsx",
-        output: "output/test-users.xlsx",
-        cells: [
-            { cell: "A2", value: "{{vars.userName}}" },
-            { cell: "B2", value: "{{vars.userAge}}" }
-        ]
-    }
-}
+node scenario-test/.scenario-test/scenario-test-cli.cjs serve --config scenario-test/scenario.config.js
 ```
 
 ---
@@ -99,9 +77,9 @@ vars: {
     name: "创建订单",
     method: "POST",
     path: "/api/orders",
-    extract: {
-        orderId: "data.orderId"  // 提取响应中的 orderId
-    }
+    extract: [
+        { name: "orderId", path: "data.orderId" }  // 提取响应中的 orderId
+    ]
 },
 {
     name: "查询订单",
@@ -115,7 +93,7 @@ vars: {
 assertions: [
     { path: "status", equals: "success" },
     { path: "data.items", exists: true },
-    { path: "data.total", operator: "gt", value: 0 },
+    { path: "data.total", gt: 0 },
     { path: "data.status", oneOf: ["pending", "completed"] }
 ]
 ```
@@ -143,7 +121,7 @@ assertions: [
     name: "清理数据（仅开发环境）",
     method: "DELETE",
     path: "/api/test-data",
-    when: { path: "vars.env", equals: "dev" }
+    when: { from: "vars", path: "env", equals: "dev" }
 }
 ```
 
@@ -197,7 +175,7 @@ ScenarioTest.registerAdapter("database", dbAdapter);
 
 ## 环境变量
 
-优先级：环境变量 > 配置 vars > 场景 vars
+优先级：CLI 环境变量 / 浏览器页面覆盖 > scenario.config.js 的 vars > 场景 vars > variables[].defaultValue
 
 ```javascript
 // 配置文件

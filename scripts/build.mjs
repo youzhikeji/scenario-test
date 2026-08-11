@@ -94,12 +94,3 @@ await build({
         __SCENARIO_TEST_CAPABILITIES__: JSON.stringify(capabilitiesJson)
     }
 });
-
-await build({
-    ...shared,
-    entryPoints: [path.join(root, "src/adapters/xlsx.js")],
-    outfile: path.join(dist, "adapters/xlsx.cjs"),
-    platform: "node",
-    format: "cjs",
-    target: ["node18"]
-});

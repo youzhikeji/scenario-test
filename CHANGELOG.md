@@ -2,6 +2,48 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.3] - 2026-03-14
+
+### 🗑️ Removed
+
+1. **移除 xlsx 适配器（重大瘦身）**
+   - 删除 `src/adapters/xlsx.js`、`tests/xlsx.test.js`、`examples/xlsx-adapter/`（含 README、index.html、index.standalone.html、scenario.config.js、scenarios/*、templates/README.md）及 `dist/adapters/xlsx.cjs`。
+   - 从 `package.json` 移除 `exceljs` 依赖，传递依赖减少约 95 个；CLI 产物从约 3.0MB 降至约 953KB。
+   - `scripts/build.mjs` 移除 xlsx 构建步骤；`scripts/publish-release.mjs` 发布资产从 7 个减至 6 个（移除 `adapters/xlsx.cjs`）。
+   - `src/core.js` / `src/browser/legacy/core.js` 移除 xlsx 相关注释；`README.md`、`docs/ADAPTER_GUIDE.md`、`examples/EXAMPLES_INDEX.md` 同步移除 xlsx 引用。
+
+### ⚠️ Breaking Changes
+
+1. **xlsx 适配器被移除**
+   - v0.5.3 起不再内置 xlsx 适配器，发布资产中也不再提供 `adapters/xlsx.cjs`；依赖 `prepareXlsx` 等 xlsx 能力的场景将无法再开箱即用。
+
+### 🐛 Bug Fixes
+
+1. **修复版本锁缺失/损坏时的升级死锁**
+   - `init` 的 `shouldRefreshFramework` 在版本锁缺失或损坏时不再静默跳过刷新，改为复用 `doctor` 的 UMD/DTS 版本探测逻辑，版本锁异常时可自愈（涉及 `src/cli.js`、`src/doctor.js`）。
+
+### 🔒 Security
+
+1. **升级 postcss 至 8.5.26 修复 CVE**
+   - `package.json` 新增 `npm overrides` 将 `postcss` 强制升级到 `8.5.26`，并重建 `package-lock.json`，消除已知漏洞。
+
+### 📚 Documentation
+
+1. **v0.3 历史资料归档**
+   - 8 个 v0.3 历史文档迁移至 `docs/archive/`（FINAL_REVIEW、GITLAB_RELEASE_GUIDE、HOW_TO_VIEW_EXAMPLES、READINESS_ASSESSMENT、RELEASE_GUIDE/RELEASE_NOTES/RELEASE_SUMMARY_v0.3.0、SECURITY_FIX_PLAN），新增 `docs/archive/README.md` 说明仅作历史参考、不再维护；删除整个 `docs/fix-examples/` 目录（11 个 v0.3 时期代码示例与评估文档）。
+
+2. **文档内容收敛与示例流程统一**
+   - `docs/INTERNAL_USAGE_GUIDE.md` 与 `docs/ADAPTER_GUIDE.md` 将断言语法从 v0.3 旧形式更新为操作符键形式。
+   - `docs/INTERNAL_USAGE_GUIDE.md` 6 处及 `examples/complete/README.md`、`examples/security-best-practices/README.md`、`examples/EXAMPLES_INDEX.md` 共 8 处「直接打开 index.html」统一为「必须 serve 启动」。
+   - `docs/AI_INSTALL_PROMPT.md` 版本号及安装命令中的 release 资产下载链接同步到 v0.5.3。
+
+### Migration Guide: v0.5.2 → v0.5.3
+
+1. **使用 xlsx 适配器的用户**：升级前请自行导出/保存 xlsx 适配器实现，或继续使用 v0.5.2。
+2. 其余用户无 breaking change；若此前遇到过版本锁缺失/损坏，升级后重新执行 `init`（不传 `--force`）即可自愈版本锁。
+
+---
+
 ## [0.5.2] - 2026-08-10
 
 ### ✨ Integration Experience

@@ -27,7 +27,7 @@
    git push github v0.5.0
    ```
 
-5. 创建 GitHub Release，并上传 `scenario-test-cli.cjs`、`scenario-test.umd.js`、`scenario-test.esm.js`、`scenario-test.cjs`、`scenario-test.d.ts`、`scenario-test-capabilities.json`、`adapters/xlsx.cjs`、完整压缩包和 SHA256 清单（文件清单见 `scripts/publish-release.mjs`）。
+5. 创建 GitHub Release，并上传 `scenario-test-cli.cjs`、`scenario-test.umd.js`、`scenario-test.esm.js`、`scenario-test.cjs`、`scenario-test.d.ts`、`scenario-test-capabilities.json` 和 SHA256 清单。
 6. AI 安装 Prompt 下载该 Release 的 CLI 后，`init` 会将 UMD 和 CLI 写入项目目录，由浏览器加载本地文件：
 
 ```html

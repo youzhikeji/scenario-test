@@ -17,8 +17,7 @@ const files = [
     "scenario-test.cjs",
     "scenario-test-cli.cjs",
     "scenario-test.d.ts",
-    "scenario-test-capabilities.json",
-    "adapters/xlsx.cjs"
+    "scenario-test-capabilities.json"
 ];
 const assets = files.map((filePath) => ({
     name: filePath.split("/").at(-1),
@@ -47,7 +46,7 @@ const response = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectId)
     body: JSON.stringify({
         name: `Scenario Test ${tag}`,
         tag_name: tag,
-        description: "浏览器、Node.js、CLI、Excel 适配器、类型声明与能力清单构建产物。",
+        description: "浏览器、Node.js、CLI、类型声明与能力清单构建产物。",
         assets: { links: assets }
     })
 });

@@ -20,7 +20,7 @@ node .\dist\scenario-test-cli.cjs serve `
   --port 4300
 ```
 
-访问 `http://127.0.0.1:4300/`。也可直接打开 `index.html`，前提是 Mock API 已启动。
+访问 `http://127.0.0.1:4300/`。浏览器工作台必须通过上面的 `serve` 命令启动，请勿直接打开 `index.html`。
 
 ## CLI
 
