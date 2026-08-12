@@ -1,6 +1,6 @@
 {
   "schema": "scenario-test-capabilities",
-  "version": "0.5.9",
+  "version": "0.5.10",
   "contractVersion": 1,
   "assertions": {
     "operators": {
@@ -198,6 +198,10 @@
       "force": {
         "kind": "flag",
         "description": "init 覆盖已有文件（目标目录已存在时可交互选择）"
+      },
+      "no-input": {
+        "kind": "flag",
+        "description": "init 非交互：目录已存在时按 keep（保留配置与场景，仅刷新 AI 规则和运行时副本）"
       },
       "fail-on-skip": {
         "kind": "flag",

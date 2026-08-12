@@ -28,8 +28,8 @@
     .\install.ps1
     .\install.ps1 -ProjectDir D:\myproject -TargetDir "dev/场景测试"
     .\install.ps1 -UseNpm
-    .\install.ps1 -Source "https://gitlab.example.com/group/project/-/raw/v0.5.9/dist"
-    irm https://cdn.jsdelivr.net/gh/youzhikeji/scenario-test@v0.5.9/scripts/install.ps1 | iex
+    .\install.ps1 -Source "https://gitlab.example.com/group/project/-/raw/v0.5.10/dist"
+    irm https://cdn.jsdelivr.net/gh/youzhikeji/scenario-test@v0.5.10/scripts/install.ps1 | iex
 #>
 
 param(
@@ -41,7 +41,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$ScenarioTestVersion = "0.5.9"
+$ScenarioTestVersion = "0.5.10"
 $PackageTarball = "https://registry.npmjs.org/@yc_yzkj/scenario-test/-/scenario-test-$ScenarioTestVersion.tgz"
 $RuntimeFiles = @(
     "scenario-test-cli.cjs",
@@ -142,12 +142,15 @@ try {
         Write-Info "初始化场景测试目录：$fullTargetPath ..."
         $tempCli = Join-Path $runtimeDir "scenario-test-cli.cjs"
 
-        $initOutput = node $tempCli init --project $ProjectDir --dir $TargetDir 2>&1
+        # --no-input：目录已存在时按 keep（保留配置与场景，仅刷新 AI 规则和运行时），
+        # 避免 install 脚本在"已存在"时进入被捕获输出吞掉的交互确认而静默卡死。
+        # 实时回显 init 输出，避免长时间黑屏；stdin 喂 $null 让非交互判定稳定。
+        $initOutput = node $tempCli init --project $ProjectDir --dir $TargetDir --no-input 2>&1 |
+            ForEach-Object { Write-Host $_ -ForegroundColor Gray; $_ }
         if ($LASTEXITCODE -ne 0) {
             throw "init 命令失败`n$initOutput"
         }
         Write-Success "初始化完成"
-        Write-Host $initOutput -ForegroundColor Gray
     } else {
         # 显式 npm 模式：通过 npm 安装运行时（失败即退出，不静默切换）
         Write-Info "通过 npm 安装运行时：@yc_yzkj/scenario-test ..."
@@ -157,15 +160,15 @@ try {
         }
         Write-Success "npm 安装成功"
 
-        # 4. 执行 init
+        # 4. 执行 init（--no-input：目录已存在时保留配置与场景，避免脚本卡在交互确认）
         Write-Info "初始化场景测试目录：$fullTargetPath ..."
 
-        $initOutput = npx @yc_yzkj/scenario-test init --project $ProjectDir --dir $TargetDir 2>&1
+        $initOutput = npx @yc_yzkj/scenario-test init --project $ProjectDir --dir $TargetDir --no-input 2>&1 |
+            ForEach-Object { Write-Host $_ -ForegroundColor Gray; $_ }
         if ($LASTEXITCODE -ne 0) {
             throw "init 命令失败`n$initOutput"
         }
         Write-Success "初始化完成"
-        Write-Host $initOutput -ForegroundColor Gray
     }
 
     # 5. 检查生成的文件

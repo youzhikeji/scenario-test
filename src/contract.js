@@ -131,6 +131,7 @@ export const contract = Object.freeze({
             "library-url": { kind: "value", prop: "libraryUrl", description: "init 运行时副本下载目录（CLI/UMD/d.ts/capabilities，默认 GitHub Tag dist）" },
             all: { kind: "flag", prop: "all", description: "执行配置中的全部自动场景（默认排除 manual:true）" },
             force: { kind: "flag", prop: "force", description: "init 覆盖已有文件（目标目录已存在时可交互选择）" },
+            "no-input": { kind: "flag", prop: "noInput", description: "init 非交互：目录已存在时按 keep（保留配置与场景，仅刷新 AI 规则和运行时副本）" },
             "fail-on-skip": { kind: "flag", prop: "failOnSkip", description: "存在任何 SKIP 步骤时最终退出码为 1" },
             "allow-external-plugins": { kind: "flag", prop: "allowExternalPlugins", description: "允许加载外部插件（有安全风险）" },
             json: { kind: "flag", prop: "json", description: "capabilities/doctor 输出机器可读 JSON（stdout 纯净）" },

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/*! scenario-test v0.5.9 */
+/*! scenario-test v0.5.10 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -314,7 +314,7 @@ __export(node_exports, {
 var import_blueimp_md5 = __toESM(require_md5(), 1);
 
 // src/version.generated.js
-var VERSION = "0.5.9";
+var VERSION = "0.5.10";
 
 // src/contract.js
 var CONTRACT_VERSION = 1;
@@ -437,6 +437,7 @@ var contract = Object.freeze({
       "library-url": { kind: "value", prop: "libraryUrl", description: "init \u8FD0\u884C\u65F6\u526F\u672C\u4E0B\u8F7D\u76EE\u5F55\uFF08CLI/UMD/d.ts/capabilities\uFF0C\u9ED8\u8BA4 GitHub Tag dist\uFF09" },
       all: { kind: "flag", prop: "all", description: "\u6267\u884C\u914D\u7F6E\u4E2D\u7684\u5168\u90E8\u81EA\u52A8\u573A\u666F\uFF08\u9ED8\u8BA4\u6392\u9664 manual:true\uFF09" },
       force: { kind: "flag", prop: "force", description: "init \u8986\u76D6\u5DF2\u6709\u6587\u4EF6\uFF08\u76EE\u6807\u76EE\u5F55\u5DF2\u5B58\u5728\u65F6\u53EF\u4EA4\u4E92\u9009\u62E9\uFF09" },
+      "no-input": { kind: "flag", prop: "noInput", description: "init \u975E\u4EA4\u4E92\uFF1A\u76EE\u5F55\u5DF2\u5B58\u5728\u65F6\u6309 keep\uFF08\u4FDD\u7559\u914D\u7F6E\u4E0E\u573A\u666F\uFF0C\u4EC5\u5237\u65B0 AI \u89C4\u5219\u548C\u8FD0\u884C\u65F6\u526F\u672C\uFF09" },
       "fail-on-skip": { kind: "flag", prop: "failOnSkip", description: "\u5B58\u5728\u4EFB\u4F55 SKIP \u6B65\u9AA4\u65F6\u6700\u7EC8\u9000\u51FA\u7801\u4E3A 1" },
       "allow-external-plugins": { kind: "flag", prop: "allowExternalPlugins", description: "\u5141\u8BB8\u52A0\u8F7D\u5916\u90E8\u63D2\u4EF6\uFF08\u6709\u5B89\u5168\u98CE\u9669\uFF09" },
       json: { kind: "flag", prop: "json", description: "capabilities/doctor \u8F93\u51FA\u673A\u5668\u53EF\u8BFB JSON\uFF08stdout \u7EAF\u51C0\uFF09" },
@@ -5231,7 +5232,7 @@ for (const [name, spec] of Object.entries(contract.cli.options)) {
   }
 }
 function parseArgs(argv) {
-  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", port: 4300, project: "", dir: "", force: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false };
+  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", port: 4300, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false };
   let start = 0;
   if (contract.cli.commands.includes(argv[0])) {
     args.command = argv[0];
@@ -5445,10 +5446,9 @@ function writeVersionLock(layout) {
 function shouldRefreshFramework(layout, force) {
   if (force) return true;
   const runtimeFileNames = [FRAMEWORK_FILES.cli, FRAMEWORK_FILES.umd, FRAMEWORK_FILES.dts, FRAMEWORK_FILES.capabilities];
+  if (runtimeFileNames.some((fileName) => !import_node_fs5.default.existsSync(layout.frameworkPath(fileName)))) return true;
   const lockPath = layout.frameworkPath(FRAMEWORK_FILES.versionLock);
-  if (!import_node_fs5.default.existsSync(lockPath)) {
-    return runtimeFileNames.some((fileName) => !import_node_fs5.default.existsSync(layout.frameworkPath(fileName)));
-  }
+  if (!import_node_fs5.default.existsSync(lockPath)) return true;
   let lock;
   try {
     lock = JSON.parse(import_node_fs5.default.readFileSync(lockPath, "utf8"));
@@ -5456,7 +5456,10 @@ function shouldRefreshFramework(layout, force) {
     return true;
   }
   if (lock.runtimeVersion !== VERSION || lock.contractVersion !== CONTRACT_VERSION) return true;
-  return runtimeFileNames.some((fileName) => !import_node_fs5.default.existsSync(layout.frameworkPath(fileName)));
+  return runtimeFileNames.some((fileName) => {
+    const expected = lock.sha256?.[fileName];
+    return !!expected && sha256File(layout.frameworkPath(fileName)) !== expected;
+  });
 }
 function recordRuntimeResult(created, skipped, relativePath, status) {
   if (status === true) created.push(relativePath);
@@ -5470,7 +5473,7 @@ async function initCommand(args) {
   const layout = resolveProjectLayout(projectRoot, directory);
   const frameworkDirectory = ".scenario-test";
   let force = args.force;
-  if (!force && import_node_fs5.default.existsSync(import_node_path6.default.join(projectRoot, directory))) {
+  if (!force && import_node_fs5.default.existsSync(import_node_path6.default.join(projectRoot, directory)) && !args.noInput) {
     const mode = await askInitMode(directory);
     if (mode === "cancel") {
       console.log("\u5DF2\u53D6\u6D88\u521D\u59CB\u5316\u3002");
@@ -5478,7 +5481,7 @@ async function initCommand(args) {
     }
     force = mode === "overwrite";
   }
-  const refreshFramework = shouldRefreshFramework(layout, force);
+  const refreshFramework = force || shouldRefreshFramework(layout);
   const frameworkTemplatePaths = /* @__PURE__ */ new Set([
     layout.frameworkRelativePath(FRAMEWORK_FILES.authoringPrompt),
     layout.frameworkRelativePath(FRAMEWORK_FILES.patterns)

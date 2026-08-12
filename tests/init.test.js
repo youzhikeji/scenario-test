@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import http from "node:http";
+import crypto from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import test from "node:test";
 import { CONTRACT_VERSION } from "../src/index.js";
@@ -186,6 +187,40 @@ test("init 统一迁移到 .scenario-test，不再采用旧平铺布局", () => 
         // 运行时副本仍按当前版本落盘到 .scenario-test/（平铺旧文件不删除，由用户决定清理）
         assert.equal(fs.existsSync(path.join(publicDir, ".scenario-test", "scenario-test.umd.js")), true);
         assert.equal(fs.existsSync(path.join(publicDir, ".scenario-test", ".scenario-test-version.json")), true);
+    } finally {
+        fs.rmSync(project, { recursive: true, force: true });
+    }
+});
+
+test("init --no-input：目录已存在时不询问、退出 0、保留项目配置并刷新运行时", () => {
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-init-noinput-"));
+    try {
+        const first = runInit(project);
+        assert.equal(first.status, 0, first.stderr);
+        // 用户随后维护了自己的配置（模拟真实项目已存在 scenario.config.js）
+        const publicDir = path.join(project, "scenario-test");
+        const customConfig = "ScenarioTest.registerConfig(ScenarioTest.defineConfig({baseUrl:'http://localhost:9999',scenarios:[]}));\n";
+        fs.writeFileSync(path.join(publicDir, "scenario.config.js"), customConfig, "utf8");
+        // 篡改版本锁模拟旧副本：把锁里的 UMD/CLI sha256 改成与磁盘失配的假值，
+        // 使版本锁校验失败 → --no-input 应触发运行时刷新（升级旧副本的关键路径）
+        const umdPath = path.join(publicDir, ".scenario-test", "scenario-test.umd.js");
+        const cliCopyPath = path.join(publicDir, ".scenario-test", "scenario-test-cli.cjs");
+        const realUmdSha = crypto.createHash("sha256").update(fs.readFileSync(umdPath)).digest("hex");
+        const realCliSha = crypto.createHash("sha256").update(fs.readFileSync(cliCopyPath)).digest("hex");
+        const lockPath = path.join(publicDir, ".scenario-test", ".scenario-test-version.json");
+        const lock = JSON.parse(fs.readFileSync(lockPath, "utf8"));
+        lock.sha256["scenario-test.umd.js"] = "0".repeat(64);
+        lock.sha256["scenario-test-cli.cjs"] = "0".repeat(64);
+        fs.writeFileSync(lockPath, JSON.stringify(lock, null, 2) + "\n", "utf8");
+
+        const second = runInit(project, "--no-input");
+        assert.equal(second.status, 0, second.stderr);
+        assert.doesNotMatch(second.stdout + second.stderr, /目标目录 .* 已存在/, "--no-input 不应出现交互提示");
+        assert.equal(fs.readFileSync(path.join(publicDir, "scenario.config.js"), "utf8"), customConfig, "--no-input 应保留用户配置");
+        // 刷新会重写版本锁为与磁盘实际匹配的 sha（副本内容与 dist 同源时字节不变，但锁必须被重写）
+        const lockAfter = JSON.parse(fs.readFileSync(lockPath, "utf8"));
+        assert.equal(lockAfter.sha256["scenario-test.umd.js"], realUmdSha, "--no-input 应把 UMD 版本锁 sha 重写为磁盘实际值");
+        assert.equal(lockAfter.sha256["scenario-test-cli.cjs"], realCliSha, "--no-input 应把 CLI 版本锁 sha 重写为磁盘实际值");
     } finally {
         fs.rmSync(project, { recursive: true, force: true });
     }

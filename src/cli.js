@@ -34,7 +34,7 @@ for (const [name, spec] of Object.entries(contract.cli.options)) {
 }
 
 function parseArgs(argv) {
-    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", port: 4300, project: "", dir: "", force: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false };
+    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", port: 4300, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false };
     let start = 0;
     // 命令名单来自 contract.cli.commands
     if (contract.cli.commands.includes(argv[0])) { args.command = argv[0]; start = 1; }
@@ -262,10 +262,10 @@ function writeVersionLock(layout) {
 function shouldRefreshFramework(layout, force) {
     if (force) return true;
     const runtimeFileNames = [FRAMEWORK_FILES.cli, FRAMEWORK_FILES.umd, FRAMEWORK_FILES.dts, FRAMEWORK_FILES.capabilities];
+    // 任一运行时文件缺失即刷新（覆盖"锁缺失"与"副本不完整"两种情况）
+    if (runtimeFileNames.some((fileName) => !fs.existsSync(layout.frameworkPath(fileName)))) return true;
     const lockPath = layout.frameworkPath(FRAMEWORK_FILES.versionLock);
-    if (!fs.existsSync(lockPath)) {
-        return runtimeFileNames.some((fileName) => !fs.existsSync(layout.frameworkPath(fileName)));
-    }
+    if (!fs.existsSync(lockPath)) return true;
     let lock;
     try {
         lock = JSON.parse(fs.readFileSync(lockPath, "utf8"));
@@ -273,7 +273,12 @@ function shouldRefreshFramework(layout, force) {
         return true;
     }
     if (lock.runtimeVersion !== VERSION || lock.contractVersion !== CONTRACT_VERSION) return true;
-    return runtimeFileNames.some((fileName) => !fs.existsSync(layout.frameworkPath(fileName)));
+    // 版本锁声明的 sha256 与磁盘实际不符（文件被篡改/损坏/手工替换）时也刷新，保证副本可信。
+    // 仅校验"锁里登记过的文件"：跳过锁未登记的文件，避免升级期间 lock 尚未更新的新版副本被误刷。
+    return runtimeFileNames.some((fileName) => {
+        const expected = lock.sha256?.[fileName];
+        return !!expected && sha256File(layout.frameworkPath(fileName)) !== expected;
+    });
 }
 
 function recordRuntimeResult(created, skipped, relativePath, status) {
@@ -288,9 +293,10 @@ async function initCommand(args) {
     const storagePrefix = `scenario-test.${projectName.replace(/[^\p{L}\p{N}._-]+/gu, "-")}`;
     const layout = resolveProjectLayout(projectRoot, directory);
     const frameworkDirectory = ".scenario-test";
-    // 目标目录已存在且未显式 --force 时，由用户选择覆盖方式
+    // 目标目录已存在且未显式 --force 时，由用户选择覆盖方式；
+    // --no-input 或非交互环境（CI、脚本、管道）自动采用默认保留行为，避免卡住
     let force = args.force;
-    if (!force && fs.existsSync(path.join(projectRoot, directory))) {
+    if (!force && fs.existsSync(path.join(projectRoot, directory)) && !args.noInput) {
         const mode = await askInitMode(directory);
         if (mode === "cancel") {
             console.log("已取消初始化。");
@@ -298,9 +304,11 @@ async function initCommand(args) {
         }
         force = mode === "overwrite";
     }
+    // 运行时副本在锁缺失/版本不一致/sha256 失配/文件缺失时刷新（升级旧副本的关键路径）。
+    // 仅影响运行时副本与版本锁的刷新，不改变模板文件的 keep 语义。
+    const refreshFramework = force || shouldRefreshFramework(layout);
     // AI 规则/模式库随每次 init 刷新（keep 语义：不覆盖项目配置与场景）；
-    // 运行时副本仅在锁缺失/版本不一致/文件缺失时刷新
-    const refreshFramework = shouldRefreshFramework(layout, force);
+    // 运行时副本的刷新决策已并入上方 refreshFramework
     const frameworkTemplatePaths = new Set([
         layout.frameworkRelativePath(FRAMEWORK_FILES.authoringPrompt),
         layout.frameworkRelativePath(FRAMEWORK_FILES.patterns)

@@ -8,7 +8,7 @@
 执行要求：
 1. 先确认当前目录是项目根目录，且 Node.js 版本不低于 18；不满足时停止并说明原因。
 2. 不克隆公共库源码，不修改业务代码、构建配置或已有场景文件；不启动服务、不调用业务接口、不写入 Token、Secret 或真实测试数据。
-3. 默认使用免 npm 安装：不要搜索安装地址、GitHub Release 或 npm 最新版本，直接执行官方固定版本脚本（Windows: irm https://cdn.jsdelivr.net/gh/youzhikeji/scenario-test@v0.5.9/scripts/install.ps1 | iex；macOS/Linux: curl -fsSL https://cdn.jsdelivr.net/gh/youzhikeji/scenario-test@v0.5.9/scripts/install.sh | bash -s -- . scenario-test）。脚本从 npm Registry 下载一次固定版本 tarball，在本地解压并初始化；不调用 GitHub API、不执行 npm install、不修改 package.json。
+3. 默认使用免 npm 安装：不要搜索安装地址、GitHub Release 或 npm 最新版本，直接执行官方固定版本脚本（Windows: irm https://cdn.jsdelivr.net/gh/youzhikeji/scenario-test@v0.5.10/scripts/install.ps1 | iex；macOS/Linux: curl -fsSL https://cdn.jsdelivr.net/gh/youzhikeji/scenario-test@v0.5.10/scripts/install.sh | bash -s -- . scenario-test）。脚本从 npm Registry 下载一次固定版本 tarball，在本地解压并初始化；不调用 GitHub API、不执行 npm install、不修改 package.json。
 4. 只有用户明确要求使用 npm 时，才切换到 npm 方式：npm install -D @yc_yzkj/scenario-test，再执行 npx @yc_yzkj/scenario-test init --project . --dir "scenario-test"。两种方式不混用、不自动兜底。
    目标目录已存在时选择保留（默认回车）。
 5. 运行项目体检确认安装完整：免 npm 模式使用 node scenario-test/.scenario-test/scenario-test-cli.cjs doctor --config scenario-test/scenario.config.js；npm 模式使用 npx @yc_yzkj/scenario-test doctor --config scenario-test/scenario.config.js。有 FAIL 时停止并报告，不继续后续步骤。

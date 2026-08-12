@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.10] - 2026-08-12
+
+### 🐛 Bug Fixes
+
+1. **init --no-input：脚本安装不再卡死**
+   - `init` 新增 `--no-input`，目标目录已存在时按 keep（保留配置与场景，仅刷新 AI 规则和运行时副本），不进入交互确认。
+   - `install.ps1` / 安装流程对 init 传 `--no-input` 并实时回显输出，修复"目标目录已存在时 init 的交互提示被捕获输出吞掉、用户看不到任何提示而静默卡住"的问题。
+2. **运行时副本刷新兜底**
+   - `init` 在版本锁 sha256 与磁盘实际不符（副本被篡改/损坏/手工替换）时也刷新运行时副本，保证副本可信。
+
 ## [0.5.9] - 2026-08-12
 
 ### 🐛 Bug Fixes
