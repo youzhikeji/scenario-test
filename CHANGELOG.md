@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.12] - 2026-08-12
+
+### 🐛 Bug Fixes
+
+1. **接入 Prompt 精简**
+   - 安装接入 Prompt 由 8 条精简为 6 条：删除已被机制兜底的防御条款（命令格式由 CLI 守卫纠错、固定版本 URL 由 doctor 校验），只保留核心流程（安装 → doctor 体检 → 读取项目内规则 → 询问业务功能）。
+
 ## [0.5.11] - 2026-08-12
 
 ### 🐛 Bug Fixes
