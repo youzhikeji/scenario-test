@@ -62,11 +62,25 @@ test("CLI 拒绝未知参数、缺失参数值和冲突选择", () => {
         ["--unknown"],
         ["--config", "--all"],
         ["--all", "--scenario", "health"],
-        ["serve", "--port", "70000"]
+        ["serve", "--port", "70000"],
+        ["--config", "scenario.config.js", "doctor"]
     ]) {
         const result = spawnSync(process.execPath, [cli, ...args], { encoding: "utf8" });
         assert.notEqual(result.status, 0, `参数应失败: ${args.join(" ")}`);
     }
+});
+
+test("CLI 命令放错位置时给出纠正，而非静默当 run 场景名", () => {
+    const cli = path.resolve(import.meta.dirname, "../src/cli.js");
+    const result = spawnSync(process.execPath, [cli, "--config", "scenario.config.js", "doctor"], { encoding: "utf8" });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /doctor 必须放在第一个参数位置/);
+    assert.match(result.stderr, /doctor --config scenario\.config\.js/);
+    // 命令在第一个位置时正常解析：doctor 对缺失配置仍会汇总 FAIL（退出码 1），
+    // 但不应再报"命令必须放在第一个参数位置"，且 --json 输出可解析
+    const ok = spawnSync(process.execPath, [cli, "doctor", "--config", "scenario.config.js", "--json"], { encoding: "utf8" });
+    assert.doesNotMatch(ok.stdout + ok.stderr, /必须放在第一个参数位置/);
+    assert.doesNotThrow(() => JSON.parse(ok.stdout));
 });
 
 test("CLI Overall 统计按计划步骤数计算", async () => {

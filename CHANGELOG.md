@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.11] - 2026-08-12
+
+### 🐛 Bug Fixes
+
+1. **CLI 命令位置纠错**
+   - 命令（run/serve/doctor/init/capabilities）出现在参数位置时，明确报错并给出正确写法，不再静默当成 run 的场景名报「未找到场景」。
+2. **文档与实现一致化**
+   - 安装接入 Prompt 统一收口到根目录 README「快速接入」（删除 docs/AI_INSTALL_PROMPT.md，消除两份 Prompt 分叉）。
+   - README 执行场景示例补 `run` 命令（命令统一紧跟脚本名）；`--library-url` 文件清单补全 AI 规则两个文件；目录树标注 init 生成与 AI 维护的边界。
+   - init 生成的项目内 README 同步补 `run` 命令。
+
 ## [0.5.10] - 2026-08-12
 
 ### 🐛 Bug Fixes

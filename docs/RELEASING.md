@@ -2,7 +2,7 @@
 
 > ⚠️ **内部/历史文档**：本指南是仓库维护者的发布流程。对外接入默认**免 npm**
 > （官方安装脚本从 npm Registry 下载固定版本 tarball，在本地解压后初始化，不修改业务项目依赖），
-> 对外安装指引见 [README](../README.md) 与 [AI_INSTALL_PROMPT.md](AI_INSTALL_PROMPT.md)。
+> 对外安装指引见 [README](../README.md)（“快速接入”内联 AI 接入 Prompt）。
 > 仓库内的 `scripts/publish-release.mjs`（GitLab CI）仅用于内部镜像发布。
 
 `master` 只包含可发布代码。`dist/` 随版本提交，npm tarball 也必须包含完整 `dist/`。消费者默认免 npm：官方 `install.ps1` / `install.sh` 从固定版本 npm Registry tarball 下载并解压运行时到项目 `.scenario-test/`；npm（`@yc_yzkj/scenario-test`）为显式可选方式（`-UseNpm` / `SCENARIO_TEST_USE_NPM=true`）。内网可通过 `Source` / `SCENARIO_TEST_SOURCE` 改用 GitLab Raw 或制品目录。

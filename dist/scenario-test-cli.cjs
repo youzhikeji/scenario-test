@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/*! scenario-test v0.5.10 */
+/*! scenario-test v0.5.11 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -314,7 +314,7 @@ __export(node_exports, {
 var import_blueimp_md5 = __toESM(require_md5(), 1);
 
 // src/version.generated.js
-var VERSION = "0.5.10";
+var VERSION = "0.5.11";
 
 // src/contract.js
 var CONTRACT_VERSION = 1;
@@ -4772,20 +4772,20 @@ ScenarioTest.registerScenario("order-create-success", ScenarioTest.defineScenari
 \u9ED8\u8BA4\u4F7F\u7528\u9879\u76EE\u5185\u8FD0\u884C\u65F6\u526F\u672C\uFF08\u514D npm \u6A21\u5F0F\uFF09\uFF0C\u65E0\u9700\u5B89\u88C5 npm \u5305\u3002\u504F\u597D npm \u7684\u56E2\u961F\u53EF\u5148 \`npm install -D @yc_yzkj/scenario-test\`\uFF0C\u628A \`node ${frameworkDisplay}scenario-test-cli.cjs\` \u6362\u6210 \`npx @yc_yzkj/scenario-test\` \u5373 npm \u6A21\u5F0F\uFF0C\u5176\u4F59\u53C2\u6570\u4E00\u81F4\u3002\u6267\u884C\u914D\u7F6E\u4E2D\u5168\u90E8\u573A\u666F\uFF1A
 
 \`\`\`powershell
-node ${frameworkDisplay}scenario-test-cli.cjs --config ${directory}/scenario.config.js --env local --all
+node ${frameworkDisplay}scenario-test-cli.cjs run --config ${directory}/scenario.config.js --env local --all
 \`\`\`
 
-\u6267\u884C\u5355\u4E2A\u573A\u666F\u65F6\uFF0C\u4F7F\u7528\u914D\u7F6E\u4E2D\u7684\u573A\u666F id\uFF1A
+\u6267\u884C\u5355\u4E2A\u573A\u666F\u65F6\uFF0C\u4F7F\u7528\u914D\u7F6E\u4E2D\u7684\u573A\u666F id\uFF08\u547D\u4EE4 \`run\` \u7D27\u8DDF\u811A\u672C\u540D\uFF09\uFF1A
 
 \`\`\`powershell
-node ${frameworkDisplay}scenario-test-cli.cjs --config ${directory}/scenario.config.js --env local --scenario order-create-success
+node ${frameworkDisplay}scenario-test-cli.cjs run --config ${directory}/scenario.config.js --env local --scenario order-create-success
 \`\`\`
 
 \u5728 PowerShell \u4E2D\u4E3A\u4E00\u6B21\u6267\u884C\u4E34\u65F6\u8986\u76D6\u51ED\u636E\uFF1A
 
 \`\`\`powershell
 $env:SCENARIO_CLIENT_SECRET = "temporary-value"
-node ${frameworkDisplay}scenario-test-cli.cjs --config ${directory}/scenario.config.js --env local --all
+node ${frameworkDisplay}scenario-test-cli.cjs run --config ${directory}/scenario.config.js --env local --all
 Remove-Item Env:SCENARIO_CLIENT_SECRET
 \`\`\`
 
@@ -5258,7 +5258,12 @@ function parseArgs(argv) {
       continue;
     }
     if (item.startsWith("-")) throw new Error(`\u672A\u77E5\u53C2\u6570: ${item}`);
-    else if (!args.scenario && args.command === "run") args.scenario = item;
+    else if (start === 0 && contract.cli.commands.includes(item)) {
+      throw new Error(
+        `\u547D\u4EE4 ${item} \u5FC5\u987B\u653E\u5728\u7B2C\u4E00\u4E2A\u53C2\u6570\u4F4D\u7F6E\uFF0C\u6B63\u786E\u793A\u4F8B: ${item} --config scenario.config.js
+\u82E5\u786E\u9700\u6267\u884C\u540C\u540D\u573A\u666F\uFF0C\u8BF7\u4F7F\u7528 --scenario ${item}`
+      );
+    } else if (!args.scenario && args.command === "run") args.scenario = item;
     else throw new Error(`\u65E0\u6CD5\u8BC6\u522B\u7684\u53C2\u6570: ${item}`);
   }
   if (args.all && args.scenario) throw new Error("--all \u4E0E --scenario \u4E0D\u80FD\u540C\u65F6\u4F7F\u7528");
@@ -5481,7 +5486,7 @@ async function initCommand(args) {
     }
     force = mode === "overwrite";
   }
-  const refreshFramework = force || shouldRefreshFramework(layout);
+  const refreshFramework = shouldRefreshFramework(layout, force);
   const frameworkTemplatePaths = /* @__PURE__ */ new Set([
     layout.frameworkRelativePath(FRAMEWORK_FILES.authoringPrompt),
     layout.frameworkRelativePath(FRAMEWORK_FILES.patterns)

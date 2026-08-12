@@ -6,23 +6,33 @@
 
 要求：Node.js 18+。
 
-在**业务项目根目录**打开 AI 助手，复制下面这段内容：
+在**业务项目根目录**打开 AI 助手，复制下面这段 AI 接入 Prompt：
 
 ```text
-请在当前项目根目录接入 @yc_yzkj/scenario-test，目标目录为 scenario-test。
+请在当前项目根目录接入 @yc_yzkj/scenario-test。目标目录为 scenario-test。
 
-默认使用免 npm 方式，不要搜索安装地址、GitHub Release 或 npm 最新版本；根据当前系统直接执行以下官方固定版本命令之一：
-- Windows PowerShell：irm https://cdn.jsdelivr.net/gh/youzhikeji/scenario-test@v0.5.10/scripts/install.ps1 | iex
-- macOS/Linux：curl -fsSL https://cdn.jsdelivr.net/gh/youzhikeji/scenario-test@v0.5.10/scripts/install.sh | bash -s -- . scenario-test
+执行要求：
+1. 先确认当前目录是项目根目录，且 Node.js 版本不低于 18；不满足时停止并说明原因。
+2. 不克隆公共库源码，不修改业务代码、构建配置或已有场景文件；不启动服务、不调用业务接口、不写入 Token、Secret 或真实测试数据。
+3. 默认使用免 npm 安装：不要搜索安装地址、GitHub Release 或 npm 最新版本，直接执行官方固定版本脚本（Windows: irm https://cdn.jsdelivr.net/gh/youzhikeji/scenario-test@v0.5.11/scripts/install.ps1 | iex；macOS/Linux: curl -fsSL https://cdn.jsdelivr.net/gh/youzhikeji/scenario-test@v0.5.11/scripts/install.sh | bash -s -- . scenario-test）。脚本从 npm Registry 下载一次固定版本 tarball，在本地解压并初始化；不调用 GitHub API、不执行 npm install、不修改 package.json。
+4. 只有用户明确要求使用 npm 时，才切换到 npm 方式：npm install -D @yc_yzkj/scenario-test，再执行 npx @yc_yzkj/scenario-test init --project . --dir "scenario-test"。两种方式不混用、不自动兜底。
+   目标目录已存在时选择保留（默认回车）。
+5. 运行项目体检确认安装完整。命令格式必须是「脚本名/命令紧跟其后，参数在命令之后」，不要写成 `--config ... doctor`：
+   - 免 npm 模式：`node scenario-test/.scenario-test/scenario-test-cli.cjs doctor --config scenario-test/scenario.config.js`
+   - npm 模式：`npx @yc_yzkj/scenario-test doctor --config scenario-test/scenario.config.js`
+   有 FAIL 时停止并报告，不继续后续步骤。
+6. doctor 通过后，读取刚生成的 scenario-test/.scenario-test/AI_SCENARIO_PROMPT.md，将其作为后续场景设计规则，不要要求用户复制或粘贴。
+7. 最后报告采用的安装方式和 doctor 结果，然后只询问：“你要测试哪个业务功能？请提供功能名称，以及页面、Controller、接口或已有测试中的任一入口。”此时不要扫描整个项目、生成场景、启动服务或调用业务接口。
+8. 用户回答业务功能后，严格按第 6 步找到的 AI_SCENARIO_PROMPT.md 执行：一次只处理这一个功能；需要环境地址、测试账号、Token、枚举值或测试数据时再集中询问；由你维护 scenario.config.js 和场景文件，最后给出逐个场景的运行命令，但不要实际运行。
 
-不要克隆公共库源码，不执行 npm install，不修改业务代码、构建配置或已有场景文件，不启动服务、不调用业务接口。
-
-安装后运行 doctor；有 FAIL 时停止并报告。doctor 通过后，读取 scenario-test/.scenario-test/AI_SCENARIO_PROMPT.md，并只询问：“你要测试哪个业务功能？请提供功能名称，以及页面、Controller、接口或已有测试中的任一入口。”得到答复前不要扫描整个项目或生成场景。
-
-只有我明确要求使用 npm 时，才改用 npm install -D @yc_yzkj/scenario-test 和 npx @yc_yzkj/scenario-test init；两种方式不混用、不自动切换。
+如果 Node.js 检查、选定安装方式、初始化或 doctor 任一失败，停止并报告具体原因，不静默切换另一种安装方式。
 ```
 
-完整规则见 [AI 接入 Prompt](docs/AI_INSTALL_PROMPT.md)。安装成功后，AI 会直接读取项目内规则，用户不需要再次复制。
+安装成功后，AI 会直接读取项目内规则，用户不需要再次复制。新会话可直接输入：
+
+```text
+请读取 scenario-test/.scenario-test/AI_SCENARIO_PROMPT.md，为“<业务功能名称>”设计场景测试。入口：<页面、Controller、接口或已有测试路径>。
+```
 
 ### 不使用 AI
 
@@ -30,12 +40,12 @@
 
 ```powershell
 # Windows PowerShell
-irm https://cdn.jsdelivr.net/gh/youzhikeji/scenario-test@v0.5.10/scripts/install.ps1 | iex
+irm https://cdn.jsdelivr.net/gh/youzhikeji/scenario-test@v0.5.11/scripts/install.ps1 | iex
 ```
 
 ```bash
 # macOS / Linux
-curl -fsSL https://cdn.jsdelivr.net/gh/youzhikeji/scenario-test@v0.5.10/scripts/install.sh | bash -s -- . scenario-test
+curl -fsSL https://cdn.jsdelivr.net/gh/youzhikeji/scenario-test@v0.5.11/scripts/install.sh | bash -s -- . scenario-test
 ```
 
 默认情况下，安装脚本只从 npm Registry 下载一次固定版本 tarball，在临时目录解压后从本地 `dist/` 初始化；不会执行 `npm install`、访问 GitHub API 或修改业务项目依赖。脚本会把 CLI、浏览器运行时、类型声明、能力清单和版本锁写入 `scenario-test/.scenario-test/`，并自动执行 doctor。内网下载源的指定方式：PowerShell 使用 `-Source <目录>`；macOS/Linux 使用第三个位置参数或 `SCENARIO_TEST_SOURCE`。内网目录需要包含完整的 `dist` 运行时文件。
@@ -46,12 +56,6 @@ curl -fsSL https://cdn.jsdelivr.net/gh/youzhikeji/scenario-test@v0.5.10/scripts/
 2. AI 维护 `scenario.config.js` 和 `scenarios/`，但不会实际调用业务接口。
 3. 双击 `scenario-test/start-scenario-test.cmd` 启动工作台。
 4. 工作台通过本地 `serve` 代理访问所选环境，无需后端额外放行 CORS。
-
-新 AI 会话可以直接输入：
-
-```text
-请读取 scenario-test/.scenario-test/AI_SCENARIO_PROMPT.md，为“<业务功能名称>”设计场景测试。入口：<页面、Controller、接口或已有测试路径>。
-```
 
 每次只处理一个业务功能，不要扫描整个项目批量生成。
 
@@ -90,15 +94,17 @@ node .\scenario-test\.scenario-test\scenario-test-cli.cjs serve `
   --port 4300
 ```
 
+> 手动指定 `--port` 默认 4300；双击 `start-scenario-test.cmd` 时脚本会向系统申请随机空闲端口，多项目同时启动互不冲突。
+
 ### 执行场景
 
 ```powershell
-# 全部非 manual 场景
-node .\scenario-test\.scenario-test\scenario-test-cli.cjs `
+# 全部非 manual 场景（命令 run 紧跟脚本名）
+node .\scenario-test\.scenario-test\scenario-test-cli.cjs run `
   --config .\scenario-test\scenario.config.js --env local --all
 
 # 指定场景
-node .\scenario-test\.scenario-test\scenario-test-cli.cjs `
+node .\scenario-test\.scenario-test\scenario-test-cli.cjs run `
   --config .\scenario-test\scenario.config.js --env local --scenario <场景ID>
 ```
 
@@ -111,23 +117,25 @@ node .\scenario-test\.scenario-test\scenario-test-cli.cjs doctor `
 
 ### 自定义下载源
 
-`init` 的 `--library-url <目录>` 指向包含以下文件的目录：
+`init` 的 `--library-url <目录>` 指向包含以下文件的目录（6 个，缺任一则对应副本缺失）：
 
 - `scenario-test-cli.cjs`
 - `scenario-test.umd.js`
 - `scenario-test.d.ts`
 - `scenario-test-capabilities.json`
+- `AI_SCENARIO_PROMPT.md`
+- `SCENARIO_PATTERNS.md`
 
 ## 项目目录
 
 ```text
 scenario-test/
-├─ .scenario-test/                 # AI 规则与固定版本运行时副本
-├─ scenarios/                      # 按业务功能组织的场景
-├─ plugins/                        # 可选：项目专属 Node 插件
-├─ scenario.config.js              # 环境、变量和场景清单
-├─ index.html                      # 浏览器工作台入口
-└─ start-scenario-test.cmd         # Windows 双击启动入口
+├─ .scenario-test/                 # AI 规则与固定版本运行时副本（init 生成）
+├─ scenarios/                      # 按业务功能组织的场景（由 AI 维护，非 init 生成）
+├─ plugins/                        # 可选：项目专属 Node 插件（按需创建）
+├─ scenario.config.js              # 环境、变量和场景清单（init 生成骨架）
+├─ index.html                      # 浏览器工作台入口（init 生成）
+└─ start-scenario-test.cmd         # Windows 双击启动入口（init 生成）
 ```
 
 初始化配置使用项目内类型声明，npm 与免 npm 均可获得提示：

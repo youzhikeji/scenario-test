@@ -12,7 +12,7 @@
 
 ## 使用入口
 
-首次接入使用 [AI 接入 Prompt](AI_INSTALL_PROMPT.md)。安装和 doctor 完成后，AI 会自动读取项目内规则，用户不需要再次复制。
+首次接入使用根目录 [README](../README.md) “快速接入”中的 AI 接入 Prompt。安装和 doctor 完成后，AI 会自动读取项目内规则，用户不需要再次复制。
 
 新会话只需输入：
 

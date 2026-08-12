@@ -353,20 +353,20 @@ ScenarioTest.registerScenario("order-create-success", ScenarioTest.defineScenari
 默认使用项目内运行时副本（免 npm 模式），无需安装 npm 包。偏好 npm 的团队可先 \`npm install -D @yc_yzkj/scenario-test\`，把 \`node ${frameworkDisplay}scenario-test-cli.cjs\` 换成 \`npx @yc_yzkj/scenario-test\` 即 npm 模式，其余参数一致。执行配置中全部场景：
 
 \`\`\`powershell
-node ${frameworkDisplay}scenario-test-cli.cjs --config ${directory}/scenario.config.js --env local --all
+node ${frameworkDisplay}scenario-test-cli.cjs run --config ${directory}/scenario.config.js --env local --all
 \`\`\`
 
-执行单个场景时，使用配置中的场景 id：
+执行单个场景时，使用配置中的场景 id（命令 \`run\` 紧跟脚本名）：
 
 \`\`\`powershell
-node ${frameworkDisplay}scenario-test-cli.cjs --config ${directory}/scenario.config.js --env local --scenario order-create-success
+node ${frameworkDisplay}scenario-test-cli.cjs run --config ${directory}/scenario.config.js --env local --scenario order-create-success
 \`\`\`
 
 在 PowerShell 中为一次执行临时覆盖凭据：
 
 \`\`\`powershell
 $env:SCENARIO_CLIENT_SECRET = "temporary-value"
-node ${frameworkDisplay}scenario-test-cli.cjs --config ${directory}/scenario.config.js --env local --all
+node ${frameworkDisplay}scenario-test-cli.cjs run --config ${directory}/scenario.config.js --env local --all
 Remove-Item Env:SCENARIO_CLIENT_SECRET
 \`\`\`
 

@@ -1,7 +1,6 @@
 # scenario-test 使用指南（内部版）
 
-> ⚠️ **内部文档**：本指南面向团队内部使用场景。对外正式安装与使用以 [README](../README.md) 与
-> [docs/AI_INSTALL_PROMPT.md](AI_INSTALL_PROMPT.md) 为准；DSL 能力名单以
+> ⚠️ **内部文档**：本指南面向团队内部使用场景。对外正式安装与使用以 [README](../README.md)（“快速接入”内联 AI 接入 Prompt）为准；DSL 能力名单以
 > `capabilities` 命令 / `scenario-test-capabilities.json` 为准。
 
 ## 快速开始

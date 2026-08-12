@@ -52,6 +52,14 @@ function parseArgs(argv) {
         const flagProp = FLAG_OPTIONS.get(item);
         if (flagProp) { args[flagProp] = true; continue; }
         if (item.startsWith("-")) throw new Error(`未知参数: ${item}`);
+        else if (start === 0 && contract.cli.commands.includes(item)) {
+            // 命令必须紧跟脚本名；命令出现在参数位置（argv[0] 非命令）时是写反了，
+            // 与其静默当成 run 的场景名报"未找到场景"，不如直接给出正确写法
+            throw new Error(
+                `命令 ${item} 必须放在第一个参数位置，正确示例: ${item} --config scenario.config.js\n` +
+                `若确需执行同名场景，请使用 --scenario ${item}`
+            );
+        }
         else if (!args.scenario && args.command === "run") args.scenario = item;
         else throw new Error(`无法识别的参数: ${item}`);
     }
@@ -306,7 +314,7 @@ async function initCommand(args) {
     }
     // 运行时副本在锁缺失/版本不一致/sha256 失配/文件缺失时刷新（升级旧副本的关键路径）。
     // 仅影响运行时副本与版本锁的刷新，不改变模板文件的 keep 语义。
-    const refreshFramework = force || shouldRefreshFramework(layout);
+    const refreshFramework = shouldRefreshFramework(layout, force);
     // AI 规则/模式库随每次 init 刷新（keep 语义：不覆盖项目配置与场景）；
     // 运行时副本的刷新决策已并入上方 refreshFramework
     const frameworkTemplatePaths = new Set([
