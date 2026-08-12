@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/*! scenario-test v0.5.8 */
+/*! scenario-test v0.5.9 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -314,7 +314,7 @@ __export(node_exports, {
 var import_blueimp_md5 = __toESM(require_md5(), 1);
 
 // src/version.generated.js
-var VERSION = "0.5.8";
+var VERSION = "0.5.9";
 
 // src/contract.js
 var CONTRACT_VERSION = 1;
@@ -3148,6 +3148,12 @@ function createLegacyRuntime(options) {
     }
     return String(stored || environment && environment.baseUrl || cfg.baseUrl || window.location.origin || "").replace(/\/+$/, "");
   }
+  function getRequestBaseUrl() {
+    if (window.__SCENARIO_TEST_SERVE_PROXY__) {
+      return String(window.location.origin || "").replace(/\/+$/, "");
+    }
+    return getEffectiveBaseUrl();
+  }
   function getEffectiveAuthorization() {
     var cfg = appConfig;
     var keys = getStorageKeys();
@@ -3518,7 +3524,7 @@ function createLegacyRuntime(options) {
       vars: buildScenarioRuntimeVars(),
       lastResponse: null,
       lastResponseBody: null,
-      baseUrl: getEffectiveBaseUrl(),
+      baseUrl: getRequestBaseUrl(),
       authorization: getEffectiveAuthorization(),
       globals: getEffectiveGlobals(),
       environment: environment ? clone2(environment) : null,
@@ -4148,7 +4154,7 @@ function createLegacyRuntime(options) {
       getDebugRuntime,
       executeStep,
       getSelectedEnvironment,
-      getEffectiveBaseUrl,
+      getRequestBaseUrl,
       getEffectiveAuthorization,
       getEffectiveGlobals
     );
@@ -4579,9 +4585,16 @@ function createProjectFiles(directory = "scenario-test", options = {}) {
 setlocal
 cd /d "%~dp0"
 
-set "SCENARIO_TEST_URL=http://127.0.0.1:4300/"
+rem Ask Windows for a random free loopback port so projects can run together.
+for /f "usebackq delims=" %%P in (\`powershell.exe -NoProfile -Command "$listener=[System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback,0); $listener.Start(); $port=($listener.LocalEndpoint).Port; $listener.Stop(); Write-Output $port"\`) do set "SCENARIO_TEST_PORT=%%P"
+if not defined SCENARIO_TEST_PORT (
+    echo Scenario Test failed to allocate a free port.
+    exit /b 1
+)
+
+set "SCENARIO_TEST_URL=http://127.0.0.1:%SCENARIO_TEST_PORT%/"
 start "" powershell.exe -NoProfile -WindowStyle Hidden -Command "Start-Sleep -Milliseconds 700; Start-Process '%SCENARIO_TEST_URL%'"
-call node "%~dp0.scenario-test\\scenario-test-cli.cjs" serve --config "%~dp0scenario.config.js" --port 4300
+call node "%~dp0.scenario-test\\scenario-test-cli.cjs" serve --config "%~dp0scenario.config.js" --port %SCENARIO_TEST_PORT%
 
 if errorlevel 1 (
     echo.
@@ -4743,7 +4756,7 @@ ScenarioTest.registerScenario("order-create-success", ScenarioTest.defineScenari
 
 ## \u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0
 
-\u53CC\u51FB\u672C\u76EE\u5F55\u4E2D\u7684 \`start-scenario-test.cmd\` \u542F\u52A8\u5DE5\u4F5C\u53F0\uFF1A\u811A\u672C\u4F7F\u7528\u9879\u76EE\u5185\u8FD0\u884C\u65F6\u526F\u672C\u542F\u52A8\u672C\u5730 HTTP Server\uFF0C\u81EA\u52A8\u6253\u5F00 \`index.html\`\uFF0C\u5E76\u628A\u63A5\u53E3\u8BF7\u6C42\u4EE3\u7406\u5230\u6240\u9009\u73AF\u5883\u7684 \`baseUrl\`\uFF08\u9875\u9762 \`baseUrl\` \u7559\u7A7A\u5373\u8D70\u4EE3\u7406\uFF09\uFF0C\u65E0\u9700\u540E\u7AEF\u653E\u884C CORS\u3002\u4EBA\u5DE5\u6D4B\u8BD5\u7ED3\u675F\u540E\u6309 \`Ctrl+C\` \u505C\u6B62\u670D\u52A1\u3002
+\u53CC\u51FB\u672C\u76EE\u5F55\u4E2D\u7684 \`start-scenario-test.cmd\` \u542F\u52A8\u5DE5\u4F5C\u53F0\uFF1A\u811A\u672C\u4F7F\u7528\u9879\u76EE\u5185\u8FD0\u884C\u65F6\u526F\u672C\u542F\u52A8\u672C\u5730 HTTP Server\uFF0C\u81EA\u52A8\u6253\u5F00 \`index.html\`\u3002\`serve\` \u4F1A\u5728\u9875\u9762\u4E2D\u542F\u7528\u540C\u6E90\u4EE3\u7406\u6A21\u5F0F\uFF0C\u6D4F\u89C8\u5668\u8BF7\u6C42\u5148\u53D1\u9001\u5230\u5F53\u524D\u5DE5\u4F5C\u53F0\u5730\u5740\uFF0C\u518D\u8F6C\u53D1\u5230\u6240\u9009\u73AF\u5883\u7684 \`baseUrl\`\uFF0C\u65E0\u9700\u540E\u7AEF\u653E\u884C CORS\uFF0C\u4E5F\u65E0\u9700\u624B\u5DE5\u6E05\u7A7A\u6216\u8986\u76D6\u9875\u9762\u5730\u5740\u3002\u4EBA\u5DE5\u6D4B\u8BD5\u7ED3\u675F\u540E\u6309 \`Ctrl+C\` \u505C\u6B62\u670D\u52A1\u3002
 
 \u4E5F\u53EF\u4EE5\u5728\u9879\u76EE\u6839\u76EE\u5F55\u6267\u884C\uFF1A
 
@@ -5495,7 +5508,7 @@ async function initCommand(args) {
   if (created.length) console.log(`\u5DF2\u521B\u5EFA: ${created.join(", ")}`);
   if (skipped.length) console.log(`\u5DF2\u4FDD\u7559\u73B0\u6709\u6587\u4EF6: ${skipped.join(", ")}`);
   console.log(`\u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0: ${import_node_path6.default.join(projectRoot, directory, "index.html")}`);
-  console.log("\u63D0\u793A: \u53CC\u51FB start-scenario-test.cmd \u542F\u52A8\u5DE5\u4F5C\u53F0\uFF08\u542B\u63A5\u53E3\u4EE3\u7406\uFF09\uFF1B\u63A5\u53E3 baseUrl \u7559\u7A7A\u5373\u8D70\u4EE3\u7406\uFF0C\u7ED5\u5F00\u6D4F\u89C8\u5668 CORS\u3002");
+  console.log("\u63D0\u793A: \u53CC\u51FB start-scenario-test.cmd \u542F\u52A8\u5DE5\u4F5C\u53F0\uFF1Bserve \u4F1A\u81EA\u52A8\u542F\u7528\u540C\u6E90\u63A5\u53E3\u4EE3\u7406\uFF0C\u7ED5\u5F00\u6D4F\u89C8\u5668 CORS\u3002");
 }
 function resolveConfigPath(value) {
   const candidate = import_node_path6.default.resolve(value || "scenario.config.js");
@@ -5640,6 +5653,28 @@ function contentType(filePath) {
     ".txt": "text/plain; charset=utf-8"
   }[import_node_path6.default.extname(filePath).toLowerCase()] || "application/octet-stream";
 }
+function serveStaticFile(response, filePath) {
+  const headers = { "Cache-Control": "no-store", "Content-Type": contentType(filePath) };
+  if (import_node_path6.default.extname(filePath).toLowerCase() !== ".html") {
+    response.writeHead(200, headers);
+    import_node_fs5.default.createReadStream(filePath).pipe(response);
+    return;
+  }
+  import_node_fs5.default.readFile(filePath, "utf8", function(error, html) {
+    if (error) {
+      response.writeHead(500);
+      response.end("Internal Server Error");
+      return;
+    }
+    const marker = "<script>window.__SCENARIO_TEST_SERVE_PROXY__ = true;</script>";
+    const headPattern = /<head(?:\s[^>]*)?>/i;
+    const content = headPattern.test(html) ? html.replace(headPattern, function(head) {
+      return head + marker;
+    }) : marker + html;
+    response.writeHead(200, headers);
+    response.end(content);
+  });
+}
 function resolveServeProxyTarget(config, envKey) {
   if (config.envs?.length) {
     const environment = config.envs.find((item) => item.key === (envKey || config.defaultEnvKey)) || config.envs[0];
@@ -5698,19 +5733,27 @@ async function serveCommand(args) {
           response.end("Not Found");
           return;
         }
-        response.writeHead(200, { "Cache-Control": "no-store", "Content-Type": contentType(filePath) });
-        import_node_fs5.default.createReadStream(filePath).pipe(response);
+        serveStaticFile(response, filePath);
       });
     } catch {
       response.writeHead(400);
       response.end("Bad Request");
     }
   });
+  server.on("error", (error) => {
+    if (error?.code === "EADDRINUSE") {
+      console.error(`\u7AEF\u53E3 ${args.port} \u5DF2\u88AB\u5360\u7528\uFF0C\u8BF7\u91CD\u65B0\u542F\u52A8\u4EE5\u83B7\u53D6\u65B0\u7684\u968F\u673A\u7AEF\u53E3`);
+      process.exitCode = 1;
+      return;
+    }
+    console.error(`\u573A\u666F\u6D4B\u8BD5\u5DE5\u4F5C\u53F0\u542F\u52A8\u5931\u8D25: ${error?.message || String(error)}`);
+    process.exitCode = 1;
+  });
   server.listen(args.port, "127.0.0.1", () => {
     console.log(`\u573A\u666F\u6D4B\u8BD5\u5DE5\u4F5C\u53F0: http://127.0.0.1:${args.port}/`);
     console.log(`\u914D\u7F6E\u76EE\u5F55: ${workspace}`);
     if (proxyTarget) console.log(`\u63A5\u53E3\u4EE3\u7406: ${args.env || config.defaultEnvKey || "default"} -> ${proxyTarget}`);
-    console.log("\u63D0\u793A: \u6D4F\u89C8\u5668 baseUrl \u7559\u7A7A\u5373\u8D70\u63A5\u53E3\u4EE3\u7406\uFF1B\u53CC\u51FB\u9879\u76EE\u5185 start-scenario-test.cmd \u53EF\u4E00\u952E\u542F\u52A8\u3002");
+    console.log("\u63D0\u793A: serve \u5DF2\u81EA\u52A8\u542F\u7528\u540C\u6E90\u63A5\u53E3\u4EE3\u7406\uFF1B\u6D4F\u89C8\u5668\u8BF7\u6C42\u4F1A\u5148\u5230\u5F53\u524D\u5DE5\u4F5C\u53F0\u5730\u5740\u3002\u53CC\u51FB\u9879\u76EE\u5185 start-scenario-test.cmd \u53EF\u4E00\u952E\u542F\u52A8\u3002");
   });
 }
 function capabilitiesCommand(args) {

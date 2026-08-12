@@ -333,7 +333,7 @@ async function initCommand(args) {
     if (created.length) console.log(`已创建: ${created.join(", ")}`);
     if (skipped.length) console.log(`已保留现有文件: ${skipped.join(", ")}`);
     console.log(`浏览器工作台: ${path.join(projectRoot, directory, "index.html")}`);
-    console.log("提示: 双击 start-scenario-test.cmd 启动工作台（含接口代理）；接口 baseUrl 留空即走代理，绕开浏览器 CORS。");
+    console.log("提示: 双击 start-scenario-test.cmd 启动工作台；serve 会自动启用同源接口代理，绕开浏览器 CORS。");
 }
 
 function resolveConfigPath(value) {
@@ -490,8 +490,31 @@ function contentType(filePath) {
     })[path.extname(filePath).toLowerCase()] || "application/octet-stream";
 }
 
+function serveStaticFile(response, filePath) {
+    const headers = { "Cache-Control": "no-store", "Content-Type": contentType(filePath) };
+    if (path.extname(filePath).toLowerCase() !== ".html") {
+        response.writeHead(200, headers);
+        fs.createReadStream(filePath).pipe(response);
+        return;
+    }
+    fs.readFile(filePath, "utf8", function (error, html) {
+        if (error) {
+            response.writeHead(500);
+            response.end("Internal Server Error");
+            return;
+        }
+        const marker = "<script>window.__SCENARIO_TEST_SERVE_PROXY__ = true;</script>";
+        const headPattern = /<head(?:\s[^>]*)?>/i;
+        const content = headPattern.test(html)
+            ? html.replace(headPattern, function (head) { return head + marker; })
+            : marker + html;
+        response.writeHead(200, headers);
+        response.end(content);
+    });
+}
+
 function resolveServeProxyTarget(config, envKey) {
-    // 同源代理目标：浏览器 baseUrl 留空时请求落到 serve 自身，服务端转发到所选环境的 baseUrl
+    // serve 保留环境 baseUrl 作为上游目标，并在返回的 HTML 中注入代理模式标记让浏览器强制使用当前同源地址
     if (config.envs?.length) {
         const environment = config.envs.find((item) => item.key === (envKey || config.defaultEnvKey)) || config.envs[0];
         return String(environment.baseUrl || "").replace(/\/+$/, "");
@@ -547,19 +570,27 @@ async function serveCommand(args) {
                     if (proxyTarget) { proxyRequest(request, response, proxyTarget); return; }
                     response.writeHead(404); response.end("Not Found"); return;
                 }
-                response.writeHead(200, { "Cache-Control": "no-store", "Content-Type": contentType(filePath) });
-                fs.createReadStream(filePath).pipe(response);
+                serveStaticFile(response, filePath);
             });
         } catch {
             response.writeHead(400);
             response.end("Bad Request");
         }
     });
+    server.on("error", (error) => {
+        if (error?.code === "EADDRINUSE") {
+            console.error(`端口 ${args.port} 已被占用，请重新启动以获取新的随机端口`);
+            process.exitCode = 1;
+            return;
+        }
+        console.error(`场景测试工作台启动失败: ${error?.message || String(error)}`);
+        process.exitCode = 1;
+    });
     server.listen(args.port, "127.0.0.1", () => {
         console.log(`场景测试工作台: http://127.0.0.1:${args.port}/`);
         console.log(`配置目录: ${workspace}`);
         if (proxyTarget) console.log(`接口代理: ${args.env || config.defaultEnvKey || "default"} -> ${proxyTarget}`);
-        console.log("提示: 浏览器 baseUrl 留空即走接口代理；双击项目内 start-scenario-test.cmd 可一键启动。");
+        console.log("提示: serve 已自动启用同源接口代理；浏览器请求会先到当前工作台地址。双击项目内 start-scenario-test.cmd 可一键启动。");
     });
 }
 

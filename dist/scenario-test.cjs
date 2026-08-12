@@ -1,4 +1,4 @@
-/*! scenario-test v0.5.8 */
+/*! scenario-test v0.5.9 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -307,7 +307,7 @@ module.exports = __toCommonJS(node_exports);
 var import_blueimp_md5 = __toESM(require_md5(), 1);
 
 // src/version.generated.js
-var VERSION = "0.5.8";
+var VERSION = "0.5.9";
 
 // src/contract.js
 var CONTRACT_VERSION = 1;
@@ -3141,6 +3141,12 @@ function createLegacyRuntime(options) {
     }
     return String(stored || environment && environment.baseUrl || cfg.baseUrl || window.location.origin || "").replace(/\/+$/, "");
   }
+  function getRequestBaseUrl() {
+    if (window.__SCENARIO_TEST_SERVE_PROXY__) {
+      return String(window.location.origin || "").replace(/\/+$/, "");
+    }
+    return getEffectiveBaseUrl();
+  }
   function getEffectiveAuthorization() {
     var cfg = appConfig;
     var keys = getStorageKeys();
@@ -3511,7 +3517,7 @@ function createLegacyRuntime(options) {
       vars: buildScenarioRuntimeVars(),
       lastResponse: null,
       lastResponseBody: null,
-      baseUrl: getEffectiveBaseUrl(),
+      baseUrl: getRequestBaseUrl(),
       authorization: getEffectiveAuthorization(),
       globals: getEffectiveGlobals(),
       environment: environment ? clone2(environment) : null,
@@ -4141,7 +4147,7 @@ function createLegacyRuntime(options) {
       getDebugRuntime,
       executeStep,
       getSelectedEnvironment,
-      getEffectiveBaseUrl,
+      getRequestBaseUrl,
       getEffectiveAuthorization,
       getEffectiveGlobals
     );

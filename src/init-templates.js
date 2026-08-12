@@ -167,9 +167,16 @@ export function createProjectFiles(directory = "scenario-test", options = {}) {
 setlocal
 cd /d "%~dp0"
 
-set "SCENARIO_TEST_URL=http://127.0.0.1:4300/"
+rem Ask Windows for a random free loopback port so projects can run together.
+for /f "usebackq delims=" %%P in (\`powershell.exe -NoProfile -Command "$listener=[System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback,0); $listener.Start(); $port=($listener.LocalEndpoint).Port; $listener.Stop(); Write-Output $port"\`) do set "SCENARIO_TEST_PORT=%%P"
+if not defined SCENARIO_TEST_PORT (
+    echo Scenario Test failed to allocate a free port.
+    exit /b 1
+)
+
+set "SCENARIO_TEST_URL=http://127.0.0.1:%SCENARIO_TEST_PORT%/"
 start "" powershell.exe -NoProfile -WindowStyle Hidden -Command "Start-Sleep -Milliseconds 700; Start-Process '%SCENARIO_TEST_URL%'"
-call node "%~dp0.scenario-test\\scenario-test-cli.cjs" serve --config "%~dp0scenario.config.js" --port 4300
+call node "%~dp0.scenario-test\\scenario-test-cli.cjs" serve --config "%~dp0scenario.config.js" --port %SCENARIO_TEST_PORT%
 
 if errorlevel 1 (
     echo.
@@ -331,7 +338,7 @@ ScenarioTest.registerScenario("order-create-success", ScenarioTest.defineScenari
 
 ## 浏览器工作台
 
-双击本目录中的 \`start-scenario-test.cmd\` 启动工作台：脚本使用项目内运行时副本启动本地 HTTP Server，自动打开 \`index.html\`，并把接口请求代理到所选环境的 \`baseUrl\`（页面 \`baseUrl\` 留空即走代理），无需后端放行 CORS。人工测试结束后按 \`Ctrl+C\` 停止服务。
+双击本目录中的 \`start-scenario-test.cmd\` 启动工作台：脚本使用项目内运行时副本启动本地 HTTP Server，自动打开 \`index.html\`。\`serve\` 会在页面中启用同源代理模式，浏览器请求先发送到当前工作台地址，再转发到所选环境的 \`baseUrl\`，无需后端放行 CORS，也无需手工清空或覆盖页面地址。人工测试结束后按 \`Ctrl+C\` 停止服务。
 
 也可以在项目根目录执行：
 

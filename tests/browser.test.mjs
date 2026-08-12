@@ -37,17 +37,17 @@ try {
     browser = await chromium.launch({ channel: "chrome", headless: true });
     for (const viewport of [{ width: 1440, height: 900, name: "desktop" }, { width: 390, height: 844, name: "mobile" }]) {
         const page = await browser.newPage({ viewport });
-        await page.route("https://mock.local/health?*", (route) => route.fulfill({
+        await page.route(`http://127.0.0.1:${port}/health?*`, (route) => route.fulfill({
             status: 200,
             contentType: "application/json",
             body: JSON.stringify({ status: "UP" })
         }));
-        await page.route("https://mock.local/slow?*", async (route) => {
+        await page.route(`http://127.0.0.1:${port}/slow?*`, async (route) => {
             await new Promise((resolve) => setTimeout(resolve, 5000));
             await route.fulfill({ status: 200, contentType: "application/json", body: "{}" }).catch(() => {});
         });
         const recordsRequests = [];
-        await page.route("https://mock.local/records/**", (route) => {
+        await page.route(`http://127.0.0.1:${port}/records/**`, (route) => {
             recordsRequests.push(route.request().url());
             route.fulfill({ status: 204, body: "" });
         });

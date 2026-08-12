@@ -80,7 +80,9 @@ test("serve 同源代理：非静态请求转发到环境 baseUrl，静态文件
         // 静态文件优先：根路径返回 index.html 而非代理
         const pageResponse = await fetch(`http://127.0.0.1:${servePort}/`);
         assert.equal(pageResponse.status, 200);
-        assert.match(await pageResponse.text(), /<title>scenario<\/title>/);
+        const page = await pageResponse.text();
+        assert.match(page, /<title>scenario<\/title>/);
+        assert.match(page, /window\.__SCENARIO_TEST_SERVE_PROXY__ = true/, "serve 页面应注入同源代理模式标记");
         assert.equal(received.length, 1, "静态请求不应转发到 mock 后端");
 
         // 静态文件未命中时按同源请求代理转发（路径原样传给后端）
@@ -92,6 +94,30 @@ test("serve 同源代理：非静态请求转发到环境 baseUrl，静态文件
     } finally {
         child.kill();
         mock.close();
+        fs.rmSync(project, { recursive: true, force: true });
+    }
+});
+
+test("serve：端口占用时友好退出，不输出未处理异常", async () => {
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-serve-port-"));
+    const configPath = path.join(project, "scenario.config.js");
+    fs.writeFileSync(configPath, `ScenarioTest.registerConfig(ScenarioTest.defineConfig({baseUrl:"http://127.0.0.1:1",scenarios:[]}));`, "utf8");
+    const occupied = http.createServer();
+    await new Promise((resolve) => occupied.listen(0, "127.0.0.1", resolve));
+    const port = occupied.address().port;
+    try {
+        const result = await new Promise((resolve, reject) => {
+            const child = spawn(process.execPath, [cli, "serve", "--config", configPath, "--port", String(port)], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
+            let stderr = "";
+            child.stderr.on("data", (chunk) => { stderr += chunk; });
+            child.on("error", reject);
+            child.on("close", (code) => resolve({ code, stderr }));
+        });
+        assert.equal(result.code, 1);
+        assert.match(result.stderr, new RegExp(`端口 ${port} 已被占用`));
+        assert.doesNotMatch(result.stderr, /Unhandled 'error' event/);
+    } finally {
+        await new Promise((resolve) => occupied.close(resolve));
         fs.rmSync(project, { recursive: true, force: true });
     }
 });

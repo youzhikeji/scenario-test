@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.9] - 2026-08-12
+
+### 🐛 Bug Fixes
+
+1. **serve 自动强制浏览器使用同源代理**
+   - `serve` 返回 HTML 时注入代理模式标记；浏览器继续展示和维护环境 `baseUrl`，仅在实际发送请求时改用当前工作台同源地址，再由服务端转发到所选环境，修复页面直连后端导致 CORS 的问题。
+2. **工作台启动脚本使用随机空闲端口**
+   - 生成的 `start-scenario-test.cmd` 不再固定占用 4300，改为向系统申请随机空闲端口，浏览器 URL 与 `--port` 使用同一端口，支持多项目同时启动互不冲突。
+3. **端口被占用时友好提示**
+   - `serve` 捕获 `EADDRINUSE`，输出「端口已被占用，请重新启动以获取新的随机端口」并退出码 1，不再输出未处理异常堆栈。
+4. **免 npm 接入提示与文档对齐**
+   - `init` 提示语、项目内 README 与安装脚本统一为「serve 自动启用同源接口代理」，不再要求手工清空页面 baseUrl。
+
 ## [0.5.8] - 2026-03-15
 
 ### ✨ Integration Experience

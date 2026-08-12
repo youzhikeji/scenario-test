@@ -270,6 +270,13 @@ export function createLegacyRuntime(options) {
         return String(stored || (environment && environment.baseUrl) || cfg.baseUrl || window.location.origin || '').replace(/\/+$/, '');
     }
 
+    function getRequestBaseUrl() {
+        if (window.__SCENARIO_TEST_SERVE_PROXY__) {
+            return String(window.location.origin || '').replace(/\/+$/, '');
+        }
+        return getEffectiveBaseUrl();
+    }
+
     function getEffectiveAuthorization() {
         var cfg = appConfig;
         var keys = getStorageKeys();
@@ -659,7 +666,7 @@ export function createLegacyRuntime(options) {
             vars: buildScenarioRuntimeVars(),
             lastResponse: null,
             lastResponseBody: null,
-            baseUrl: getEffectiveBaseUrl(),
+            baseUrl: getRequestBaseUrl(),
             authorization: getEffectiveAuthorization(),
             globals: getEffectiveGlobals(),
             environment: environment ? clone(environment) : null,
@@ -1341,7 +1348,7 @@ export function createLegacyRuntime(options) {
             getDebugRuntime,
             executeStep,
             getSelectedEnvironment,
-            getEffectiveBaseUrl,
+            getRequestBaseUrl,
             getEffectiveAuthorization,
             getEffectiveGlobals
         );

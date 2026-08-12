@@ -50,6 +50,13 @@ function assertGeneratedLayout(project, directory = "scenario-test") {
     assert.ok(startScript.includes('"%~dp0.scenario-test\\scenario-test-cli.cjs" serve'), "cmd 应调用 .scenario-test 内 CLI 副本");
     assert.match(startScript, /scenario\.config\.js/);
     assert.match(startScript, /Start-Process/);
+    assert.doesNotMatch(startScript, /4300/, "cmd 不应写死工作台端口");
+    assert.match(startScript, /TcpListener/, "cmd 应向系统申请随机空闲端口");
+    assert.match(startScript, /SCENARIO_TEST_PORT/);
+    assert.match(startScript, /if not defined SCENARIO_TEST_PORT/);
+    assert.doesNotMatch(startScript, /%RANDOM%/, "端口分配失败时不应退化为未经检测的随机端口");
+    assert.match(startScript, /--port %SCENARIO_TEST_PORT%/);
+    assert.match(startScript, /SCENARIO_TEST_URL=http:\/\/127\.0\.0\.1:%SCENARIO_TEST_PORT%\//);
     assert.match(
         fs.readFileSync(path.join(publicDir, "scenario.config.js"), "utf8"),
         /reference path="\.\/\.scenario-test\/scenario-test\.d\.ts"/
