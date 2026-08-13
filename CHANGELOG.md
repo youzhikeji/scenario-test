@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.13] - 2026-08-13
+
+### 🐛 Bug Fixes
+
+1. **工作台复制能力补全**
+   - 待执行、已执行和跳过步骤统一提供复制按钮，可复制步骤标题、请求方法与接口路径。
+   - 报告 Markdown、JSON 与步骤复制统一展示成功或失败反馈，并在短暂提示后恢复按钮文案。
+2. **剪贴板异常与兼容性修复**
+   - Clipboard API 同步抛错或异步拒绝时可靠回退到 `execCommand`，回退失败不再产生未处理 Promise rejection。
+   - 无 DOM 环境安全返回失败；回退流程始终清理临时元素并恢复此前焦点。
+3. **复制回归测试补充**
+   - 覆盖待执行/跳过步骤、同步异常、异步拒绝、失败反馈、文案恢复及无 DOM 环境。
+
 ## [0.5.12] - 2026-08-12
 
 ### 🐛 Bug Fixes

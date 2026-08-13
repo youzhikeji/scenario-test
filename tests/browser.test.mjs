@@ -51,6 +51,8 @@ try {
             recordsRequests.push(route.request().url());
             route.fulfill({ status: 204, body: "" });
         });
+        const pageErrors = [];
+        page.on("pageerror", (error) => pageErrors.push(error.message));
         const externalRequests = [];
         page.on("request", (request) => {
             const url = request.url();
@@ -59,6 +61,7 @@ try {
         await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "networkidle" });
         await page.waitForFunction(() => document.querySelectorAll("[data-scenario-file]").length === 3);
         assert.equal(await page.locator("#stepsList li").count(), 1);
+        assert.equal(await page.locator("[data-copy-step]").count(), 1, "待执行步骤应提供复制按钮");
         assert.equal(await page.locator("#scenarioVar_exampleToken").getAttribute("type"), "text");
         assert.equal(await page.locator("#scenarioVar_expectedStatus").inputValue(), "UP");
         await page.locator("#themeSelect").selectOption("claude-code");
@@ -87,6 +90,61 @@ try {
         await page.waitForFunction(() => !document.querySelector("#runBtn").disabled && document.querySelector('#stepsList li[data-passed="true"]'));
         assert.equal(await page.locator('#stepsList li[data-passed="true"]').count(), 1);
         assert.match(await page.locator("#reportPanel").textContent(), /全部通过/);
+
+        // 复制功能：mock 剪贴板后验证报告 MD/JSON 与步骤复制的反馈
+        await page.evaluate(() => {
+            Object.defineProperty(navigator, "clipboard", {
+                value: { writeText: async () => {} },
+                configurable: true
+            });
+        });
+        await page.locator("#copyReportMarkdownBtn").click();
+        await page.waitForFunction(() => document.querySelector("#copyReportMarkdownBtn").textContent.includes("已复制"));
+        await page.locator("#copyReportMarkdownBtn").click();
+        await page.locator("#copyReportJsonBtn").click();
+        await page.waitForFunction(() => document.querySelector("#copyReportJsonBtn").textContent.includes("已复制"));
+        assert.equal(await page.locator("[data-copy-step]").count(), 1, "步骤应提供复制按钮");
+        await page.locator("[data-copy-step='0']").click();
+        await page.waitForFunction(() => document.querySelector("[data-copy-step='0']").textContent.includes("已复制"));
+        await page.locator("[data-copy-step='0']").click();
+        await page.waitForFunction(() => document.querySelector("[data-copy-step='0']").textContent === "复制");
+        assert.match(await page.locator("#copyReportMarkdownBtn").textContent(), /复制 MD/, "连续复制后报告按钮应恢复原文案");
+        assert.equal(await page.locator("[data-copy-step='0']").textContent(), "复制", "连续复制后步骤按钮应恢复原文案");
+
+        // Clipboard API 同步抛错时应执行 execCommand 回退
+        await page.evaluate(() => {
+            window.__copyFallbackCalls = 0;
+            Object.defineProperty(document, "execCommand", {
+                value: () => {
+                    window.__copyFallbackCalls += 1;
+                    return true;
+                },
+                configurable: true
+            });
+            Object.defineProperty(navigator, "clipboard", {
+                value: { writeText: () => { throw new Error("同步剪贴板异常"); } },
+                configurable: true
+            });
+        });
+        await page.locator("#copyReportMarkdownBtn").click();
+        await page.waitForFunction(() => document.querySelector("#copyReportMarkdownBtn").textContent.includes("已复制"));
+        assert.equal(await page.evaluate(() => window.__copyFallbackCalls), 1, "同步异常后应调用 execCommand 回退");
+
+        // Clipboard API 与回退均失败时，报告和步骤按钮均应显示失败反馈
+        await page.evaluate(() => {
+            Object.defineProperty(document, "execCommand", { value: () => false, configurable: true });
+            Object.defineProperty(navigator, "clipboard", {
+                value: { writeText: () => Promise.reject(new Error("剪贴板权限拒绝")) },
+                configurable: true
+            });
+        });
+        await page.locator("#copyReportMarkdownBtn").click();
+        await page.waitForFunction(() => document.querySelector("#copyReportMarkdownBtn").textContent.includes("复制失败"));
+        await page.locator("#copyReportJsonBtn").click();
+        await page.waitForFunction(() => document.querySelector("#copyReportJsonBtn").textContent.includes("复制失败"));
+        await page.locator("[data-copy-step='0']").click();
+        await page.waitForFunction(() => document.querySelector("[data-copy-step='0']").textContent.includes("失败"));
+        assert.deepEqual(pageErrors, [], `复制失败不应产生 pageerror: ${pageErrors.join(", ")}`);
 
         await page.locator("[data-adhoc-step='0']").click();
         await page.locator("#adhocExecuteBtn").click();
@@ -117,6 +175,9 @@ try {
         assert.equal(recordsRequests.length, 0, `when 不满足时不应发出请求: ${recordsRequests.join(", ")}`);
         // SKIP 可观测性：全跳过显示"全部跳过"，跳过单独统计且不计入通过数
         assert.equal(await page.locator('#stepsList li[data-skipped="true"]').count(), 1);
+        assert.equal(await page.locator("#stepsList li").count(), await page.locator("[data-copy-step]").count(), "跳过步骤也应提供复制按钮");
+        await page.locator('#stepsList li[data-skipped="true"] [data-copy-step]').click();
+        await page.waitForFunction(() => document.querySelector('#stepsList li[data-skipped="true"] [data-copy-step]').textContent.includes("失败"));
         assert.match(await page.locator("#reportPanel").textContent(), /全部跳过/);
         assert.match(await page.locator("#statsPanel").textContent(), /跳过/);
 

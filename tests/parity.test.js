@@ -165,3 +165,7 @@ test("extract 求值结果：legacy 与 Node 一致（from 各来源 + status/he
         assert.deepEqual(legacyRuntime.vars, nodeRuntime.vars, `extract ${JSON.stringify(definition)} 的 vars 两端不一致`);
     }
 });
+
+test("legacy copyText 在无 DOM 的 Node 环境中返回 false", async () => {
+    assert.equal(await legacyCore.copyText("测试内容"), false);
+});

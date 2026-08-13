@@ -1199,19 +1199,63 @@ export function createLegacyRuntime(options) {
     function bindReportActions() {
         var copyMdBtn = document.getElementById('copyReportMarkdownBtn');
         var copyJsonBtn = document.getElementById('copyReportJsonBtn');
+        function flashCopyFeedback(btn, ok) {
+            if (!btn) return;
+            if (btn.__copyFeedbackTimer) window.clearTimeout(btn.__copyFeedbackTimer);
+            if (btn.__copyOriginalHtml == null) btn.__copyOriginalHtml = btn.innerHTML;
+            var label = ok ? '已复制' : '复制失败';
+            btn.innerHTML = '<span style="color:' + (ok ? '#059669' : '#dc2626') + ';font-weight:700">' + label + '</span>';
+            btn.__copyFeedbackTimer = window.setTimeout(function () {
+                btn.innerHTML = btn.__copyOriginalHtml;
+                btn.__copyFeedbackTimer = null;
+            }, 1500);
+        }
+        function handleCopy(btn, getText) {
+            if (!state.lastReport) return;
+            Promise.resolve()
+                .then(getText)
+                .then(core.copyText)
+                .then(function (ok) { flashCopyFeedback(btn, ok); })
+                .catch(function () { flashCopyFeedback(btn, false); });
+        }
         if (copyMdBtn) {
             copyMdBtn.addEventListener('click', function () {
-                if (!state.lastReport) return;
-                var text = uiView.buildMarkdownReport(state.lastReport);
-                core.copyText ? core.copyText(text) : navigator.clipboard.writeText(text);
+                handleCopy(copyMdBtn, function () { return uiView.buildMarkdownReport(state.lastReport); });
             });
         }
         if (copyJsonBtn) {
             copyJsonBtn.addEventListener('click', function () {
-                if (!state.lastReport) return;
-                var text = safeJson(state.lastReport);
-                core.copyText ? core.copyText(text) : navigator.clipboard.writeText(text);
+                handleCopy(copyJsonBtn, function () { return safeJson(state.lastReport); });
             });
+        }
+    }
+
+    // 步骤级复制：标题 + METHOD path（复制按钮在步骤项上，事件委托）
+    function bindStepCopyActions() {
+        var ul = document.getElementById('stepsList');
+        if (!ul) return;
+        ul.addEventListener('click', function (event) {
+            var button = event.target && event.target.closest ? event.target.closest('[data-copy-step]') : null;
+            if (!button) return;
+            var index = Number(button.getAttribute('data-copy-step'));
+            if (!Number.isInteger(index)) return;
+            var step = state.scenario && Array.isArray(state.scenario.steps) ? state.scenario.steps[index] : null;
+            if (!step) return;
+            var text = (step.name ? step.name : '步骤 ' + (index + 1)) + '\n' + String(step.method || 'GET').toUpperCase() + ' ' + (step.path || '');
+            Promise.resolve()
+                .then(function () { return core.copyText(text); })
+                .then(function (ok) { showStepCopyFeedback(button, ok); })
+                .catch(function () { showStepCopyFeedback(button, false); });
+        });
+
+        function showStepCopyFeedback(button, ok) {
+            if (button.__copyFeedbackTimer) window.clearTimeout(button.__copyFeedbackTimer);
+            if (button.__copyOriginalText == null) button.__copyOriginalText = button.textContent;
+            button.textContent = ok ? '已复制' : '失败';
+            button.__copyFeedbackTimer = window.setTimeout(function () {
+                button.textContent = button.__copyOriginalText;
+                button.__copyFeedbackTimer = null;
+            }, 1500);
         }
     }
 
@@ -1340,6 +1384,7 @@ export function createLegacyRuntime(options) {
         bindSettingsEvents();
         bindGlobalsEvents();
         bindReportActions();
+        bindStepCopyActions();
 
         uiAdhoc.bindAdhocRequestEvents(
             function (idx) {

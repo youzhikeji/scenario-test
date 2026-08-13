@@ -428,6 +428,48 @@ const legacyCore = (function (globalRoot) {
     // 若 blueimp-md5 不可用（如浏览器 standalone 未打包），md5 会抛出明确错误，
     // 提示先加载 vendor/blueimp-md5.js。
 
+    // ===== 剪贴板复制（可靠回退）=====
+    // Clipboard API 仅在安全上下文（HTTPS/localhost）可用且需要权限；
+    // 失败或不可用时回退 textarea + execCommand，保证工作台复制始终可用。
+    function legacyCopyText(text) {
+        if (typeof document === 'undefined' || !document.body || typeof document.createElement !== 'function') return false;
+        var textarea;
+        var activeElement = document.activeElement;
+        try {
+            textarea = document.createElement('textarea');
+            textarea.value = String(text);
+            textarea.setAttribute('readonly', '');
+            textarea.style.position = 'fixed';
+            textarea.style.top = '-9999px';
+            document.body.appendChild(textarea);
+            textarea.focus();
+            textarea.select();
+            return typeof document.execCommand === 'function' && document.execCommand('copy') === true;
+        } catch (error) {
+            return false;
+        } finally {
+            if (textarea && textarea.parentNode) textarea.parentNode.removeChild(textarea);
+            if (activeElement && typeof activeElement.focus === 'function') {
+                try {
+                    activeElement.focus();
+                } catch (error) {
+                    // 原焦点可能已离开文档；复制结果不受影响。
+                }
+            }
+        }
+    }
+
+    function copyText(text) {
+        var value = String(text == null ? '' : text);
+        if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+            return Promise.resolve()
+                .then(function () { return navigator.clipboard.writeText(value); })
+                .then(function () { return true; })
+                .catch(function () { return legacyCopyText(value); });
+        }
+        return Promise.resolve().then(function () { return legacyCopyText(value); });
+    }
+
     return {
         md5: md5,
         generateSignature: generateSignature,
@@ -461,7 +503,8 @@ const legacyCore = (function (globalRoot) {
         esc: esc,
         fmt: fmt,
         safeJson: safeJson,
-        sanitizeSensitive: sanitizeSensitive
+        sanitizeSensitive: sanitizeSensitive,
+        copyText: copyText
     };
 })(typeof window !== 'undefined' ? window : globalThis);
 

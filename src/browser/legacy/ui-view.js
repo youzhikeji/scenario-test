@@ -364,6 +364,7 @@ const legacyView = (function () {
                     '</div>' +
                     '<div class="flex items-center space-x-2.5 flex-shrink-0">' +
                         tags +
+                        '<button type="button" data-copy-step="' + (seqNum - 1) + '" class="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 hover:border-emerald-300 hover:text-emerald-700 shadow-sm" title="复制步骤标题与接口路径">复制</button>' +
                         '<button type="button" data-adhoc-step="' + (seqNum - 1) + '" class="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 shadow-sm">调试</button>' +
                         '<span class="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200/50">待执行</span>' +
                         '<svg class="w-4 h-4 text-slate-400 group-hover:text-slate-600 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>' +
@@ -453,6 +454,7 @@ const legacyView = (function () {
                         '</div>' +
                     '</div>' +
                     '<div class="flex items-center space-x-4 flex-shrink-0">' +
+                        '<button type="button" data-copy-step="' + i + '" class="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-bold text-slate-600 hover:border-emerald-300 hover:text-emerald-700" title="复制步骤标题与接口路径">复制</button>' +
                         '<button type="button" data-adhoc-step="' + i + '" class="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-bold text-slate-600 hover:border-emerald-300 hover:text-emerald-700">调试</button>' +
                         stepActions +
                         '<span class="text-[12px] font-bold font-mono ' + statusCls + ' px-1.5 py-0.5 rounded border">' + s.status + '</span>' +
