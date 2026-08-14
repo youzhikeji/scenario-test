@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.17] - 2026-08-14
+
+### 📚 Docs
+
+1. **升级章节充实**
+   - 补升级原理说明：版本锁自动检测、默认保留 config 与 scenarios、`--force` 覆盖警示。
+   - 按免 npm / npm / 内网三种接入方式给出可复制的升级命令。
+   - 补接入方式判断（`.scenario-test/` 目录 vs package.json 依赖）与 doctor 体检判定标准。
+   - 「安装完成后」小节加升级章节交叉引用，已接入项目可直达。
+
 ## [0.5.16] - 2026-08-14
 
 ### 🐛 Bug Fixes
