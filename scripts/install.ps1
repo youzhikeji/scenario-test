@@ -280,15 +280,15 @@ if ($UseNpm) {
 Write-Host "3. 命令行执行场景：" -ForegroundColor Yellow
 if ($UseNpm) {
     Write-Host "   # 执行所有非 manual 场景" -ForegroundColor Gray
-    Write-Host "   npx @yc_yzkj/scenario-test --config $configRelative --env local --all`n" -ForegroundColor Cyan
+    Write-Host "   npx @yc_yzkj/scenario-test run --config $configRelative --env local --all`n" -ForegroundColor Cyan
     Write-Host "   # 执行指定场景" -ForegroundColor Gray
-    Write-Host "   npx @yc_yzkj/scenario-test --config $configRelative --env local --scenario <场景ID>`n" -ForegroundColor Cyan
+    Write-Host "   npx @yc_yzkj/scenario-test run --config $configRelative --env local --scenario <场景ID>`n" -ForegroundColor Cyan
 } else {
     $cliRelative = "$relativeTargetDir/.scenario-test/scenario-test-cli.cjs"
     Write-Host "   # 执行所有非 manual 场景" -ForegroundColor Gray
-    Write-Host "   node $cliRelative --config $configRelative --env local --all`n" -ForegroundColor Cyan
+    Write-Host "   node $cliRelative run --config $configRelative --env local --all`n" -ForegroundColor Cyan
     Write-Host "   # 执行指定场景" -ForegroundColor Gray
-    Write-Host "   node $cliRelative --config $configRelative --env local --scenario <场景ID>`n" -ForegroundColor Cyan
+    Write-Host "   node $cliRelative run --config $configRelative --env local --scenario <场景ID>`n" -ForegroundColor Cyan
 }
 
 Write-Host "4. 文档位置：" -ForegroundColor Yellow

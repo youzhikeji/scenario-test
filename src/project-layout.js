@@ -19,12 +19,11 @@ function toRelativePath(...segments) {
     return path.join(...segments).replace(/\\/g, "/");
 }
 
-export function createProjectLayout(projectRoot, directory, legacy = false) {
+export function createProjectLayout(projectRoot, directory) {
     const publicDir = path.resolve(projectRoot, directory);
-    const frameworkDir = legacy ? publicDir : path.join(publicDir, INTERNAL_DIRECTORY);
-    const frameworkRelativeDir = legacy ? directory : toRelativePath(directory, INTERNAL_DIRECTORY);
+    const frameworkDir = path.join(publicDir, INTERNAL_DIRECTORY);
+    const frameworkRelativeDir = toRelativePath(directory, INTERNAL_DIRECTORY);
     return Object.freeze({
-        legacy,
         publicDir,
         frameworkDir,
         frameworkRelativeDir,
@@ -40,14 +39,11 @@ function isDirectory(target) {
 
 // 统一使用 .scenario-test/ 内部目录放置 AI 规则、模式库与运行时副本。
 export function resolveProjectLayout(projectRoot, directory) {
-    const modern = createProjectLayout(projectRoot, directory, false);
-    if (fs.existsSync(modern.frameworkDir)) {
-        if (!isDirectory(modern.frameworkDir)) {
-            throw new Error(`${modern.frameworkDir} 必须是目录；请移走同名文件后重试`);
-        }
-        return modern;
+    const layout = createProjectLayout(projectRoot, directory);
+    if (fs.existsSync(layout.frameworkDir) && !isDirectory(layout.frameworkDir)) {
+        throw new Error(`${layout.frameworkDir} 必须是目录；请移走同名文件后重试`);
     }
-    return modern;
+    return layout;
 }
 
 export function resolveLayoutFromConfigDir(configDir) {

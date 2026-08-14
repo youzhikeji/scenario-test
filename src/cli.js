@@ -122,7 +122,8 @@ Options:
   --env <key>           配置中的环境 key
   --base-url <url>      临时覆盖 Base URL
   --scenario <id>       执行指定场景（可执行 manual:true 场景）
-  --all                 执行配置中的全部自动场景（默认排除 manual:true）
+  --all                 执行配置中的全部自动场景（默认排除 manual:true；
+                        未指定 --all/--scenario 时仅执行清单第一个场景）
   --fail-on-skip        存在任何 SKIP 步骤时最终退出码为 1（默认 false）
   --port <number>       浏览器服务端口，默认 4300
   --allow-external-plugins  允许加载外部插件（有安全风险）
@@ -146,6 +147,8 @@ Options:
   --project <path>      项目根目录
   --dir <name>          场景测试目录名
   --force               强制覆盖已有文件
+  --no-input            非交互：目标目录已存在时保留配置与场景，仅刷新 AI 规则和运行时副本
+  --library-url <url>   init 运行时副本下载目录（CLI/UMD/d.ts/capabilities，默认 GitHub Tag dist）
 
 示例:
   # 推荐: 使用环境变量
@@ -559,10 +562,18 @@ function resolveServeProxyTarget(config, envKey) {
     return String(config.baseUrl || "").replace(/\/+$/, "");
 }
 
+// 转发时剔除 hop-by-hop 头（RFC 7230 §6.1），避免把客户端连接语义泄漏给上游；
+// Node 会按 targetUrl 重建 host/connection，显式删除可防止冲突。
+const HOP_BY_HOP_HEADERS = new Set([
+    "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
+    "te", "trailer", "transfer-encoding", "upgrade", "host"
+]);
+
 function proxyRequest(request, response, targetUrl) {
-    const headers = { ...request.headers };
-    delete headers.host;
-    delete headers.connection;
+    const headers = {};
+    for (const [name, value] of Object.entries(request.headers)) {
+        if (!HOP_BY_HOP_HEADERS.has(String(name).toLowerCase())) headers[name] = value;
+    }
     const upstream = http.request(targetUrl + request.url, {
         method: request.method,
         headers

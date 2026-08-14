@@ -51,6 +51,8 @@ const fullAdapter = {
     async beforeExecute({ step, runtime, options }) {
         console.log(`准备执行步骤: ${step.name}`);
         // 可用于日志、验证、权限检查等
+        // 注意: step 是步骤原始定义（未做 {{vars.*}} 变量替换）；
+        // 此处对 step 的修改会进入 execute（execute 的深拷贝发生在钩子之后）
     },
     
     // 4. 主逻辑（必需）
@@ -83,6 +85,8 @@ const fullAdapter = {
         console.log(`步骤完成: ${step.name}`);
         // 可用于日志、清理、后处理等
         // 返回值会覆盖原始 output（可选）
+        // 注意: step 未经变量替换，且可能包含 beforeExecute 的修改；
+        // execute 副本内的修改不会反映到这里
         return output;
     },
     
