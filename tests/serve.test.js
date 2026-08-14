@@ -143,3 +143,46 @@ test("serve：代理目标不可达时返回 502", async () => {
         fs.rmSync(project, { recursive: true, force: true });
     }
 });
+
+test("serve 代理响应方向剔除 hop-by-hop 头", async () => {
+    const mock = http.createServer((request, response) => {
+        response.writeHead(200, {
+            "Content-Type": "application/json",
+            "Keep-Alive": "timeout=99",
+            "Proxy-Authenticate": 'Basic realm="scenario"',
+            "Upgrade": "websocket"
+        });
+        response.end(JSON.stringify({ ok: true }));
+    });
+    await new Promise((resolve) => mock.listen(0, "127.0.0.1", resolve));
+    const mockPort = mock.address().port;
+
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-serve-hop-"));
+    const dir = path.join(project, "scenario-test");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+        envs: [{ key: "local", name: "本地", baseUrl: "http://127.0.0.1:${mockPort}" }],
+        defaultEnvKey: "local",
+        scenarios: []
+    }));`, "utf8");
+
+    const servePort = await freePort();
+    const child = spawn(process.execPath, [cli, "serve", "--config", path.join(dir, "scenario.config.js"), "--port", String(servePort)], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
+    try {
+        await waitForOutput(child, "场景测试工作台");
+        const response = await fetch(`http://127.0.0.1:${servePort}/api/hop`);
+        assert.equal(response.status, 200);
+        // 上游返回的 hop-by-hop 头不得透传给浏览器（Keep-Alive 除外：
+        // 它是 Node 服务器对 keep-alive 连接自行追加的连接管理头，非上游透传，值恒为 timeout=5）
+        assert.equal(response.headers.get("proxy-authenticate"), null, "Proxy-Authenticate 是 hop-by-hop 头，不应透传");
+        assert.equal(response.headers.get("upgrade"), null, "Upgrade 是 hop-by-hop 头，不应透传");
+        // 普通实体头正常透传
+        assert.match(response.headers.get("content-type"), /application\/json/);
+        const payload = await response.json();
+        assert.equal(payload.ok, true);
+    } finally {
+        child.kill();
+        mock.close();
+        fs.rmSync(project, { recursive: true, force: true });
+    }
+});

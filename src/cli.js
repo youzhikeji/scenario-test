@@ -578,7 +578,12 @@ function proxyRequest(request, response, targetUrl) {
         method: request.method,
         headers
     }, (upstreamResponse) => {
-        response.writeHead(upstreamResponse.statusCode || 502, upstreamResponse.headers);
+        // 响应方向同样剔除 hop-by-hop 头，避免把上游连接语义（transfer-encoding/keep-alive 等）透传给浏览器
+        const responseHeaders = {};
+        for (const [name, value] of Object.entries(upstreamResponse.headers)) {
+            if (!HOP_BY_HOP_HEADERS.has(String(name).toLowerCase())) responseHeaders[name] = value;
+        }
+        response.writeHead(upstreamResponse.statusCode || 502, responseHeaders);
         upstreamResponse.pipe(response);
     });
     upstream.setTimeout(30000, () => {

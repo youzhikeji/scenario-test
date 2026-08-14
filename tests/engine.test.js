@@ -471,6 +471,25 @@ test("取消返回 CANCELLED 与中文文案；超时返回 TIMEOUT 与结构化
     assert.equal(timedOutResult.assertions[0].name, "请求未超时");
 });
 
+test("读体阶段受超时控制：响应头到达后 body 挂起也会 TIMEOUT", { timeout: 5000 }, async () => {
+    // mock fetch 立即返回响应头，但 body 流永远不结束（controller 不 close）。
+    // 读体必须受 signal 超时控制，否则该测试会永久挂起。
+    const scenario = defineScenario({
+        name: "读体超时",
+        steps: [{ name: "s", path: "api", timeoutMs: 50, assertions: [{ path: "code", equals: 200 }] }]
+    });
+    const report = await createEngine({
+        baseUrl: "https://mock.local",
+        fetch: async () => new Response(new ReadableStream({
+            start(controller) { controller.enqueue(new TextEncoder().encode("partial")); }
+        }), { status: 200, headers: { "Content-Type": "text/plain" } })
+    }).runScenario(scenario);
+    const result = report.results[0];
+    assert.equal(result.status, "TIMEOUT");
+    assert.equal(result.timedOut, true);
+    assert.match(result.error, /请求超时/);
+});
+
 test("负 / 字符串 \"0\" / Infinity 超时值不触发即时超时且不崩溃（钳制为默认值）", async () => {
     // 这些非法值都经 || 链或 Number.isFinite 钳制为默认 30000；此处仅验证
     // 不会误判为"立即超时"或抛异常，正常响应仍通过（钳制逻辑见 executeHttp）

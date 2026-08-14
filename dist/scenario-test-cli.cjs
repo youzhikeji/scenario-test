@@ -1093,15 +1093,55 @@ function chooseAdapter(step, adapters) {
   }
   return null;
 }
-async function readResponse(response, step, io, runtime) {
+function readBodyChunks(response, signal) {
+  if (!response.body) return Promise.resolve([]);
+  const reader = response.body.getReader();
+  const chunks = [];
+  return new Promise((resolve2, reject) => {
+    const onAbort = () => {
+      reader.cancel().catch(() => {
+      });
+      reject(signal?.reason || new Error("\u6267\u884C\u5DF2\u53D6\u6D88"));
+    };
+    if (signal) {
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
+    (async () => {
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+        }
+        resolve2(chunks);
+      } catch (error) {
+        reject(error);
+      } finally {
+        if (signal) signal.removeEventListener("abort", onAbort);
+      }
+    })();
+  });
+}
+async function readResponse(response, step, io, runtime, signal) {
   const headers = headersToObject(response.headers);
   const contentType2 = String(headers["content-type"] || "");
+  const chunks = await readBodyChunks(response, signal);
   if (step.saveResponseAs && io?.saveResponse) {
-    const data = new Uint8Array(await response.arrayBuffer());
+    const data = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.length, 0));
+    let offset = 0;
+    for (const chunk of chunks) {
+      data.set(chunk, offset);
+      offset += chunk.length;
+    }
     const saved = await io.saveResponse(resolveString(step.saveResponseAs, runtime), data, { contentType: contentType2, headers });
     return { status: response.status, headers, body: saved, bodyText: null };
   }
-  const bodyText = await response.text();
+  const decoder = new TextDecoder();
+  const bodyText = chunks.map((chunk) => decoder.decode(chunk, { stream: true })).join("") + decoder.decode();
   return { status: response.status, headers, body: parseBody(bodyText, contentType2), bodyText };
 }
 async function executeHttp(step, runtime, options) {
@@ -1166,7 +1206,7 @@ async function executeHttp(step, runtime, options) {
   fetchOptions.signal = requestSignal.signal;
   try {
     const response = await options.fetch(joinUrl(options.baseUrl, requestPath), fetchOptions);
-    const responseData = await readResponse(response, step, options.io, runtime);
+    const responseData = await readResponse(response, step, options.io, runtime, requestSignal.signal);
     return { method, path: requestPath, request: { headers, body: request.body }, response: responseData };
   } catch (error) {
     if (error && typeof error === "object" && !error.scenarioContext) {
@@ -5233,7 +5273,11 @@ function proxyRequest(request, response, targetUrl) {
     method: request.method,
     headers
   }, (upstreamResponse) => {
-    response.writeHead(upstreamResponse.statusCode || 502, upstreamResponse.headers);
+    const responseHeaders = {};
+    for (const [name, value] of Object.entries(upstreamResponse.headers)) {
+      if (!HOP_BY_HOP_HEADERS.has(String(name).toLowerCase())) responseHeaders[name] = value;
+    }
+    response.writeHead(upstreamResponse.statusCode || 502, responseHeaders);
     upstreamResponse.pipe(response);
   });
   upstream.setTimeout(3e4, () => {
