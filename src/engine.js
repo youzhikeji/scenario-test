@@ -23,6 +23,14 @@ function now() {
     return globalThis.performance?.now ? globalThis.performance.now() : Date.now();
 }
 
+function abortReason(signal) {
+    return signal?.reason || new Error("执行已取消");
+}
+
+function timeoutErrorMessage(timeoutMs) {
+    return `请求超时（${timeoutMs}ms）`;
+}
+
 function delay(milliseconds, signal) {
     if (!milliseconds) return Promise.resolve();
     return new Promise((resolveDelay, reject) => {
@@ -30,7 +38,7 @@ function delay(milliseconds, signal) {
         if (signal) {
             signal.addEventListener("abort", () => {
                 clearTimeout(timer);
-                reject(signal.reason || new Error("执行已取消"));
+                reject(abortReason(signal));
             }, { once: true });
         }
     });
@@ -38,7 +46,7 @@ function delay(milliseconds, signal) {
 
 // 超时错误：带结构化标记，供调用方精确识别超时（不依赖匹配本地化文案）
 function createTimeoutError(timeoutMs) {
-    const error = new Error(`请求超时（${timeoutMs}ms）`);
+    const error = new Error(timeoutErrorMessage(timeoutMs));
     error.scenarioTimedOut = true;
     return error;
 }
@@ -47,7 +55,7 @@ function createRequestSignal(parentSignal, timeoutMs) {
     const controller = new AbortController();
     // 超时状态由 signal 内部维护，不依赖浏览器是否把 abort reason 传播为 fetch 拒绝原因
     let timedOut = false;
-    const abort = () => controller.abort(parentSignal?.reason || new Error("执行已取消"));
+    const abort = () => controller.abort(abortReason(parentSignal));
     if (parentSignal?.aborted) abort();
     else parentSignal?.addEventListener("abort", abort, { once: true });
     const timer = timeoutMs > 0
@@ -168,7 +176,7 @@ function readBodyChunks(response, signal) {
     return new Promise((resolve, reject) => {
         const onAbort = () => {
             reader.cancel().catch(() => {});
-            reject(signal?.reason || new Error("执行已取消"));
+            reject(abortReason(signal));
         };
         if (signal) {
             if (signal.aborted) { onAbort(); return; }
@@ -288,7 +296,7 @@ async function executeHttp(step, runtime, options) {
                 path: requestPath,
                 request: { headers, body: request.body },
                 timedOut: requestSignal.timedOut(),
-                timeoutMessage: `请求超时（${timeoutMs}ms）`
+                timeoutMs
             };
         }
         throw error;
@@ -419,7 +427,7 @@ export function createEngine(engineOptions = {}) {
         const maxElapsedMs = retry?.maxElapsedMs || 300000; // 默认 5 分钟
         try {
             for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
-                if (options.signal?.aborted) throw options.signal.reason || new Error("执行已取消");
+                if (options.signal?.aborted) throw abortReason(options.signal);
 
                 // ✅ 检查总耗时
                 if (retry && (now() - retryStartTime) > maxElapsedMs) {
@@ -468,7 +476,7 @@ export function createEngine(engineOptions = {}) {
             const timedOut = !cancelled && Boolean(error?.scenarioTimedOut || context?.timedOut);
             const errorMessage = cancelled
                 ? "用户已取消执行"
-                : (timedOut ? (context?.timeoutMessage || "请求超时") : (error?.message || "请求执行失败"));
+                : (timedOut ? (context?.timeoutMs ? timeoutErrorMessage(context.timeoutMs) : "请求超时") : (error?.message || "请求执行失败"));
             const method = (context && context.method)
                 || String(step.method || (step.request && step.request.method) || "GET").toUpperCase();
             const path = (context && context.path) || resolveString(step.path || "", runtime);
