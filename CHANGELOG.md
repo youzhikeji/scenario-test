@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.15] - 2026-08-14
+
+### 🐛 Bug Fixes
+
+1. **读体阶段纳入超时控制**
+   - 响应体读取（text / arrayBuffer）显式接入请求 signal，不再依赖 fetch 实现的 abort 传播语义。
+   - 服务器返回响应头后 body 挂起时，同样受 `timeoutMs` / 取消控制，步骤判为 TIMEOUT 而非永久挂起。
+2. **serve 代理响应方向剔除 hop-by-hop 头**
+   - 响应方向与请求方向对称，`transfer-encoding` / `upgrade` / `Proxy-Authenticate` 等不再透传给浏览器。
+3. **重试保护参数定义期校验**
+   - `retryUntil.maxElapsedMs` 拒绝负数 / 0 / 非数值，避免字符串使 5 分钟重试保护静默失效。
+4. **`request.timeoutMs` 支持模板变量**
+   - 超时计算纳入变量解析后的 `request.timeoutMs`，`{{vars.xxx}}` 写法恢复生效。
+
+### ✅ Tests
+
+- 补读体挂起 → TIMEOUT、serve 响应方向 hop-by-hop 剔除、非法 retryUntil 数值等用例。
+
 ## [0.5.14] - 2026-08-14
 
 ### 🐛 Bug Fixes
