@@ -53,6 +53,8 @@ curl -fsSL https://cdn.jsdelivr.net/gh/youzhikeji/scenario-test@v0.5.16/scripts/
 
 每次只处理一个业务功能，不要扫描整个项目批量生成。
 
+> 已接入的项目升级到新版本，见文末 [升级](#升级) 章节。
+
 ## 可选：npm 接入
 
 npm 适合 CI、公共库开发或偏好包管理的团队，不是默认业务接入方式。
@@ -109,6 +111,20 @@ node .\scenario-test\.scenario-test\scenario-test-cli.cjs doctor `
   --config .\scenario-test\scenario.config.js
 ```
 
+## 使用示例
+
+浏览器工作台支持查看场景列表、逐步执行接口请求，并实时展示执行进度与结果。
+
+![浏览器工作台执行中的场景](docs/images/4de29a29fae24d3a9f741c81e5240920.png)
+
+场景执行完成后，工作台会汇总成功、失败和跳过的步骤，并展示耗时与执行详情。
+
+![浏览器工作台执行完成](docs/images/864b439df03f4e4086f779ae394f05cc.png)
+
+也可以让 AI 根据项目中的接口和业务信息设计场景，并通过 CLI 执行场景测试、汇总测试结果。
+
+![AI 辅助设计与执行场景测试](docs/images/ac1142b74da24b0f88ee5d87b67fcac9.png)
+
 ### 自定义下载源
 
 `init` 的 `--library-url <目录>` 指向包含以下文件的目录（6 个，缺任一则对应副本缺失）：
@@ -161,9 +177,49 @@ scenario-test/
 
 ## 升级
 
-- 免 npm：重新执行官方安装脚本，刷新运行时副本与 AI 规则。
-- npm：升级包后重新执行 `init`。
-- 两种方式升级后都运行 `doctor`，默认保留现有配置和场景。
+已接入的项目升级到新版本，重跑一次接入脚本即可。安装脚本是幂等的：`init` 读取 `.scenario-test/.scenario-test-version.json` 版本锁，锁内版本与新版不一致时自动刷新运行时副本并重写版本锁；AI 规则与模式库每次 `init` 都会刷新。**默认保留你现有的 `scenario.config.js` 和 `scenarios/` 场景文件，不要传 `--force`（那会覆盖它们）。**
+
+### 判断接入方式
+
+- 项目里有 `scenario-test/.scenario-test/` 目录 → 免 npm 接入
+- `package.json` 里有 `@yc_yzkj/scenario-test` 依赖 → npm 接入
+
+### 免 npm 升级
+
+在业务项目根目录执行（版本号换成目标版本，当前 `v0.5.16`）：
+
+```powershell
+# Windows PowerShell
+irm https://cdn.jsdelivr.net/gh/youzhikeji/scenario-test@v0.5.16/scripts/install.ps1 | iex
+```
+
+```bash
+# macOS / Linux
+curl -fsSL https://cdn.jsdelivr.net/gh/youzhikeji/scenario-test@v0.5.16/scripts/install.sh | bash -s -- . scenario-test
+```
+
+### npm 升级
+
+```powershell
+npm install -D @yc_yzkj/scenario-test@0.5.16
+npx @yc_yzkj/scenario-test init --project . --dir "scenario-test"
+```
+
+### 内网升级（无外网）
+
+通过 `-Source` 指向内网运行时目录（需包含完整 `dist` 的 4 个运行时文件）：
+
+```powershell
+.\install.ps1 -Source "https://gitlab.example.com/group/project/-/raw/v0.5.16/dist"
+```
+
+### 升级后体检
+
+```powershell
+node .\scenario-test\.scenario-test\scenario-test-cli.cjs doctor --config .\scenario-test\scenario.config.js
+```
+
+`doctor` 全部 PASS（尤其 version-lock、capabilities 版本一致）即升级成功。
 
 历史变更见 [CHANGELOG.md](CHANGELOG.md)。
 
