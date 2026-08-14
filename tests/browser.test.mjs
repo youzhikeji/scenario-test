@@ -204,6 +204,23 @@ try {
             "失败步骤详情应保留注入后的全局请求头供诊断"
         );
 
+        // 单步模式超时：runNextStep 的 TIMEOUT 分支清空 stepRuntime。
+        // 场景含第 3 步，若 stepRuntime 未清空，第 3 次点击会继续执行第 3 步（失败记录保留）；
+        // 清空则从第 1 步重新执行（失败记录消失）——两条路径可精确区分。
+        await page.locator("#resetBtn").click();
+        await page.locator("#stepBtn").click();
+        await page.waitForFunction(() => !document.querySelector("#stepBtn").disabled);
+        assert.equal(await page.locator('#stepsList li[data-passed="true"]').count(), 1, "第 1 步应执行成功");
+        await page.locator("#stepBtn").click();
+        await page.waitForFunction(() => !document.querySelector("#stepBtn").disabled);
+        assert.equal(await page.locator('#stepsList li[data-passed="false"]').count(), 1, "第 2 步应超时失败");
+        assert.match(await page.locator("#stepsList").textContent(), /TIMEOUT/, "单步模式超时步骤状态徽章应为 TIMEOUT");
+        assert.match(await page.locator("#stepsList").textContent(), /请求超时/, "单步模式超时步骤应展示超时错误信息");
+        await page.locator("#stepBtn").click();
+        await page.waitForFunction(() => !document.querySelector("#stepBtn").disabled);
+        assert.equal(await page.locator('#stepsList li[data-passed="false"]').count(), 0, "单步超时后 stepRuntime 已清空，失败记录应消失（从第 1 步重来）");
+        assert.equal(await page.locator('#stepsList li[data-passed="true"]').count(), 1, "再次执行应从第 1 步开始且成功");
+
         await page.locator('[data-scenario-file="scenarios/health.js"]').click();
         await page.locator("#runBtn").click();
         await page.waitForFunction(() => !document.querySelector("#runBtn").disabled);

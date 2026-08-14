@@ -364,7 +364,13 @@ export function createLegacyRuntime(options) {
                     var varName = def.params[key];
                     params[key] = vars[varName];
                 });
-                var secretVal = vars[def.secretVar || 'apiSecret'];
+                var secretVar = def.secretVar || 'apiSecret';
+                var secretVal = vars[secretVar];
+                if (!secretVal) {
+                    // 与 Node engine 的 buildGeneratedVars 语义一致：缺密钥直接报错，
+                    // 而不是静默用 undefined 生成错误签名继续执行
+                    throw new Error('签名生成失败: 缺少密钥变量 vars.' + secretVar);
+                }
                 vars[def.name] = core.generateSignature(params, secretVal);
                 return;
             }
