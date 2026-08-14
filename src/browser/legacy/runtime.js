@@ -1,4 +1,6 @@
-import legacyCore from './core.js';
+import * as core from "../../core.js";
+import { createEngine } from "../../engine.js";
+import { esc, safeJson, copyText } from "./ui-utils.js";
 import legacyStyle from './ui-style.js';
 import legacyView from './ui-view.js';
 import legacyAdhoc from './ui-adhoc.js';
@@ -7,7 +9,6 @@ export function createLegacyRuntime(options) {
     'use strict';
 
     // ===== 模块注入依赖 =====
-    var core = legacyCore;
     var uiStyle = legacyStyle;
     var uiView = legacyView;
     var uiAdhoc = legacyAdhoc;
@@ -28,9 +29,7 @@ export function createLegacyRuntime(options) {
     var assertNotReservedVar = core.assertNotReservedVar;
     var assertNoReservedVars = core.assertNoReservedVars;
     var md5 = core.md5;
-    var esc = core.esc;
-    var fmt = core.fmt;
-    var safeJson = core.safeJson;
+    var mergeGlobals = core.mergeGlobals;
     var GLOBAL_TYPES = ['header', 'cookie', 'query'];
 
     // 常见 Header 的常用值建议（参考 Apifox 的取值选项）
@@ -46,25 +45,6 @@ export function createLegacyRuntime(options) {
     // 动态 datalist 的全局唯一 id 计数器
     var globalValueListSeq = 0;
 
-    // 合并多组全局参数：按 type:name 去重，后合并的覆盖先合并的
-    function mergeGlobals() {
-        var lists = Array.prototype.slice.call(arguments);
-        var merged = {};
-        for (var i = 0; i < lists.length; i += 1) {
-            var list = lists[i];
-            if (!Array.isArray(list)) continue;
-            for (var j = 0; j < list.length; j += 1) {
-                var item = list[j];
-                if (!item || GLOBAL_TYPES.indexOf(item.type) < 0 || typeof item.name !== 'string' || !item.name.trim()) continue;
-                merged[item.type + ':' + item.name] = {
-                    type: item.type,
-                    name: item.name,
-                    value: item.value == null ? '' : String(item.value)
-                };
-            }
-        }
-        return Object.keys(merged).map(function (key) { return merged[key]; });
-    }
     var appConfig = options.config || {};
     var getRegisteredScenario = options.getScenario || function () { return null; };
 
@@ -436,228 +416,36 @@ export function createLegacyRuntime(options) {
     }
 
     // ===== 执行调度引擎 =====
-    async function withRuntimeTimeout(operation, runtime, timeoutMs) {
-        var timedOut = false;
-        var timer = setTimeout(function () {
-            timedOut = true;
-            runtime.abortController.abort();
-        }, timeoutMs);
-        try {
-            return await operation();
-        } catch (error) {
-            var executionError = new Error(error && error.message ? error.message : '请求执行失败');
-            executionError.scenarioTimedOut = timedOut;
-            executionError.originalError = error;
-            throw executionError;
-        } finally {
-            clearTimeout(timer);
-        }
-    }
-
-    function waitForRetry(intervalMs, runtime) {
-        return new Promise(function (resolveWait, rejectWait) {
-            if (runtime.abortController.signal.aborted) {
-                rejectWait(new Error('执行已取消'));
-                return;
-            }
-            var timer = setTimeout(function () {
-                runtime.abortController.signal.removeEventListener('abort', onAbort);
-                resolveWait();
-            }, intervalMs);
-            function onAbort() {
-                clearTimeout(timer);
-                rejectWait(new Error('执行已取消'));
-            }
-            runtime.abortController.signal.addEventListener('abort', onAbort, { once: true });
-        });
-    }
+    // 执行层统一到 Node 引擎（engine.js runStep），本层只保留 UI 调度与结果语义映射
+    var engine = createEngine({ config: appConfig });
 
     async function executeStep(step, runtime, cfg) {
-        if (step.when !== undefined) {
-            var shouldRun = typeof step.when === 'object'
-                ? evaluateAssertion(step.when, { status: 0, headers: {}, body: null, bodyText: '' }, runtime, { stepName: step.name }).passed
-                : Boolean(resolve(step.when, runtime));
-            if (!shouldRun) {
-                return {
-                    name: step.name || '未命名步骤',
-                    method: 'SKIP',
-                    path: resolveString(step.path || '', runtime) || '',
-                    status: 'SKIPPED',
-                    duration: 0,
-                    passed: true,
-                    skipped: true,
-                    error: '',
-                    warnings: [],
-                    assertions: [],
-                    request: null,
-                    response: null
-                };
-            }
+        var request = step.request || {};
+        var runOptions = {
+            signal: runtime.abortController.signal,
+            baseUrl: runtime.baseUrl,
+            authorization: runtime.authorization,
+            globals: runtime.globals,
+            requestTimeoutMs: Number(step.timeoutMs || request.timeoutMs || cfg.requestTimeoutMs || 30000)
+        };
+        var result = await engine.runStep(step, runtime, runOptions);
+        // legacy 语义对齐：engine 无 cancelled/timedOut 字段，超时表现为 ERROR（按固定消息识别；
+        // 依赖浏览器将 abort reason 传播为 fetch 拒绝原因，Chrome 90+ 支持）
+        result.cancelled = Boolean(runtime.cancelled || result.status === 'CANCELLED');
+        result.timedOut = !result.cancelled && result.status === 'ERROR'
+            && /请求超时/.test(result.error || '');
+        if (result.timedOut) result.status = 'TIMEOUT';
+        // 失败/取消/超时时 engine 返回 request: null 且 path 不含 query，回填解析后的步骤请求，
+        // 保持工作台失败诊断能力（旧 executeStep 返回注入后的最终请求头/体）
+        if (result.request === null && !result.skipped) {
+            result.request = resolve(clone(step.request || {}), runtime) || null;
+            result.path = buildUrl(
+                step.path || request.path || '',
+                step.params || request.params,
+                runtime
+            );
         }
-        var request = resolve(clone(step.request || {}), runtime) || {};
-        var method = String(step.method || request.method || 'GET').toUpperCase();
-        var rawPath = step.path || request.path || '';
-        var rawParams = step.params || request.params;
-        var path = buildUrl(rawPath, rawParams, runtime);
-        var headers = request.headers && isPlainObject(request.headers) ? request.headers : {};
-        var absoluteUrl = /^https?:\/\//i.test(path);
-        var allowEnvironmentAuthorization = !absoluteUrl || request.useEnvironmentAuthorization === true;
-        var globals = runtime.globals || [];
-        if (allowEnvironmentAuthorization && globals.length) {
-            // query：追加 URL 参数，跳过步骤参数已存在的 key
-            var existingKeys = {};
-            var queryIndex = path.indexOf('?');
-            if (queryIndex >= 0) {
-                path.slice(queryIndex + 1).split('&').forEach(function (pair) {
-                    var key = pair.split('=')[0];
-                    if (key) existingKeys[decodeURIComponent(key)] = true;
-                });
-            }
-            var queryPairs = [];
-            globals.forEach(function (g) {
-                if (g.type !== 'query' || existingKeys[g.name]) return;
-                queryPairs.push(encodeURIComponent(g.name) + '=' + encodeURIComponent(String(resolveString(g.value, runtime))));
-            });
-            if (queryPairs.length) path = path + (queryIndex >= 0 ? '&' : '?') + queryPairs.join('&');
-            // cookie：多个全局 cookie 合并为一个 Cookie 头，追加到已有 Cookie 之后
-            var cookieParts = globals.filter(function (g) { return g.type === 'cookie'; })
-                .map(function (g) { return g.name + '=' + resolveString(g.value, runtime); });
-            if (cookieParts.length) {
-                var cookieKey = null;
-                Object.keys(headers).forEach(function (key) { if (key.toLowerCase() === 'cookie') cookieKey = key; });
-                if (cookieKey) headers[cookieKey] = headers[cookieKey] + '; ' + cookieParts.join('; ');
-                else headers.Cookie = cookieParts.join('; ');
-            }
-            // header：步骤显式声明同名头时全局参数不覆盖
-            globals.forEach(function (g) {
-                if (g.type !== 'header' || hasHeader(headers, g.name)) return;
-                headers[g.name] = resolveString(g.value, runtime);
-            });
-        }
-        var authorization = runtime.authorization;
-        if (authorization && allowEnvironmentAuthorization && !hasHeader(headers, 'Authorization')) {
-            headers.Authorization = authorization;
-        }
-        var bodyData = request.body;
-        var fetchOptions = { method: method, headers: headers, signal: runtime.abortController.signal };
-        if (request.credentials !== undefined) fetchOptions.credentials = request.credentials;
-        if (request.redirect !== undefined) fetchOptions.redirect = request.redirect;
-        if (bodyData !== undefined && bodyData !== null && method !== 'GET' && method !== 'HEAD') {
-            if (typeof bodyData === 'string') {
-                fetchOptions.body = bodyData;
-            } else {
-                if (!hasHeader(headers, 'Content-Type')) {
-                    headers['Content-Type'] = 'application/json';
-                }
-                fetchOptions.body = JSON.stringify(bodyData);
-            }
-        }
-        var startedAt = performance.now();
-        var timeoutMs = Number(step.timeoutMs || request.timeoutMs || cfg.requestTimeoutMs || 30000);
-        if (!isFinite(timeoutMs) || timeoutMs <= 0) timeoutMs = 30000;
-
-        async function sendRequest() {
-            var fetchResult = await withRuntimeTimeout(async function () {
-                var response = await fetch(joinUrl(runtime.baseUrl, path), fetchOptions);
-                return { response: response, text: await response.text() };
-            }, runtime, timeoutMs);
-            var response = fetchResult.response;
-            var responseHeaders = headersToObject(response.headers);
-            return {
-                status: response.status,
-                headers: responseHeaders,
-                body: parseBody(fetchResult.text, headerValue(responseHeaders, 'content-type')),
-                bodyText: fetchResult.text
-            };
-        }
-
-        try {
-            var responseData = await sendRequest();
-            var headerObj = responseData.headers;
-            var body = responseData.body;
-            var stepWarnings = [];
-            runtime.lastResponse = responseData;
-            runtime.lastResponseBody = body;
-            var extractResult = applyExtract(step, responseData, runtime);
-            stepWarnings = extractResult.warnings;
-            var assertions = buildAssertions(step, responseData, runtime, { stepName: step.name });
-            // required: true 且路径不存在 → 当前步骤失败
-            if (extractResult.failures.length) assertions.push.apply(assertions, extractResult.failures);
-            var failedAssertion = assertions.find(function (item) { return !item.passed; });
-            var requestAttempts = 1;
-
-            if (failedAssertion && step.retryUntil) {
-                var maxAttempts = Number(step.retryUntil.maxAttempts || 10);
-                var intervalMs = Number(step.retryUntil.intervalMs || 2000);
-                if (!isFinite(maxAttempts) || maxAttempts < 1) maxAttempts = 10;
-                if (!isFinite(intervalMs) || intervalMs < 0) intervalMs = 2000;
-                for (var retryIndex = 1; retryIndex <= maxAttempts; retryIndex += 1) {
-                    await waitForRetry(intervalMs, runtime);
-                    responseData = await sendRequest();
-                    requestAttempts = retryIndex + 1;
-                    headerObj = responseData.headers;
-                    body = responseData.body;
-                    runtime.lastResponse = responseData;
-                    runtime.lastResponseBody = body;
-                    extractResult = applyExtract(step, responseData, runtime);
-                    stepWarnings = extractResult.warnings;
-                    assertions = buildAssertions(step, responseData, runtime, { stepName: step.name });
-                    if (extractResult.failures.length) assertions.push.apply(assertions, extractResult.failures);
-                    failedAssertion = assertions.find(function (item) { return !item.passed; });
-                    if (!failedAssertion) {
-                        return {
-                            name: step.name,
-                            method: method,
-                            path: path,
-                            status: responseData.status,
-                            duration: performance.now() - startedAt,
-                            attempts: requestAttempts,
-                            passed: true,
-                            error: '',
-                            warnings: stepWarnings,
-                            request: { headers: headers, body: bodyData },
-                            response: { headers: headerObj, body: body, bodyText: responseData.bodyText },
-                            assertions: assertions
-                        };
-                    }
-                }
-            }
-
-            return {
-                name: step.name,
-                method: method,
-                path: path,
-                status: responseData.status,
-                duration: performance.now() - startedAt,
-                attempts: requestAttempts,
-                passed: !failedAssertion,
-                error: failedAssertion ? failedAssertion.name : '',
-                warnings: stepWarnings,
-                request: { headers: headers, body: bodyData },
-                response: { headers: headerObj, body: body, bodyText: responseData.bodyText },
-                assertions: assertions
-            };
-        } catch (error) {
-            var cancelled = runtime.cancelled;
-            var timedOut = error && error.scenarioTimedOut;
-            var errorMessage = cancelled ? '用户已取消执行' : (timedOut ? '请求超时（' + timeoutMs + 'ms）' : (error && error.message ? error.message : '请求执行失败'));
-            return {
-                name: step.name,
-                method: method,
-                path: path,
-                status: cancelled ? 'CANCELLED' : (timedOut ? 'TIMEOUT' : 'ERROR'),
-                duration: performance.now() - startedAt,
-                attempts: requestAttempts || 1,
-                passed: false,
-                cancelled: cancelled,
-                timedOut: timedOut,
-                error: errorMessage,
-                warnings: [],
-                request: { headers: headers, body: bodyData },
-                response: { headers: {}, body: null },
-                assertions: [{ name: cancelled ? '执行未取消' : (timedOut ? '请求未超时' : '请求执行成功'), passed: false, actual: errorMessage, expected: '无异常' }]
-            };
-        }
+        return result;
     }
 
     function createExecutionRuntime() {
@@ -887,7 +675,7 @@ export function createLegacyRuntime(options) {
             expandStepDetails(stepIndex);
             renderReportPanel();
 
-            if (runtime.cancelled || result.timedOut) {
+            if (runtime.cancelled || result.cancelled || result.timedOut) {
                 state.stepRuntime = null;
                 finishExecutionState(runtime);
             } else if (state.nextStepIndex >= list.length) {
@@ -1214,7 +1002,7 @@ export function createLegacyRuntime(options) {
             if (!state.lastReport) return;
             Promise.resolve()
                 .then(getText)
-                .then(core.copyText)
+                .then(copyText)
                 .then(function (ok) { flashCopyFeedback(btn, ok); })
                 .catch(function () { flashCopyFeedback(btn, false); });
         }
@@ -1243,7 +1031,7 @@ export function createLegacyRuntime(options) {
             if (!step) return;
             var text = (step.name ? step.name : '步骤 ' + (index + 1)) + '\n' + String(step.method || 'GET').toUpperCase() + ' ' + (step.path || '');
             Promise.resolve()
-                .then(function () { return core.copyText(text); })
+                .then(function () { return copyText(text); })
                 .then(function (ok) { showStepCopyFeedback(button, ok); })
                 .catch(function () { showStepCopyFeedback(button, false); });
         });

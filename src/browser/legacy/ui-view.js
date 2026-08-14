@@ -1,12 +1,7 @@
-import legacyCore from './core.js';
+import { esc, fmt, safeJson } from './ui-utils.js';
 
 const legacyView = (function () {
     'use strict';
-
-    var core = legacyCore || {};
-    var esc = core.esc || function (s) { return s == null ? '' : String(s); };
-    var fmt = core.fmt || function (ms) { return String(ms); };
-    var safeJson = core.safeJson || function (v) { return JSON.stringify(v, null, 2); };
 
     function stringify(value) {
         if (value === undefined || value === null || value === '') return '';

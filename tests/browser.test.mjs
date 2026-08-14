@@ -59,7 +59,7 @@ try {
             if (!url.startsWith(`http://127.0.0.1:${port}`) && !url.startsWith("https://mock.local")) externalRequests.push(url);
         });
         await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "networkidle" });
-        await page.waitForFunction(() => document.querySelectorAll("[data-scenario-file]").length === 3);
+        await page.waitForFunction(() => document.querySelectorAll("[data-scenario-file]").length === 4);
         assert.equal(await page.locator("#stepsList li").count(), 1);
         assert.equal(await page.locator("[data-copy-step]").count(), 1, "待执行步骤应提供复制按钮");
         assert.equal(await page.locator("#scenarioVar_exampleToken").getAttribute("type"), "text");
@@ -180,6 +180,20 @@ try {
         await page.waitForFunction(() => document.querySelector('#stepsList li[data-skipped="true"] [data-copy-step]').textContent.includes("失败"));
         assert.match(await page.locator("#reportPanel").textContent(), /全部跳过/);
         assert.match(await page.locator("#statsPanel").textContent(), /跳过/);
+
+        // 请求超时：engine 超时经适配层映射为 TIMEOUT，失败步骤保留请求详情供诊断
+        await page.locator('[data-scenario-file="scenarios/timeout.js"]').click();
+        await page.waitForFunction(() => document.querySelector("#scenarioTitle").textContent.includes("超时请求"));
+        await page.locator("#runBtn").click();
+        await page.waitForFunction(() => !document.querySelector("#runBtn").disabled);
+        assert.equal(await page.locator('#stepsList li[data-passed="false"]').count(), 1);
+        assert.match(await page.locator("#stepsList").textContent(), /TIMEOUT/, "超时步骤状态徽章应为 TIMEOUT");
+        assert.match(await page.locator("#stepsList").textContent(), /请求超时/, "超时步骤应展示超时错误信息");
+        assert.match(
+            await page.locator('#stepsList li[data-passed="false"] .details-panel').textContent(),
+            /X-Timeout-Check/,
+            "失败步骤详情应保留请求头供诊断"
+        );
 
         await page.locator('[data-scenario-file="scenarios/health.js"]').click();
         await page.locator("#runBtn").click();

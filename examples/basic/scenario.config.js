@@ -19,6 +19,7 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
     scenarios: [
         { id: "health", name: "健康检查示例", url: "scenarios/health.js" },
         { id: "slow", name: "取消请求示例", url: "scenarios/slow.js" },
-        { id: "cleanup", name: "条件清理示例", url: "scenarios/cleanup.js" }
+        { id: "cleanup", name: "条件清理示例", url: "scenarios/cleanup.js" },
+        { id: "timeout", name: "超时请求示例", url: "scenarios/timeout.js" }
     ]
 }));

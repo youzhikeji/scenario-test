@@ -11,7 +11,6 @@ import {
     contract
 } from "../src/index.js";
 import { VERSION } from "../src/version.generated.js";
-import legacyCore from "../src/browser/legacy/core.js";
 
 test("contract 元信息：contractVersion 从 1 开始，runtimeVersion 复用 VERSION", () => {
     assert.equal(CONTRACT_VERSION, 1);
@@ -24,12 +23,6 @@ test("contract 与 core 导出名单一致（同一份名单）", () => {
     assert.deepEqual(ASSERTION_META_KEYS, [...contract.assertions.metaKeys]);
     assert.deepEqual(RESERVED_VARS, [...contract.reservedVars]);
     assert.deepEqual(GLOBAL_TYPES, [...contract.globals.types]);
-});
-
-test("browser legacy 名单与 contract 一致（禁止静默漂移）", () => {
-    assert.deepEqual([...legacyCore.ASSERTION_OPERATORS].sort(), Object.keys(contract.assertions.operators).sort());
-    assert.deepEqual([...legacyCore.ASSERTION_META_KEYS].sort(), [...contract.assertions.metaKeys].sort());
-    assert.deepEqual([...legacyCore.RESERVED_VARS].sort(), [...contract.reservedVars].sort());
 });
 
 test("每个操作符含说明；数值比较操作符标注有限 number 约束", () => {

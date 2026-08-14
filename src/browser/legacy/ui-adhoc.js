@@ -1,15 +1,9 @@
-import legacyCore from './core.js';
+import { esc, fmt, safeJson, sanitizeSensitive } from './ui-utils.js';
+import { clone, isPlainObject, evalExpression } from '../../core.js';
 
 const legacyAdhoc = (function () {
     'use strict';
 
-    var core = legacyCore || {};
-    var esc = core.esc || function (s) { return s == null ? '' : String(s); };
-    var fmt = core.fmt || function (ms) { return String(ms); };
-    var safeJson = core.safeJson || function (v) { return JSON.stringify(v, null, 2); };
-    var sanitizeSensitive = core.sanitizeSensitive || function (v) { return v; };
-    var clone = core.clone || function (v) { return JSON.parse(JSON.stringify(v)); };
-    var isPlainObject = core.isPlainObject || function (v) { return Object.prototype.toString.call(v) === '[object Object]'; };
     var appConfig = {};
 
     var adhocState = {
@@ -38,7 +32,7 @@ const legacyAdhoc = (function () {
         }
         if (typeof value !== 'string') return value;
         return value.replace(/\{\{\s*(.+?)\s*\}\}/g, function (template, expr) {
-            var resolved = core.evalExpr ? core.evalExpr(expr, runtime) : undefined;
+            var resolved = evalExpression(expr, runtime);
             if (resolved === undefined || resolved === null || resolved === '') return template;
             return typeof resolved === 'object' ? JSON.stringify(resolved) : String(resolved);
         });
