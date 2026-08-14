@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.16] - 2026-08-14
+
+### 🐛 Bug Fixes
+
+1. **取消/超时诊断语义收敛**
+   - 取消兜底文案统一收口到 `abortReason()`，消除 delay / createRequestSignal / readBodyChunks / runStep 四处重复。
+   - 超时消息由 `timeoutMs` 在消费点派生，移除 `scenarioContext.timeoutMessage` 冗余传递通道。
+2. **浏览器工作台签名密钥校验对齐**
+   - 签名生成缺少密钥变量时与 Node 引擎一致直接报错，不再静默用 `undefined` 生成错误签名继续执行。
+
+### ✅ Tests
+
+- 补单步模式超时回归测试：TIMEOUT 后 stepRuntime 清空，再次执行从第 1 步重来。
+
 ## [0.5.15] - 2026-08-14
 
 ### 🐛 Bug Fixes

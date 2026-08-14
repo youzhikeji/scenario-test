@@ -1,4 +1,4 @@
-/*! scenario-test v0.5.15 */
+/*! scenario-test v0.5.16 */
 var ScenarioTest = (() => {
   var __create = Object.create;
   var __defProp = Object.defineProperty;
@@ -303,7 +303,7 @@ var ScenarioTest = (() => {
   var import_blueimp_md5 = __toESM(require_md5(), 1);
 
   // src/version.generated.js
-  var VERSION = "0.5.15";
+  var VERSION = "0.5.16";
 
   // src/contract.js
   var CONTRACT_VERSION = 1;
@@ -965,6 +965,12 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
   function now() {
     return globalThis.performance?.now ? globalThis.performance.now() : Date.now();
   }
+  function abortReason(signal) {
+    return signal?.reason || new Error("\u6267\u884C\u5DF2\u53D6\u6D88");
+  }
+  function timeoutErrorMessage(timeoutMs) {
+    return `\u8BF7\u6C42\u8D85\u65F6\uFF08${timeoutMs}ms\uFF09`;
+  }
   function delay(milliseconds, signal) {
     if (!milliseconds) return Promise.resolve();
     return new Promise((resolveDelay, reject) => {
@@ -972,20 +978,20 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       if (signal) {
         signal.addEventListener("abort", () => {
           clearTimeout(timer);
-          reject(signal.reason || new Error("\u6267\u884C\u5DF2\u53D6\u6D88"));
+          reject(abortReason(signal));
         }, { once: true });
       }
     });
   }
   function createTimeoutError(timeoutMs) {
-    const error = new Error(`\u8BF7\u6C42\u8D85\u65F6\uFF08${timeoutMs}ms\uFF09`);
+    const error = new Error(timeoutErrorMessage(timeoutMs));
     error.scenarioTimedOut = true;
     return error;
   }
   function createRequestSignal(parentSignal, timeoutMs) {
     const controller = new AbortController();
     let timedOut = false;
-    const abort = () => controller.abort(parentSignal?.reason || new Error("\u6267\u884C\u5DF2\u53D6\u6D88"));
+    const abort = () => controller.abort(abortReason(parentSignal));
     if (parentSignal?.aborted) abort();
     else parentSignal?.addEventListener("abort", abort, { once: true });
     const timer = timeoutMs > 0 ? setTimeout(() => {
@@ -1090,7 +1096,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       const onAbort = () => {
         reader.cancel().catch(() => {
         });
-        reject(signal?.reason || new Error("\u6267\u884C\u5DF2\u53D6\u6D88"));
+        reject(abortReason(signal));
       };
       if (signal) {
         if (signal.aborted) {
@@ -1204,7 +1210,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
           path: requestPath,
           request: { headers, body: request.body },
           timedOut: requestSignal.timedOut(),
-          timeoutMessage: `\u8BF7\u6C42\u8D85\u65F6\uFF08${timeoutMs}ms\uFF09`
+          timeoutMs
         };
       }
       throw error;
@@ -1306,7 +1312,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       const maxElapsedMs = retry?.maxElapsedMs || 3e5;
       try {
         for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
-          if (options.signal?.aborted) throw options.signal.reason || new Error("\u6267\u884C\u5DF2\u53D6\u6D88");
+          if (options.signal?.aborted) throw abortReason(options.signal);
           if (retry && now() - retryStartTime > maxElapsedMs) {
             throw new Error(
               `\u91CD\u8BD5\u8D85\u65F6: \u5DF2\u5C1D\u8BD5 ${attempt - 1} \u6B21\uFF0C\u8017\u65F6\u8D85\u8FC7 ${maxElapsedMs}ms
@@ -1343,7 +1349,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         const context = error?.scenarioContext || null;
         const cancelled = Boolean(options.signal?.aborted);
         const timedOut = !cancelled && Boolean(error?.scenarioTimedOut || context?.timedOut);
-        const errorMessage = cancelled ? "\u7528\u6237\u5DF2\u53D6\u6D88\u6267\u884C" : timedOut ? context?.timeoutMessage || "\u8BF7\u6C42\u8D85\u65F6" : error?.message || "\u8BF7\u6C42\u6267\u884C\u5931\u8D25";
+        const errorMessage = cancelled ? "\u7528\u6237\u5DF2\u53D6\u6D88\u6267\u884C" : timedOut ? context?.timeoutMs ? timeoutErrorMessage(context.timeoutMs) : "\u8BF7\u6C42\u8D85\u65F6" : error?.message || "\u8BF7\u6C42\u6267\u884C\u5931\u8D25";
         const method = context && context.method || String(step.method || step.request && step.request.method || "GET").toUpperCase();
         const path = context && context.path || resolveString(step.path || "", runtime);
         return {
@@ -2955,7 +2961,11 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
             var varName = def.params[key];
             params[key] = vars[varName];
           });
-          var secretVal = vars[def.secretVar || "apiSecret"];
+          var secretVar = def.secretVar || "apiSecret";
+          var secretVal = vars[secretVar];
+          if (!secretVal) {
+            throw new Error("\u7B7E\u540D\u751F\u6210\u5931\u8D25: \u7F3A\u5C11\u5BC6\u94A5\u53D8\u91CF vars." + secretVar);
+          }
           vars[def.name] = generateSignature(params, secretVal);
           return;
         }
