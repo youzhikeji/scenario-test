@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/*! scenario-test v0.5.13 */
+/*! scenario-test v0.5.14 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -314,7 +314,7 @@ __export(node_exports, {
 var import_blueimp_md5 = __toESM(require_md5(), 1);
 
 // src/version.generated.js
-var VERSION = "0.5.13";
+var VERSION = "0.5.14";
 
 // src/contract.js
 var CONTRACT_VERSION = 1;
@@ -986,14 +986,26 @@ function delay(milliseconds, signal) {
     }
   });
 }
+function createTimeoutError(timeoutMs) {
+  const error = new Error(`\u8BF7\u6C42\u8D85\u65F6\uFF08${timeoutMs}ms\uFF09`);
+  error.scenarioTimedOut = true;
+  return error;
+}
 function createRequestSignal(parentSignal, timeoutMs) {
   const controller = new AbortController();
+  let timedOut = false;
   const abort = () => controller.abort(parentSignal?.reason || new Error("\u6267\u884C\u5DF2\u53D6\u6D88"));
   if (parentSignal?.aborted) abort();
   else parentSignal?.addEventListener("abort", abort, { once: true });
-  const timer = timeoutMs > 0 ? setTimeout(() => controller.abort(new Error(`\u8BF7\u6C42\u8D85\u65F6\uFF08${timeoutMs}ms\uFF09`)), timeoutMs) : null;
+  const timer = timeoutMs > 0 ? setTimeout(() => {
+    timedOut = true;
+    controller.abort(createTimeoutError(timeoutMs));
+  }, timeoutMs) : null;
   return {
     signal: controller.signal,
+    timedOut() {
+      return timedOut;
+    },
     dispose() {
       if (timer) clearTimeout(timer);
       parentSignal?.removeEventListener("abort", abort);
@@ -1146,13 +1158,25 @@ async function executeHttp(step, runtime, options) {
       fetchOptions.body = JSON.stringify(request.body);
     }
   }
-  const timeoutMs = Number(step.timeoutMs || options.requestTimeoutMs || 3e4);
+  const rawTimeoutMs = Number(step.timeoutMs || options.requestTimeoutMs || 3e4);
+  const timeoutMs = Number.isFinite(rawTimeoutMs) && rawTimeoutMs > 0 ? rawTimeoutMs : 3e4;
   const requestSignal = createRequestSignal(options.signal, timeoutMs);
   fetchOptions.signal = requestSignal.signal;
   try {
     const response = await options.fetch(joinUrl(options.baseUrl, requestPath), fetchOptions);
     const responseData = await readResponse(response, step, options.io, runtime);
     return { method, path: requestPath, request: { headers, body: request.body }, response: responseData };
+  } catch (error) {
+    if (error && typeof error === "object" && !error.scenarioContext) {
+      error.scenarioContext = {
+        method,
+        path: requestPath,
+        request: { headers, body: request.body },
+        timedOut: requestSignal.timedOut(),
+        timeoutMessage: `\u8BF7\u6C42\u8D85\u65F6\uFF08${timeoutMs}ms\uFF09`
+      };
+    }
+    throw error;
   } finally {
     requestSignal.dispose();
   }
@@ -1285,17 +1309,25 @@ function createEngine(engineOptions = {}) {
         response: lastExecution.response
       };
     } catch (error) {
+      const context = error?.scenarioContext || null;
+      const cancelled = Boolean(options.signal?.aborted);
+      const timedOut = !cancelled && Boolean(error?.scenarioTimedOut || context?.timedOut);
+      const errorMessage = cancelled ? "\u7528\u6237\u5DF2\u53D6\u6D88\u6267\u884C" : timedOut ? context?.timeoutMessage || "\u8BF7\u6C42\u8D85\u65F6" : error?.message || "\u8BF7\u6C42\u6267\u884C\u5931\u8D25";
+      const method = context && context.method || String(step.method || step.request && step.request.method || "GET").toUpperCase();
+      const path7 = context && context.path || resolveString(step.path || "", runtime);
       return {
         name: step.name || "\u672A\u547D\u540D\u6B65\u9AA4",
-        method: String(step.method || "ERROR").toUpperCase(),
-        path: resolveString(step.path || "", runtime),
-        status: options.signal?.aborted ? "CANCELLED" : "ERROR",
+        method,
+        path: path7,
+        status: cancelled ? "CANCELLED" : timedOut ? "TIMEOUT" : "ERROR",
         duration: now() - startedAt,
         passed: false,
-        error: error?.message || String(error),
+        cancelled,
+        timedOut,
+        error: errorMessage,
         warnings: [],
-        assertions: [{ name: "\u6B65\u9AA4\u6267\u884C\u6210\u529F", passed: false, actual: error?.message || String(error), expected: "\u65E0\u5F02\u5E38" }],
-        request: null,
+        assertions: [{ name: cancelled ? "\u6267\u884C\u672A\u53D6\u6D88" : timedOut ? "\u8BF7\u6C42\u672A\u8D85\u65F6" : "\u8BF7\u6C42\u6267\u884C\u6210\u529F", passed: false, actual: errorMessage, expected: "\u65E0\u5F02\u5E38" }],
+        request: context && context.request || null,
         response: null
       };
     }
@@ -2569,17 +2601,6 @@ function createLegacyRuntime(options) {
   var uiAdhoc = ui_adhoc_default;
   var clone2 = clone;
   var isPlainObject2 = isPlainObject;
-  var resolveString2 = resolveString;
-  var resolve2 = resolve;
-  var headerValue2 = headerValue;
-  var hasHeader2 = hasHeader;
-  var headersToObject2 = headersToObject;
-  var joinUrl2 = joinUrl;
-  var buildUrl2 = buildUrl;
-  var parseBody2 = parseBody;
-  var evaluateAssertion2 = evaluateAssertion;
-  var buildAssertions2 = buildAssertions;
-  var applyExtract2 = applyExtract;
   var assertNotReservedVar2 = assertNotReservedVar;
   var assertNoReservedVars2 = assertNoReservedVars;
   var md52 = md5;
@@ -2938,26 +2959,13 @@ function createLegacyRuntime(options) {
   var engine = createEngine({ config: appConfig });
   async function executeStep(step, runtime, cfg) {
     var request = step.request || {};
-    var runOptions = {
+    return await engine.runStep(step, runtime, {
       signal: runtime.abortController.signal,
       baseUrl: runtime.baseUrl,
       authorization: runtime.authorization,
       globals: runtime.globals,
       requestTimeoutMs: Number(step.timeoutMs || request.timeoutMs || cfg.requestTimeoutMs || 3e4)
-    };
-    var result = await engine.runStep(step, runtime, runOptions);
-    result.cancelled = Boolean(runtime.cancelled || result.status === "CANCELLED");
-    result.timedOut = !result.cancelled && result.status === "ERROR" && /请求超时/.test(result.error || "");
-    if (result.timedOut) result.status = "TIMEOUT";
-    if (result.request === null && !result.skipped) {
-      result.request = resolve2(clone2(step.request || {}), runtime) || null;
-      result.path = buildUrl2(
-        step.path || request.path || "",
-        step.params || request.params,
-        runtime
-      );
-    }
-    return result;
+    });
   }
   function createExecutionRuntime() {
     var environment = getSelectedEnvironment();
@@ -3046,7 +3054,7 @@ function createLegacyRuntime(options) {
     var runtime = state.activeRuntime || state.stepRuntime;
     if (!state.running || !runtime || !runtime.abortController) return;
     runtime.cancelled = true;
-    runtime.abortController.abort();
+    runtime.abortController.abort(new Error("\u7528\u6237\u5DF2\u53D6\u6D88\u6267\u884C"));
     uiView.setRunState("cancelled", "\u6B63\u5728\u53D6\u6D88");
   }
   function resetExecution() {
@@ -4328,12 +4336,11 @@ var FRAMEWORK_FILES = Object.freeze({
 function toRelativePath(...segments) {
   return import_node_path4.default.join(...segments).replace(/\\/g, "/");
 }
-function createProjectLayout(projectRoot, directory, legacy = false) {
+function createProjectLayout(projectRoot, directory) {
   const publicDir = import_node_path4.default.resolve(projectRoot, directory);
-  const frameworkDir = legacy ? publicDir : import_node_path4.default.join(publicDir, INTERNAL_DIRECTORY);
-  const frameworkRelativeDir = legacy ? directory : toRelativePath(directory, INTERNAL_DIRECTORY);
+  const frameworkDir = import_node_path4.default.join(publicDir, INTERNAL_DIRECTORY);
+  const frameworkRelativeDir = toRelativePath(directory, INTERNAL_DIRECTORY);
   return Object.freeze({
-    legacy,
     publicDir,
     frameworkDir,
     frameworkRelativeDir,
@@ -4346,14 +4353,11 @@ function isDirectory(target) {
   return import_node_fs3.default.existsSync(target) && import_node_fs3.default.statSync(target).isDirectory();
 }
 function resolveProjectLayout(projectRoot, directory) {
-  const modern = createProjectLayout(projectRoot, directory, false);
-  if (import_node_fs3.default.existsSync(modern.frameworkDir)) {
-    if (!isDirectory(modern.frameworkDir)) {
-      throw new Error(`${modern.frameworkDir} \u5FC5\u987B\u662F\u76EE\u5F55\uFF1B\u8BF7\u79FB\u8D70\u540C\u540D\u6587\u4EF6\u540E\u91CD\u8BD5`);
-    }
-    return modern;
+  const layout = createProjectLayout(projectRoot, directory);
+  if (import_node_fs3.default.existsSync(layout.frameworkDir) && !isDirectory(layout.frameworkDir)) {
+    throw new Error(`${layout.frameworkDir} \u5FC5\u987B\u662F\u76EE\u5F55\uFF1B\u8BF7\u79FB\u8D70\u540C\u540D\u6587\u4EF6\u540E\u91CD\u8BD5`);
   }
-  return modern;
+  return layout;
 }
 function resolveLayoutFromConfigDir(configDir) {
   return resolveProjectLayout(import_node_path4.default.dirname(configDir), import_node_path4.default.basename(configDir));
@@ -4807,7 +4811,8 @@ Options:
   --env <key>           \u914D\u7F6E\u4E2D\u7684\u73AF\u5883 key
   --base-url <url>      \u4E34\u65F6\u8986\u76D6 Base URL
   --scenario <id>       \u6267\u884C\u6307\u5B9A\u573A\u666F\uFF08\u53EF\u6267\u884C manual:true \u573A\u666F\uFF09
-  --all                 \u6267\u884C\u914D\u7F6E\u4E2D\u7684\u5168\u90E8\u81EA\u52A8\u573A\u666F\uFF08\u9ED8\u8BA4\u6392\u9664 manual:true\uFF09
+  --all                 \u6267\u884C\u914D\u7F6E\u4E2D\u7684\u5168\u90E8\u81EA\u52A8\u573A\u666F\uFF08\u9ED8\u8BA4\u6392\u9664 manual:true\uFF1B
+                        \u672A\u6307\u5B9A --all/--scenario \u65F6\u4EC5\u6267\u884C\u6E05\u5355\u7B2C\u4E00\u4E2A\u573A\u666F\uFF09
   --fail-on-skip        \u5B58\u5728\u4EFB\u4F55 SKIP \u6B65\u9AA4\u65F6\u6700\u7EC8\u9000\u51FA\u7801\u4E3A 1\uFF08\u9ED8\u8BA4 false\uFF09
   --port <number>       \u6D4F\u89C8\u5668\u670D\u52A1\u7AEF\u53E3\uFF0C\u9ED8\u8BA4 4300
   --allow-external-plugins  \u5141\u8BB8\u52A0\u8F7D\u5916\u90E8\u63D2\u4EF6\uFF08\u6709\u5B89\u5168\u98CE\u9669\uFF09
@@ -4831,6 +4836,8 @@ Options:
   --project <path>      \u9879\u76EE\u6839\u76EE\u5F55
   --dir <name>          \u573A\u666F\u6D4B\u8BD5\u76EE\u5F55\u540D
   --force               \u5F3A\u5236\u8986\u76D6\u5DF2\u6709\u6587\u4EF6
+  --no-input            \u975E\u4EA4\u4E92\uFF1A\u76EE\u6807\u76EE\u5F55\u5DF2\u5B58\u5728\u65F6\u4FDD\u7559\u914D\u7F6E\u4E0E\u573A\u666F\uFF0C\u4EC5\u5237\u65B0 AI \u89C4\u5219\u548C\u8FD0\u884C\u65F6\u526F\u672C
+  --library-url <url>   init \u8FD0\u884C\u65F6\u526F\u672C\u4E0B\u8F7D\u76EE\u5F55\uFF08CLI/UMD/d.ts/capabilities\uFF0C\u9ED8\u8BA4 GitHub Tag dist\uFF09
 
 \u793A\u4F8B:
   # \u63A8\u8350: \u4F7F\u7528\u73AF\u5883\u53D8\u91CF
@@ -5204,10 +5211,22 @@ function resolveServeProxyTarget(config, envKey) {
   }
   return String(config.baseUrl || "").replace(/\/+$/, "");
 }
+var HOP_BY_HOP_HEADERS = /* @__PURE__ */ new Set([
+  "connection",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+  "host"
+]);
 function proxyRequest(request, response, targetUrl) {
-  const headers = { ...request.headers };
-  delete headers.host;
-  delete headers.connection;
+  const headers = {};
+  for (const [name, value] of Object.entries(request.headers)) {
+    if (!HOP_BY_HOP_HEADERS.has(String(name).toLowerCase())) headers[name] = value;
+  }
   const upstream = import_node_http.default.request(targetUrl + request.url, {
     method: request.method,
     headers

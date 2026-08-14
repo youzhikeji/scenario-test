@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.14] - 2026-08-14
+
+### 🐛 Bug Fixes
+
+1. **失败诊断语义回补**
+   - 失败步骤恢复展示注入后的最终请求头（Authorization / 全局 header / 合并 cookie / query），调试 401 等鉴权失败不再丢失关键信息。
+   - 手动取消恢复中文提示「用户已取消执行」，失败 method 徽章恢复解析后的方法（如 GET），不再显示 ERROR。
+2. **超时与取消判定结构化**
+   - 超时识别从正则匹配错误文案改为结构化标记，不再依赖 Chrome abort reason 传播。
+   - 非法 timeoutMs（负值 / Infinity / 字符串 "0"）恢复默认 30000ms 钳制，避免永不超时。
+3. **serve 同源代理硬化**
+   - 按 RFC 7230 §6.1 剔除完整 hop-by-hop 头，防止 transfer-encoding / upgrade 泄漏到上游。
+
+### ♻️ Refactor
+
+- **浏览器工作台执行层收敛到 Node 引擎**：删除 511 行双端同构的 legacy/core.js，executeStep 统一调用 engine.runStep，断言 / 提取 / 变量解析收敛为 src/core.js 单一实现。
+
+### ✅ Tests
+
+- 恢复 includes / oneOf / exists 操作符的 passed 值级断言（含数组深比较、oneOf 非数组等假绿回归）。
+- 浏览器 E2E 补取消文案、注入头回填、TIMEOUT 徽章断言。
+
 ## [0.5.13] - 2026-08-13
 
 ### 🐛 Bug Fixes
