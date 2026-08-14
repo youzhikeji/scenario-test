@@ -165,6 +165,9 @@ try {
         await page.locator("#cancelBtn").click();
         await page.waitForFunction(() => !document.querySelector("#runBtn").disabled);
         assert.equal(await page.locator('#stepsList li[data-passed="false"]').count(), 1);
+        // 取消文案：结构化映射为中文提示，而非原始英文 DOMException
+        assert.match(await page.locator("#stepsList").textContent(), /用户已取消执行/);
+        assert.match(await page.locator("#stepsList").textContent(), /CANCELLED/);
 
         await page.locator('[data-scenario-file="scenarios/cleanup.js"]').click();
         await page.waitForFunction(() => document.querySelector("#scenarioTitle").textContent.includes("条件清理"));
@@ -192,7 +195,13 @@ try {
         assert.match(
             await page.locator('#stepsList li[data-passed="false"] .details-panel').textContent(),
             /X-Timeout-Check/,
-            "失败步骤详情应保留请求头供诊断"
+            "失败步骤详情应保留步骤声明的请求头供诊断"
+        );
+        // 失败请求详情回填注入后的最终头：全局 header（X-Scenario-Env）应随失败步骤一并展示
+        assert.match(
+            await page.locator('#stepsList li[data-passed="false"] .details-panel').textContent(),
+            /X-Scenario-Env/,
+            "失败步骤详情应保留注入后的全局请求头供诊断"
         );
 
         await page.locator('[data-scenario-file="scenarios/health.js"]').click();

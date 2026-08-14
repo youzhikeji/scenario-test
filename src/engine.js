@@ -36,16 +36,28 @@ function delay(milliseconds, signal) {
     });
 }
 
+// 超时错误：带结构化标记，供调用方精确识别超时（不依赖匹配本地化文案）
+function createTimeoutError(timeoutMs) {
+    const error = new Error(`请求超时（${timeoutMs}ms）`);
+    error.scenarioTimedOut = true;
+    return error;
+}
+
 function createRequestSignal(parentSignal, timeoutMs) {
     const controller = new AbortController();
+    // 超时状态由 signal 内部维护，不依赖浏览器是否把 abort reason 传播为 fetch 拒绝原因
+    let timedOut = false;
     const abort = () => controller.abort(parentSignal?.reason || new Error("执行已取消"));
     if (parentSignal?.aborted) abort();
     else parentSignal?.addEventListener("abort", abort, { once: true });
     const timer = timeoutMs > 0
-        ? setTimeout(() => controller.abort(new Error(`请求超时（${timeoutMs}ms）`)), timeoutMs)
+        ? setTimeout(() => { timedOut = true; controller.abort(createTimeoutError(timeoutMs)); }, timeoutMs)
         : null;
     return {
         signal: controller.signal,
+        timedOut() {
+            return timedOut;
+        },
         dispose() {
             if (timer) clearTimeout(timer);
             parentSignal?.removeEventListener("abort", abort);
@@ -222,13 +234,28 @@ async function executeHttp(step, runtime, options) {
             fetchOptions.body = JSON.stringify(request.body);
         }
     }
-    const timeoutMs = Number(step.timeoutMs || options.requestTimeoutMs || 30000);
+    const rawTimeoutMs = Number(step.timeoutMs || options.requestTimeoutMs || 30000);
+    // 非法/非正超时统一钳制为默认值，避免负数/Infinity/字符串"0"导致永不超时
+    const timeoutMs = Number.isFinite(rawTimeoutMs) && rawTimeoutMs > 0 ? rawTimeoutMs : 30000;
     const requestSignal = createRequestSignal(options.signal, timeoutMs);
     fetchOptions.signal = requestSignal.signal;
     try {
         const response = await options.fetch(joinUrl(options.baseUrl, requestPath), fetchOptions);
         const responseData = await readResponse(response, step, options.io, runtime);
         return { method, path: requestPath, request: { headers, body: request.body }, response: responseData };
+    } catch (error) {
+        // 失败也返回注入后的最终请求（Authorization/全局头/合并 cookie/query）与超时标记，
+        // 供工作台失败诊断；由 runStep 的 catch 统一装配进结果
+        if (error && typeof error === "object" && !error.scenarioContext) {
+            error.scenarioContext = {
+                method,
+                path: requestPath,
+                request: { headers, body: request.body },
+                timedOut: requestSignal.timedOut(),
+                timeoutMessage: `请求超时（${timeoutMs}ms）`
+            };
+        }
+        throw error;
     } finally {
         requestSignal.dispose();
     }
@@ -249,22 +276,25 @@ async function executeAdapter(adapter, adapterName, step, runtime, options) {
     if (!adapter) throw new Error(`未注册步骤适配器: ${adapterName || "unknown"}`);
 
     let output;
-    
+
+    // 钩子协议：钩子收到的是步骤原始定义（未做 {{vars.*}} 替换）。
+    // beforeExecute 对 step 的修改会随深拷贝进入 execute；execute 收到 resolve 后的独立副本，
+    // 副本内的修改不会泄漏回原始 step 或后续步骤。
     try {
-        // 前置钩子
+        // 前置钩子（step 为原始定义）
         if (typeof adapter.beforeExecute === "function") {
             await adapter.beforeExecute({ step, runtime, options });
         }
-        
-        // 执行主逻辑
+
+        // 执行主逻辑（step 为变量替换后的副本）
         output = await adapter.execute({ step: resolve(clone(step), runtime), runtime, options });
-        
-        // 后置钩子
+
+        // 后置钩子（step 为原始定义；返回值可覆盖 output）
         if (typeof adapter.afterExecute === "function") {
             output = await adapter.afterExecute({ step, runtime, options, output }) || output;
         }
     } catch (error) {
-        // 错误钩子
+        // 错误钩子（step 为原始定义）
         if (typeof adapter.onError === "function") {
             try {
                 await adapter.onError({ step, runtime, options, error });
@@ -396,17 +426,29 @@ export function createEngine(engineOptions = {}) {
                 response: lastExecution.response
             };
         } catch (error) {
+            // 失败语义对齐：结构化判别取消/超时，不再依赖匹配本地化错误文案
+            const context = error?.scenarioContext || null;
+            const cancelled = Boolean(options.signal?.aborted);
+            const timedOut = !cancelled && Boolean(error?.scenarioTimedOut || context?.timedOut);
+            const errorMessage = cancelled
+                ? "用户已取消执行"
+                : (timedOut ? (context?.timeoutMessage || "请求超时") : (error?.message || "请求执行失败"));
+            const method = (context && context.method)
+                || String(step.method || (step.request && step.request.method) || "GET").toUpperCase();
+            const path = (context && context.path) || resolveString(step.path || "", runtime);
             return {
                 name: step.name || "未命名步骤",
-                method: String(step.method || "ERROR").toUpperCase(),
-                path: resolveString(step.path || "", runtime),
-                status: options.signal?.aborted ? "CANCELLED" : "ERROR",
+                method,
+                path,
+                status: cancelled ? "CANCELLED" : (timedOut ? "TIMEOUT" : "ERROR"),
                 duration: now() - startedAt,
                 passed: false,
-                error: error?.message || String(error),
+                cancelled,
+                timedOut,
+                error: errorMessage,
                 warnings: [],
-                assertions: [{ name: "步骤执行成功", passed: false, actual: error?.message || String(error), expected: "无异常" }],
-                request: null,
+                assertions: [{ name: cancelled ? "执行未取消" : (timedOut ? "请求未超时" : "请求执行成功"), passed: false, actual: errorMessage, expected: "无异常" }],
+                request: (context && context.request) || null,
                 response: null
             };
         }

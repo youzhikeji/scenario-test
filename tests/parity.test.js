@@ -101,14 +101,91 @@ const assertionCases = [
     { path: "nested.flag", equals: true }
 ];
 
-test("断言求值稳定：全部操作符组合不抛异常且返回完整结构", () => {
-    for (const definition of assertionCases) {
+// 每个用例的期望 passed（与 assertionCases 顺序一一对应）。
+// 逐条锁定极性，防止 includes 数组深比较 / oneOf 非数组 / exists 缺失路径等假绿回归。
+const expectedPassed = [
+    true,  // exists: code 存在
+    false, // exists: missing 不存在
+    true,  // exists:false 且 empty=""（空串视为不存在）
+    true,  // exists:false 且 missing 不存在
+    true,  // equals 200
+    true,  // equals {{expectedStatus}}
+    true,  // equals 对象深比较
+    true,  // notEquals 201
+    false, // notEquals 200
+    false, // notEquals 对象深比较
+    true,  // includes: items=[1,2,3] 含 2
+    false, // includes: items 不含 9
+    false, // includes: "2" 与数字 2 类型不同（深比较）
+    true,  // includes: list=[10,20] 含 20
+    false, // includes: list 含 2（假绿回归：数组不得字符串化）
+    false, // includes: list 不含 {x:1}
+    true,  // includes: 非数组 empty="" 含 ""
+    true,  // includes: 非数组 10 含 "1"
+    true,  // includes: 非数组 10 含 10
+    true,  // matches ^10$
+    false, // matches ^9$
+    false, // matches "(" 无效正则 → 失败而非抛异常
+    true,  // oneOf [200,201]
+    false, // oneOf [201,202]
+    true,  // oneOf {{candidates}}
+    false, // oneOf {{candidates}} 对 total
+    false, // oneOf {{nonArray}}（假绿回归：必须 FAIL 而非跳过）
+    true,  // oneOf [{x:1},{y:2}]
+    false, // oneOf [{x:2}]
+    false, // oneOf {{list}} 对 code
+    true,  // gt 9
+    false, // gt 10
+    true,  // gte 10
+    false, // gte 11
+    true,  // lt 11
+    false, // lt 10
+    true,  // lte 10
+    false, // lte 9
+    false, // gt "9" 字符串不参与数值比较
+    true,  // gt {{min}}
+    true,  // target:status equals 200
+    false, // target:status equals 201
+    true,  // header X-Total equals "42"
+    true,  // header X-Missing exists:false
+    true,  // header content-type matches
+    true,  // from:vars min equals 5
+    true,  // from:vars missing exists:false
+    true,  // from:headers X-Total equals "42"
+    true,  // from:headers X-Missing exists:false
+    true,  // from:bodyText matches code
+    true,  // from:bodyText equals 原始 JSON
+    true,  // path code equals 200
+    true   // path nested.flag equals true
+];
+
+test("断言求值极性：全部操作符逐条锁定 passed（含 includes/oneOf/exists 假绿回归）", () => {
+    assert.equal(assertionCases.length, expectedPassed.length, "用例与期望值数量必须一致");
+    assertionCases.forEach((definition, index) => {
         const result = nodeCore.evaluateAssertion(definition, response, runtime);
-        assert.equal(typeof result.passed, "boolean", `断言 ${JSON.stringify(definition)} 的 passed 必须是布尔值`);
-        assert.ok("name" in result, `断言 ${JSON.stringify(definition)} 缺少 name`);
-        assert.ok("actual" in result, `断言 ${JSON.stringify(definition)} 缺少 actual`);
-        assert.ok("expected" in result, `断言 ${JSON.stringify(definition)} 缺少 expected`);
-    }
+        assert.equal(
+            result.passed,
+            expectedPassed[index],
+            `断言 ${JSON.stringify(definition)} 的 passed 应为 ${expectedPassed[index]}`
+        );
+    });
+});
+
+test("断言求值深比较语义：includes 数组不字符串化、oneOf 非数组必须失败、exists 空串为不存在", () => {
+    // includes 数组深比较：actual=[10,20] 与 expected=2 类型/值均不匹配（历史假绿回归）
+    const listIncludes = nodeCore.evaluateAssertion({ path: "list", includes: 2 }, response, runtime);
+    assert.equal(listIncludes.passed, false);
+    assert.deepEqual(listIncludes.actual, [10, 20]);
+
+    // oneOf 非数组 expected：必须 FAIL 而非被跳过（historical 假绿）
+    const oneOfNonArray = nodeCore.evaluateAssertion({ path: "code", oneOf: "{{vars.nonArray}}" }, response, runtime);
+    assert.equal(oneOfNonArray.passed, false);
+    assert.equal(oneOfNonArray.expected, "nope");
+
+    // exists 空串视为不存在：actual="" 且 exists:false → 通过
+    const existsEmpty = nodeCore.evaluateAssertion({ path: "empty", exists: false }, response, runtime);
+    assert.equal(existsEmpty.passed, true);
+    assert.equal(existsEmpty.actual, "");
 });
 
 test("buildAssertions 契约：step.status 简写与默认 2xx 注入", () => {

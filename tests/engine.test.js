@@ -389,3 +389,88 @@ test("SKIP 统计：全跳过为 SKIPPED，部分跳过保持 PASSED，SKIP 不�
     assert.equal(partial.results.filter((item) => item.skipped).length, 1);
 });
 
+test("失败步骤保留解析后的 method 与注入后的请求头/查询参数（诊断对称）", async () => {
+    let captured;
+    const scenario = defineScenario({
+        name: "失败诊断",
+        steps: [{ name: "失败", path: "api/list", request: { headers: { "X-Step": "yes" } }, assertions: [{ path: "code", equals: 200 }] }]
+    });
+    const report = await createEngine({
+        baseUrl: "https://mock.local",
+        authorization: "Bearer env-token",
+        globals: [
+            { type: "header", name: "X-Global", value: "g" },
+            { type: "query", name: "source", value: "scenario-test" }
+        ],
+        fetch: async (url, options) => {
+            captured = { url, headers: options.headers };
+            throw new Error("network down");
+        }
+    }).runScenario(scenario);
+
+    const result = report.results[0];
+    assert.equal(result.passed, false);
+    assert.equal(result.status, "ERROR");
+    // method 徽章：未显式声明 step.method 时兜底为 GET（而非 ERROR）
+    assert.equal(result.method, "GET");
+    // 失败请求详情保留注入后的最终头与查询参数
+    assert.equal(result.request.headers["X-Step"], "yes");
+    assert.equal(result.request.headers["X-Global"], "g");
+    assert.equal(result.request.headers.Authorization, "Bearer env-token");
+    assert.match(result.path, /[?&]source=scenario-test$/);
+    assert.match(result.error, /network down/);
+    assert.equal(captured.headers.Authorization, "Bearer env-token", "实际发出的请求应含注入头");
+});
+
+test("取消返回 CANCELLED 与中文文案；超时返回 TIMEOUT 与结构化标记", async () => {
+    const scenario = defineScenario({
+        name: "取消与超时",
+        steps: [{ name: "s", path: "api", assertions: [{ path: "code", equals: 200 }] }]
+    });
+
+    // 取消：父信号已中止 → CANCELLED + 中文文案 + cancelled 字段
+    const controller = new AbortController();
+    controller.abort();
+    const cancelled = await createEngine({ baseUrl: "https://mock.local", fetch: async () => jsonResponse({}) })
+        .runScenario(scenario, { signal: controller.signal });
+    const cancelledResult = cancelled.results[0];
+    assert.equal(cancelledResult.status, "CANCELLED");
+    assert.equal(cancelledResult.cancelled, true);
+    assert.equal(cancelledResult.error, "用户已取消执行");
+    assert.equal(cancelledResult.assertions[0].name, "执行未取消");
+
+    // 超时：fetch 尊重 signal 但超时后拒绝 → TIMEOUT + timedOut 字段 + 结构化标记（不依赖错误文案）
+    const timeoutScenario = defineScenario({
+        name: "超时",
+        steps: [{ name: "s", path: "api", timeoutMs: 50, assertions: [{ path: "code", equals: 200 }] }]
+    });
+    const timedOut = await createEngine({
+        baseUrl: "https://mock.local",
+        fetch: async (_url, options) => new Promise((_resolve, reject) => {
+            options.signal.addEventListener("abort", () => reject(new Error("The operation was aborted")));
+        })
+    }).runScenario(timeoutScenario);
+    const timedOutResult = timedOut.results[0];
+    assert.equal(timedOutResult.status, "TIMEOUT");
+    assert.equal(timedOutResult.timedOut, true);
+    assert.match(timedOutResult.error, /请求超时/);
+    assert.equal(timedOutResult.assertions[0].name, "请求未超时");
+});
+
+test("负 / 字符串 \"0\" / Infinity 超时值不触发即时超时且不崩溃（钳制为默认值）", async () => {
+    // 这些非法值都经 || 链或 Number.isFinite 钳制为默认 30000；此处仅验证
+    // 不会误判为"立即超时"或抛异常，正常响应仍通过（钳制逻辑见 executeHttp）
+    for (const timeoutMs of [-5, "0", Infinity]) {
+        const scenario = defineScenario({
+            name: "钳制",
+            steps: [{ name: "s", path: "api", timeoutMs, assertions: [{ path: "code", equals: 200 }] }]
+        });
+        const report = await createEngine({
+            baseUrl: "https://mock.local",
+            fetch: async () => new Promise((resolve) => setTimeout(() => resolve(jsonResponse({ code: 200 })), 20))
+        }).runScenario(scenario);
+        assert.equal(report.failed, 0, `timeoutMs=${JSON.stringify(timeoutMs)} 不应触发即时超时`);
+        assert.equal(report.results[0].status, 200);
+    }
+});
+

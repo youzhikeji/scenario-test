@@ -15,17 +15,6 @@ export function createLegacyRuntime(options) {
 
     var clone = core.clone;
     var isPlainObject = core.isPlainObject;
-    var resolveString = core.resolveString;
-    var resolve = core.resolve;
-    var headerValue = core.headerValue;
-    var hasHeader = core.hasHeader;
-    var headersToObject = core.headersToObject;
-    var joinUrl = core.joinUrl;
-    var buildUrl = core.buildUrl;
-    var parseBody = core.parseBody;
-    var evaluateAssertion = core.evaluateAssertion;
-    var buildAssertions = core.buildAssertions;
-    var applyExtract = core.applyExtract;
     var assertNotReservedVar = core.assertNotReservedVar;
     var assertNoReservedVars = core.assertNoReservedVars;
     var md5 = core.md5;
@@ -420,32 +409,16 @@ export function createLegacyRuntime(options) {
     var engine = createEngine({ config: appConfig });
 
     async function executeStep(step, runtime, cfg) {
+        // 执行语义完全交由 engine.runStep（失败/取消/超时均已结构化返回：
+        // cancelled/timedOut/status/error/method/request 直接可用，无需适配层再映射）
         var request = step.request || {};
-        var runOptions = {
+        return await engine.runStep(step, runtime, {
             signal: runtime.abortController.signal,
             baseUrl: runtime.baseUrl,
             authorization: runtime.authorization,
             globals: runtime.globals,
             requestTimeoutMs: Number(step.timeoutMs || request.timeoutMs || cfg.requestTimeoutMs || 30000)
-        };
-        var result = await engine.runStep(step, runtime, runOptions);
-        // legacy 语义对齐：engine 无 cancelled/timedOut 字段，超时表现为 ERROR（按固定消息识别；
-        // 依赖浏览器将 abort reason 传播为 fetch 拒绝原因，Chrome 90+ 支持）
-        result.cancelled = Boolean(runtime.cancelled || result.status === 'CANCELLED');
-        result.timedOut = !result.cancelled && result.status === 'ERROR'
-            && /请求超时/.test(result.error || '');
-        if (result.timedOut) result.status = 'TIMEOUT';
-        // 失败/取消/超时时 engine 返回 request: null 且 path 不含 query，回填解析后的步骤请求，
-        // 保持工作台失败诊断能力（旧 executeStep 返回注入后的最终请求头/体）
-        if (result.request === null && !result.skipped) {
-            result.request = resolve(clone(step.request || {}), runtime) || null;
-            result.path = buildUrl(
-                step.path || request.path || '',
-                step.params || request.params,
-                runtime
-            );
-        }
-        return result;
+        });
     }
 
     function createExecutionRuntime() {
@@ -544,7 +517,7 @@ export function createLegacyRuntime(options) {
         var runtime = state.activeRuntime || state.stepRuntime;
         if (!state.running || !runtime || !runtime.abortController) return;
         runtime.cancelled = true;
-        runtime.abortController.abort();
+        runtime.abortController.abort(new Error('用户已取消执行'));
         uiView.setRunState('cancelled', '正在取消');
     }
 
