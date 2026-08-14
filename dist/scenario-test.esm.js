@@ -763,8 +763,10 @@ function defineScenario(input) {
       }
       const maxAttempts = Number(step.retryUntil.maxAttempts ?? 10);
       const intervalMs = Number(step.retryUntil.intervalMs ?? 2e3);
+      const maxElapsedMs = Number(step.retryUntil.maxElapsedMs ?? 3e5);
       invariant(Number.isInteger(maxAttempts) && maxAttempts >= 1, `\u6B65\u9AA4 ${step.name} \u7684 maxAttempts \u5FC5\u987B\u662F\u6B63\u6574\u6570`);
       invariant(Number.isFinite(intervalMs) && intervalMs >= 0, `\u6B65\u9AA4 ${step.name} \u7684 intervalMs \u4E0D\u80FD\u4E3A\u8D1F\u6570`);
+      invariant(Number.isFinite(maxElapsedMs) && maxElapsedMs > 0, `\u6B65\u9AA4 ${step.name} \u7684 maxElapsedMs \u5FC5\u987B\u662F\u6B63\u6570`);
     }
     if (step.when !== void 0 && isPlainObject(step.when)) {
       if (!contract.when.sources.includes(step.when.from)) {
@@ -1082,7 +1084,7 @@ async function executeHttp(step, runtime, options) {
       fetchOptions.body = JSON.stringify(request.body);
     }
   }
-  const rawTimeoutMs = Number(step.timeoutMs || options.requestTimeoutMs || 3e4);
+  const rawTimeoutMs = Number(step.timeoutMs || request.timeoutMs || options.requestTimeoutMs || 3e4);
   const timeoutMs = Number.isFinite(rawTimeoutMs) && rawTimeoutMs > 0 ? rawTimeoutMs : 3e4;
   const requestSignal = createRequestSignal(options.signal, timeoutMs);
   fetchOptions.signal = requestSignal.signal;

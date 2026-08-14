@@ -313,6 +313,20 @@ test("定义期拒绝非法断言（含 retryUntil 防御性 assertions）", () 
     defineScenario({ name: "A", steps: [{ name: "s", path: "x", retryUntil: { maxAttempts: 3, intervalMs: 100 }, assertions: [{ path: "code", equals: 200 }] }] });
 });
 
+test("定义期拒绝非法 retryUntil 数值（maxAttempts/intervalMs/maxElapsedMs）", () => {
+    const withRetry = (retryUntil) => defineScenario({ name: "A", steps: [{ name: "s", path: "x", retryUntil, assertions: [{ path: "code", equals: 200 }] }] });
+    assert.throws(() => withRetry({ maxAttempts: "abc" }), /maxAttempts 必须是正整数/);
+    assert.throws(() => withRetry({ maxAttempts: -1 }), /maxAttempts 必须是正整数/);
+    assert.throws(() => withRetry({ maxAttempts: 0 }), /maxAttempts 必须是正整数/);
+    assert.throws(() => withRetry({ intervalMs: -1 }), /intervalMs 不能为负数/);
+    assert.throws(() => withRetry({ intervalMs: "abc" }), /intervalMs 不能为负数/);
+    assert.throws(() => withRetry({ maxElapsedMs: "abc" }), /maxElapsedMs 必须是正数/);
+    assert.throws(() => withRetry({ maxElapsedMs: 0 }), /maxElapsedMs 必须是正数/);
+    assert.throws(() => withRetry({ maxElapsedMs: -1 }), /maxElapsedMs 必须是正数/);
+    // 合法值不抛
+    withRetry({ maxAttempts: 3, intervalMs: 100, maxElapsedMs: 5000 });
+});
+
 test("保留变量 runId/runNo 禁止在 config vars、generatedVars、envVars 中声明", async () => {
     const ok = async (vars) => {
         const report = await createEngine({ baseUrl: "https://mock.local", fetch: async () => jsonResponse({}) }).runScenario(

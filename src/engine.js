@@ -234,7 +234,7 @@ async function executeHttp(step, runtime, options) {
             fetchOptions.body = JSON.stringify(request.body);
         }
     }
-    const rawTimeoutMs = Number(step.timeoutMs || options.requestTimeoutMs || 30000);
+    const rawTimeoutMs = Number(step.timeoutMs || request.timeoutMs || options.requestTimeoutMs || 30000);
     // 非法/非正超时统一钳制为默认值，避免负数/Infinity/字符串"0"导致永不超时
     const timeoutMs = Number.isFinite(rawTimeoutMs) && rawTimeoutMs > 0 ? rawTimeoutMs : 30000;
     const requestSignal = createRequestSignal(options.signal, timeoutMs);

@@ -80,8 +80,10 @@ export function defineScenario(input) {
             }
             const maxAttempts = Number(step.retryUntil.maxAttempts ?? 10);
             const intervalMs = Number(step.retryUntil.intervalMs ?? 2000);
+            const maxElapsedMs = Number(step.retryUntil.maxElapsedMs ?? 300000);
             invariant(Number.isInteger(maxAttempts) && maxAttempts >= 1, `步骤 ${step.name} 的 maxAttempts 必须是正整数`);
             invariant(Number.isFinite(intervalMs) && intervalMs >= 0, `步骤 ${step.name} 的 intervalMs 不能为负数`);
+            invariant(Number.isFinite(maxElapsedMs) && maxElapsedMs > 0, `步骤 ${step.name} 的 maxElapsedMs 必须是正数`);
         }
         // when 对象形式只能从 vars 取值，不允许 body/status/header；
         // 非对象形式（模板字符串/布尔）保持兼容不做校验。
