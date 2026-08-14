@@ -52,6 +52,9 @@ export function evalExpression(expression, runtime) {
     const text = String(expression || "").trim();
     if (!text) return "";
     if (text === "vars") return runtime.vars;
+    // 模板变量语义（双端一致，勿单边修改）：
+    //   lastResponse      完整响应对象（status / headers / body / bodyText）
+    //   lastResponseBody  解析后的响应体（JSON 已转为对象；原始文本用断言 from: "bodyText" 获取）
     if (text === "lastResponse") return runtime.lastResponse;
     if (text === "lastResponseBody") return runtime.lastResponseBody;
     if (text.startsWith("vars.")) return getByPath(runtime.vars, text.slice(5));

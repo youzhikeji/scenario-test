@@ -168,7 +168,10 @@ function satisfiesNodeEngine(version, range) {
     const match = /^>=\s*(\d+)(?:\.(\d+)(?:\.(\d+))?)?/.exec(String(range || "").trim());
     if (!match) return false;
     const [major, minor = 0, patch = 0] = match.slice(1).map(Number);
-    const [curMajor, curMinor = 0, curPatch = 0] = String(version).replace(/^v/, "").split(".").map(Number);
+    // 用正则提取数字段，忽略 pre-release 后缀（如 v18.0.0-rc.1），避免 Number("0-rc.1") 为 NaN 导致误判
+    const current = /^v?(\d+)(?:\.(\d+)(?:\.(\d+))?)?/.exec(String(version).trim());
+    if (!current) return false;
+    const [curMajor, curMinor = 0, curPatch = 0] = current.slice(1).map(Number);
     if (curMajor !== major) return curMajor > major;
     if (curMinor !== minor) return curMinor > minor;
     return curPatch >= patch;

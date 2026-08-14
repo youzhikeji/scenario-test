@@ -454,7 +454,20 @@ async function runCommand(args) {
     let skippedTotal = 0;
     for (const entry of entries) {
         if (!entry.url) throw new Error(`场景 ${entry.id} 缺少 url`);
-        const scenarioPath = path.isAbsolute(entry.url) ? entry.url : path.resolve(configDir, entry.url);
+        // 与 doctor 一致：相对路径必须位于配置目录内（防路径遍历），绝对路径保持兼容
+        let scenarioPath;
+        if (path.isAbsolute(entry.url)) scenarioPath = entry.url;
+        else {
+            try {
+                scenarioPath = validatePath(configDir, entry.url);
+            } catch (error) {
+                throw new Error(
+                    `场景 ${entry.id} 的 url 不安全: ${entry.url}\n` +
+                    `原因: ${error.message}\n` +
+                    "url 必须是配置目录内的相对路径"
+                );
+            }
+        }
         let scenario = ScenarioTest.loadScenarioFile(scenarioPath, entry.id, ScenarioTest);
         scenario = await transformScenario(scenario, { config, configDir, entry, environment }, plugins);
         console.log(`\n# ${scenario.name} (${entry.id})`);
@@ -509,8 +522,16 @@ function contentType(filePath) {
 function serveStaticFile(response, filePath) {
     const headers = { "Cache-Control": "no-store", "Content-Type": contentType(filePath) };
     if (path.extname(filePath).toLowerCase() !== ".html") {
-        response.writeHead(200, headers);
-        fs.createReadStream(filePath).pipe(response);
+        const stream = fs.createReadStream(filePath);
+        stream.on("error", () => {
+            if (response.headersSent) { response.destroy(); return; }
+            response.writeHead(500);
+            response.end("Internal Server Error");
+        });
+        stream.on("open", () => {
+            response.writeHead(200, headers);
+            stream.pipe(response);
+        });
         return;
     }
     fs.readFile(filePath, "utf8", function (error, html) {
@@ -549,9 +570,13 @@ function proxyRequest(request, response, targetUrl) {
         response.writeHead(upstreamResponse.statusCode || 502, upstreamResponse.headers);
         upstreamResponse.pipe(response);
     });
+    upstream.setTimeout(30000, () => {
+        upstream.destroy(new Error("接口代理超时"));
+    });
     upstream.on("error", () => {
+        if (response.headersSent) { response.destroy(); return; }
         response.writeHead(502, { "Content-Type": "text/plain; charset=utf-8" });
-        response.end("Bad Gateway: 无法连接接口代理目标");
+        response.end("Bad Gateway: 无法连接接口代理目标或代理超时");
     });
     request.pipe(upstream);
 }

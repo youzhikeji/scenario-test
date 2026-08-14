@@ -17,6 +17,7 @@ import {
 } from "./core.js";
 import { contract } from "./contract.js";
 import { defineScenario, listAdapters } from "./registry.js";
+import { validateAdapterResponse } from "./adapter-types.js";
 
 function now() {
     return globalThis.performance?.now ? globalThis.performance.now() : Date.now();
@@ -121,8 +122,7 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables, options = 
             throw new Error(`不支持的 generatedVars 类型: ${definition.type}`);
         }
     }
-    // ✅ 不在这里冻结，因为 extract 需要修改 vars
-    // 冻结在外层处理
+    // vars 由引擎统一构建，执行期 extract 是唯一写入方；不做冻结，场景/插件不应直接修改
     return vars;
 }
 
@@ -140,9 +140,9 @@ export function createRuntime(scenario, options = {}) {
 }
 
 function chooseAdapter(step, adapters) {
-    if (step.adapter) return adapters.get(step.adapter);
-    for (const adapter of adapters.values()) {
-        if (typeof adapter.matches === "function" && adapter.matches(step)) return adapter;
+    if (step.adapter) return { name: step.adapter, adapter: adapters.get(step.adapter) };
+    for (const [name, adapter] of adapters.entries()) {
+        if (typeof adapter.matches === "function" && adapter.matches(step)) return { name, adapter };
     }
     return null;
 }
@@ -245,10 +245,9 @@ class AdapterExecutionError extends Error {
     }
 }
 
-async function executeAdapter(adapter, step, runtime, options) {
-    if (!adapter) throw new Error(`未注册步骤适配器: ${step.adapter || "unknown"}`);
-    
-    const adapterName = step.adapter || adapter.constructor?.name || "unknown";
+async function executeAdapter(adapter, adapterName, step, runtime, options) {
+    if (!adapter) throw new Error(`未注册步骤适配器: ${adapterName || "unknown"}`);
+
     let output;
     
     try {
@@ -276,11 +275,10 @@ async function executeAdapter(adapter, step, runtime, options) {
         throw new AdapterExecutionError(adapterName, error, step);
     }
     
+    // 统一走 adapter-types 的响应校验，避免引擎内另写一份校验逻辑
+    validateAdapterResponse(output, adapterName);
     const response = output?.response || output;
-    if (!response || response.status === undefined) {
-        throw new Error(`适配器 ${adapterName} 必须返回包含 status 的 response 对象`);
-    }
-    
+
     return {
         method: output.method || "ADAPTER",
         path: output.path || step.adapter || "adapter",
@@ -365,11 +363,12 @@ export function createEngine(engineOptions = {}) {
                     );
                 }
 
-                const adapter = chooseAdapter(step, adapters);
-                lastExecution = adapter
-                    ? await executeAdapter(adapter, step, runtime, options)
+                const selection = chooseAdapter(step, adapters);
+                lastExecution = selection
+                    ? await executeAdapter(selection.adapter, selection.name, step, runtime, options)
                     : await executeHttp(step, runtime, options);
                 runtime.lastResponse = lastExecution.response;
+                // lastResponseBody 是解析后的响应体（与 legacy 双端一致）；原始文本见 response.bodyText
                 runtime.lastResponseBody = lastExecution.response.body;
                 const extractResult = applyExtract(step, lastExecution.response, runtime);
                 stepWarnings = extractResult.warnings;

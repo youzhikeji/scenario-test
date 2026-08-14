@@ -88,15 +88,18 @@ npx @yc_yzkj/scenario-test --config scenario.config.js
 
 开发模式可设置 `SCENARIO_VERBOSE_ERRORS=true` 查看详细信息。
 
-### 5. 不可变 Runtime Vars
+### 5. Runtime Vars 的受控管理
 
-**问题**: vars 可能被意外修改。
+**问题**: vars 可能被意外声明或覆盖。
 
-**修复**: vars 对象现在被冻结。
+**防护**:
+- `runId` / `runNo` 是引擎自动生成的保留变量，禁止在 vars / envVars / generatedVars / extract 中声明或覆盖（定义期即报错）。
+- vars 由引擎在执行前统一构建：场景 vars、配置/选项 vars、envVars、generatedVars 按优先级合并。
+- 执行期 `extract` 是 vars 的唯一写入方；场景文件与插件不应直接修改 runtime.vars，该行为不受支持并可能在后续版本被拒绝。
 
 ```javascript
-// ✅ 修改会失败
-runtime.vars.apiKey = "hacked";  // TypeError in strict mode
+// ❌ 不支持：场景/插件直接修改 runtime.vars
+runtime.vars.apiKey = "hacked";
 ```
 
 ### 6. 重试超时保护
