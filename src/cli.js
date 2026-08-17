@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import http from "node:http";
+import https from "node:https";
 import path from "node:path";
 import crypto from "node:crypto";
 import { createInterface } from "node:readline/promises";
@@ -569,30 +570,67 @@ const HOP_BY_HOP_HEADERS = new Set([
     "te", "trailer", "transfer-encoding", "upgrade", "host"
 ]);
 
+function respondProxyError(response, message) {
+    if (response.headersSent) { response.destroy(); return; }
+    response.writeHead(502, { "Content-Type": "text/plain; charset=utf-8" });
+    response.end(message);
+}
+
+// 按代理目标协议选择转发模块；无法识别（缺 http(s):// 前缀或非法 URL）时返回 null，
+// 由调用方降级为 502 提示——代理目标错误属于配置问题，不应让 serve 进程退出。
+function proxyTransport(targetUrl) {
+    try {
+        const protocol = new URL(targetUrl).protocol;
+        if (protocol === "https:") return https;
+        if (protocol === "http:") return http;
+    } catch {
+        return null;
+    }
+    return null;
+}
+
 function proxyRequest(request, response, targetUrl) {
+    const transport = proxyTransport(targetUrl);
+    if (!transport) {
+        respondProxyError(
+            response,
+            `Bad Gateway: 接口代理目标无效: ${targetUrl}\n` +
+            "请检查环境 baseUrl，必须带协议前缀（http:// 或 https://）"
+        );
+        return;
+    }
     const headers = {};
     for (const [name, value] of Object.entries(request.headers)) {
         if (!HOP_BY_HOP_HEADERS.has(String(name).toLowerCase())) headers[name] = value;
     }
-    const upstream = http.request(targetUrl + request.url, {
-        method: request.method,
-        headers
-    }, (upstreamResponse) => {
-        // 响应方向同样剔除 hop-by-hop 头，避免把上游连接语义（transfer-encoding/keep-alive 等）透传给浏览器
-        const responseHeaders = {};
-        for (const [name, value] of Object.entries(upstreamResponse.headers)) {
-            if (!HOP_BY_HOP_HEADERS.has(String(name).toLowerCase())) responseHeaders[name] = value;
-        }
-        response.writeHead(upstreamResponse.statusCode || 502, responseHeaders);
-        upstreamResponse.pipe(response);
-    });
+    let upstream;
+    try {
+        // 保持原拼接语义：targetUrl 已去尾部斜杠，若带路径前缀则原样保留
+        upstream = transport.request(targetUrl + request.url, {
+            method: request.method,
+            headers,
+            // serve 是本地联调代理，内网 https 后端普遍使用自签证书；
+            // 与 vite/webpack-dev-server 的 proxy secure:false 同语义，放宽上游证书校验
+            ...(transport === https ? { rejectUnauthorized: false } : {})
+        }, (upstreamResponse) => {
+            // 响应方向同样剔除 hop-by-hop 头，避免把上游连接语义（transfer-encoding/keep-alive 等）透传给浏览器
+            const responseHeaders = {};
+            for (const [name, value] of Object.entries(upstreamResponse.headers)) {
+                if (!HOP_BY_HOP_HEADERS.has(String(name).toLowerCase())) responseHeaders[name] = value;
+            }
+            response.writeHead(upstreamResponse.statusCode || 502, responseHeaders);
+            upstreamResponse.pipe(response);
+        });
+    } catch (error) {
+        // 请求构造阶段（非法 URL 等）可能同步抛错，此处兜底为 502
+        respondProxyError(response, `Bad Gateway: 接口代理请求构造失败: ${error.message}`);
+        return;
+    }
     upstream.setTimeout(30000, () => {
         upstream.destroy(new Error("接口代理超时"));
     });
     upstream.on("error", () => {
-        if (response.headersSent) { response.destroy(); return; }
-        response.writeHead(502, { "Content-Type": "text/plain; charset=utf-8" });
-        response.end("Bad Gateway: 无法连接接口代理目标或代理超时");
+        respondProxyError(response, "Bad Gateway: 无法连接接口代理目标或代理超时");
     });
     request.pipe(upstream);
 }

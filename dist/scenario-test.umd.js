@@ -1,4 +1,4 @@
-/*! scenario-test v0.5.17 */
+/*! scenario-test v0.5.18 */
 var ScenarioTest = (() => {
   var __create = Object.create;
   var __defProp = Object.defineProperty;
@@ -303,7 +303,7 @@ var ScenarioTest = (() => {
   var import_blueimp_md5 = __toESM(require_md5(), 1);
 
   // src/version.generated.js
-  var VERSION = "0.5.17";
+  var VERSION = "0.5.18";
 
   // src/contract.js
   var CONTRACT_VERSION = 1;
@@ -1022,7 +1022,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     assertNoReservedVars(scenario.vars, "\u573A\u666F vars");
     assertNoReservedVars(baseVars, "\u914D\u7F6E/\u9009\u9879 vars");
     const vars = { ...scenario.vars || {}, ...baseVars || {}, ...identifiers };
-    const verboseErrors = options.verboseErrors || process.env.SCENARIO_VERBOSE_ERRORS === "true";
+    const verboseErrors = options.verboseErrors || typeof process !== "undefined" && process.env?.SCENARIO_VERBOSE_ERRORS === "true";
     for (const [name, environmentName] of Object.entries(scenario.envVars || {})) {
       assertNotReservedVar(name, `\u573A\u666F envVars`);
       const value = environmentVariables?.[environmentName] ?? vars[name];
@@ -1307,7 +1307,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       let assertions = [];
       let stepWarnings = [];
       const retry = step.retryUntil || null;
-      const totalAttempts = retry ? Number(retry.maxAttempts || 10) + 1 : 1;
+      const totalAttempts = retry ? Math.max(1, Number(retry.maxAttempts || 10)) : 1;
       const retryStartTime = now();
       const maxElapsedMs = retry?.maxElapsedMs || 3e5;
       try {
@@ -1390,7 +1390,8 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       const executed = results.length - skipped;
       const failed = results.filter((item) => !item.skipped && !item.passed).length;
       const passedSteps = results.filter((item) => !item.skipped && item.passed).length;
-      const status = failed > 0 ? "FAILED" : executed === 0 ? "SKIPPED" : "PASSED";
+      const cancelled = Boolean(runOptions.signal?.aborted) && results.length < scenario.steps.length;
+      const status = cancelled ? "CANCELLED" : failed > 0 ? "FAILED" : executed === 0 ? "SKIPPED" : "PASSED";
       return {
         scenarioName: scenario.name,
         passed: failed === 0 && results.length === scenario.steps.length,

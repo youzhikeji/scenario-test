@@ -129,6 +129,7 @@ export interface GeneratedVarDefinition {
 }
 
 export interface RetryUntil {
+    /** 最大尝试总次数（含首次请求），默认 10；两次尝试之间至少间隔 100ms */
     maxAttempts?: number;
     intervalMs?: number;
     maxElapsedMs?: number;
@@ -196,7 +197,7 @@ export interface ScenarioStepResult {
 export interface ScenarioReport {
     scenarioName: string;
     passed: boolean;
-    status: "PASSED" | "FAILED" | "SKIPPED";
+    status: "PASSED" | "FAILED" | "SKIPPED" | "CANCELLED";
     planned: number;
     executed: number;
     passedSteps: number;

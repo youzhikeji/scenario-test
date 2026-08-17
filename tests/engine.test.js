@@ -1,4 +1,9 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { spawn } from "node:child_process";
+import { pathToFileURL } from "node:url";
 import test from "node:test";
 import { createEngine, defineScenario } from "../src/index.js";
 
@@ -143,6 +148,37 @@ test("retryUntil 成功、耗尽和取消", async () => {
     controller.abort(new Error("cancel test"));
     const cancelled = await engine.runScenario(retryScenario, { signal: controller.signal });
     assert.equal(cancelled.results[0].status, "CANCELLED");
+});
+
+test("retryUntil maxAttempts 语义 = 最大尝试总次数（含首次），不再 +1", async () => {
+    // 历史实现 maxAttempts:2 实际请求 3 次（重试次数语义），与字段名矛盾；
+    // 修正后总尝试次数与 maxAttempts 严格相等
+    let calls = 0;
+    const engine = createEngine({ baseUrl: "https://mock.local", fetch: async () => { calls += 1; return jsonResponse({ ready: false }); } });
+    const report = await engine.runScenario(defineScenario({
+        name: "精确计数",
+        steps: [{ name: "s", path: "x", retryUntil: { maxAttempts: 2, intervalMs: 1 }, assertions: [{ path: "ready", equals: true }] }]
+    }));
+    assert.equal(calls, 2, "maxAttempts=2 应恰好请求 2 次");
+    assert.equal(report.failed, 1);
+    assert.equal(report.results[0].passed, false);
+});
+
+test("取消落在两步之间：报告状态 CANCELLED，不再出现 status=PASSED 且 passed=false 的矛盾", async () => {
+    const controller = new AbortController();
+    const engine = createEngine({ baseUrl: "https://mock.local", fetch: async () => jsonResponse({ ok: 1 }) });
+    const report = await engine.runScenario(
+        { name: "两步取消", steps: [{ name: "a", path: "x" }, { name: "b", path: "y" }] },
+        { signal: controller.signal, onStep: () => controller.abort() }
+    );
+    assert.equal(report.status, "CANCELLED");
+    assert.equal(report.passed, false);
+    assert.equal(report.executed, 1);
+    assert.equal(report.planned, 2);
+    // 未中途取消的完整执行仍是 PASSED（防止 CANCELLED 误判扩散）
+    const full = await createEngine({ baseUrl: "https://mock.local", fetch: async () => jsonResponse({ ok: 1 }) })
+        .runScenario({ name: "完整", steps: [{ name: "a", path: "x" }] });
+    assert.equal(full.status, "PASSED");
 });
 
 test("when 条件不满足时安全跳过步骤", async () => {
@@ -505,5 +541,68 @@ test("负 / 字符串 \"0\" / Infinity 超时值不触发即时超时且不崩�
         assert.equal(report.failed, 0, `timeoutMs=${JSON.stringify(timeoutMs)} 不应触发即时超时`);
         assert.equal(report.results[0].status, 200);
     }
+});
+
+test("浏览器环境（无 process 全局）下 runScenario/createRuntime 不崩溃", async () => {
+    // UMD/ESM 浏览器产物没有 process 全局；buildGeneratedVars 曾直接读 process.env，
+    // 导致浏览器里调用 runScenario 必抛 ReferenceError。子进程删除 process 后跑源码复现该环境。
+    const script = `
+        globalThis.process = undefined;
+        globalThis.window = globalThis;
+        const engineModule = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(process.argv[1]), "..", "src", "engine.js")).href)});
+        const report = await engineModule.runScenario(
+            { name: "浏览器回归", steps: [{ name: "s", path: "api", assertions: [{ path: "code", equals: 200 }] }] },
+            { baseUrl: "https://mock.local", fetch: async () => new Response(JSON.stringify({ code: 200 }), { status: 200, headers: { "Content-Type": "application/json" } }) }
+        );
+        console.log("RESULT:" + report.status + ":" + report.failed);
+    `;
+    const result = await new Promise((resolve, reject) => {
+        const child = spawn(process.execPath, ["--input-type=module", "-e", script], {
+            cwd: path.resolve(import.meta.dirname, ".."),
+            stdio: ["ignore", "pipe", "pipe"]
+        });
+        let stdout = "";
+        let stderr = "";
+        child.stdout.on("data", (chunk) => { stdout += chunk; });
+        child.stderr.on("data", (chunk) => { stderr += chunk; });
+        child.on("close", (code) => resolve({ code, stdout, stderr }));
+        child.on("error", reject);
+    });
+    assert.equal(result.code, 0, `子进程异常退出:\n${result.stderr}`);
+    assert.match(result.stdout, /RESULT:PASSED:0/, `浏览器模拟环境执行应成功，stdout: ${result.stdout}\nstderr: ${result.stderr}`);
+});
+
+test("浏览器环境（无 process 全局）下缺少 envVars 的错误消息不泄漏环境变量名", async () => {
+    // verboseErrors 分支同样位于 buildGeneratedVars：无 process 时读取 SCENARIO_VERBOSE_ERRORS
+    // 不得抛错，且默认（非 verbose）错误消息不含环境变量映射名
+    const script = `
+        globalThis.process = undefined;
+        globalThis.window = globalThis;
+        const engineModule = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(process.argv[1]), "..", "src", "engine.js")).href)});
+        try {
+            await engineModule.runScenario(
+                { name: "缺变量", envVars: { password: "MY_SECRET_ENV" }, steps: [{ name: "s", path: "api" }] },
+                { baseUrl: "https://mock.local", fetch: async () => new Response("{}", { status: 200 }) }
+            );
+            console.log("RESULT:NO_THROW");
+        } catch (error) {
+            console.log("RESULT:" + error.message);
+        }
+    `;
+    const result = await new Promise((resolve, reject) => {
+        const child = spawn(process.execPath, ["--input-type=module", "-e", script], {
+            cwd: path.resolve(import.meta.dirname, ".."),
+            stdio: ["ignore", "pipe", "pipe"]
+        });
+        let stdout = "";
+        let stderr = "";
+        child.stdout.on("data", (chunk) => { stdout += chunk; });
+        child.stderr.on("data", (chunk) => { stderr += chunk; });
+        child.on("close", (code) => resolve({ code, stdout, stderr }));
+        child.on("error", reject);
+    });
+    assert.equal(result.code, 0, `子进程异常退出:\n${result.stderr}`);
+    assert.match(result.stdout, /RESULT:缺少必需的场景变量/);
+    assert.doesNotMatch(result.stdout, /MY_SECRET_ENV/, "非 verbose 模式不应泄漏环境变量映射名");
 });
 

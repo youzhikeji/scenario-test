@@ -1,6 +1,6 @@
 {
   "schema": "scenario-test-capabilities",
-  "version": "0.5.17",
+  "version": "0.5.18",
   "contractVersion": 1,
   "assertions": {
     "operators": {

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/*! scenario-test v0.5.17 */
+/*! scenario-test v0.5.18 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -242,6 +242,7 @@ var require_md5 = __commonJS({
 // src/cli.js
 var import_node_fs5 = __toESM(require("node:fs"), 1);
 var import_node_http = __toESM(require("node:http"), 1);
+var import_node_https = __toESM(require("node:https"), 1);
 var import_node_path6 = __toESM(require("node:path"), 1);
 var import_node_crypto2 = __toESM(require("node:crypto"), 1);
 var import_promises = require("node:readline/promises");
@@ -314,7 +315,7 @@ __export(node_exports, {
 var import_blueimp_md5 = __toESM(require_md5(), 1);
 
 // src/version.generated.js
-var VERSION = "0.5.17";
+var VERSION = "0.5.18";
 
 // src/contract.js
 var CONTRACT_VERSION = 1;
@@ -1033,7 +1034,7 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables, options = 
   assertNoReservedVars(scenario.vars, "\u573A\u666F vars");
   assertNoReservedVars(baseVars, "\u914D\u7F6E/\u9009\u9879 vars");
   const vars = { ...scenario.vars || {}, ...baseVars || {}, ...identifiers };
-  const verboseErrors = options.verboseErrors || process.env.SCENARIO_VERBOSE_ERRORS === "true";
+  const verboseErrors = options.verboseErrors || typeof process !== "undefined" && process.env?.SCENARIO_VERBOSE_ERRORS === "true";
   for (const [name, environmentName] of Object.entries(scenario.envVars || {})) {
     assertNotReservedVar(name, `\u573A\u666F envVars`);
     const value = environmentVariables?.[environmentName] ?? vars[name];
@@ -1318,7 +1319,7 @@ function createEngine(engineOptions = {}) {
     let assertions = [];
     let stepWarnings = [];
     const retry = step.retryUntil || null;
-    const totalAttempts = retry ? Number(retry.maxAttempts || 10) + 1 : 1;
+    const totalAttempts = retry ? Math.max(1, Number(retry.maxAttempts || 10)) : 1;
     const retryStartTime = now();
     const maxElapsedMs = retry?.maxElapsedMs || 3e5;
     try {
@@ -1401,7 +1402,8 @@ function createEngine(engineOptions = {}) {
     const executed = results.length - skipped;
     const failed = results.filter((item) => !item.skipped && !item.passed).length;
     const passedSteps = results.filter((item) => !item.skipped && item.passed).length;
-    const status = failed > 0 ? "FAILED" : executed === 0 ? "SKIPPED" : "PASSED";
+    const cancelled = Boolean(runOptions.signal?.aborted) && results.length < scenario.steps.length;
+    const status = cancelled ? "CANCELLED" : failed > 0 ? "FAILED" : executed === 0 ? "SKIPPED" : "PASSED";
     return {
       scenarioName: scenario.name,
       passed: failed === 0 && results.length === scenario.steps.length,
@@ -4083,7 +4085,7 @@ var SCENARIO_PATTERNS = [
   "        ]",
   "    }));",
   "",
-  "\u7981\u6B62\u56FA\u5B9A sleep\uFF0C\u4F7F\u7528 retryUntil\u3002\u91CD\u8BD5\u6B21\u6570\u3001\u95F4\u9694\u3001\u72B6\u6001\u5B57\u6BB5\u548C\u5B8C\u6210\u72B6\u6001\u5FC5\u987B\u4ECE\u9879\u76EE\u5B9E\u73B0\u3001\u679A\u4E3E\u3001\u6587\u6863\u6216\u65E2\u6709\u6D4B\u8BD5\u786E\u8BA4\uFF1B\u65E0\u6CD5\u786E\u8BA4\u7EC8\u6001\u65F6\u6700\u591A\u751F\u6210\u4E00\u6B21\u72B6\u6001\u67E5\u8BE2\uFF0C\u4E0D\u751F\u6210 retryUntil\u3002retryUntil \u7684\u65AD\u8A00\u5FC5\u987B\u6BD4\u8F83\u5DF2\u786E\u8BA4\u7EC8\u6001\uFF0C\u4E0D\u80FD\u53EA\u68C0\u67E5 exists\u3002",
+  "\u7981\u6B62\u56FA\u5B9A sleep\uFF0C\u4F7F\u7528 retryUntil\u3002maxAttempts \u662F\u6700\u5927\u5C1D\u8BD5\u603B\u6B21\u6570\uFF08\u542B\u9996\u6B21\u8BF7\u6C42\uFF09\uFF1B\u91CD\u8BD5\u6B21\u6570\u3001\u95F4\u9694\u3001\u72B6\u6001\u5B57\u6BB5\u548C\u5B8C\u6210\u72B6\u6001\u5FC5\u987B\u4ECE\u9879\u76EE\u5B9E\u73B0\u3001\u679A\u4E3E\u3001\u6587\u6863\u6216\u65E2\u6709\u6D4B\u8BD5\u786E\u8BA4\uFF1B\u65E0\u6CD5\u786E\u8BA4\u7EC8\u6001\u65F6\u6700\u591A\u751F\u6210\u4E00\u6B21\u72B6\u6001\u67E5\u8BE2\uFF0C\u4E0D\u751F\u6210 retryUntil\u3002retryUntil \u7684\u65AD\u8A00\u5FC5\u987B\u6BD4\u8F83\u5DF2\u786E\u8BA4\u7EC8\u6001\uFF0C\u4E0D\u80FD\u53EA\u68C0\u67E5 exists\u3002",
   "",
   "## \u6A21\u5F0F\u4E94\uFF1A\u4E3A\u6821\u9A8C\u5931\u8D25\u4E0E\u6743\u9650\u62D2\u7EDD\u5206\u522B\u5EFA\u573A\u666F",
   "",
@@ -5274,32 +5276,63 @@ var HOP_BY_HOP_HEADERS = /* @__PURE__ */ new Set([
   "upgrade",
   "host"
 ]);
+function respondProxyError(response, message) {
+  if (response.headersSent) {
+    response.destroy();
+    return;
+  }
+  response.writeHead(502, { "Content-Type": "text/plain; charset=utf-8" });
+  response.end(message);
+}
+function proxyTransport(targetUrl) {
+  try {
+    const protocol = new URL(targetUrl).protocol;
+    if (protocol === "https:") return import_node_https.default;
+    if (protocol === "http:") return import_node_http.default;
+  } catch {
+    return null;
+  }
+  return null;
+}
 function proxyRequest(request, response, targetUrl) {
+  const transport = proxyTransport(targetUrl);
+  if (!transport) {
+    respondProxyError(
+      response,
+      `Bad Gateway: \u63A5\u53E3\u4EE3\u7406\u76EE\u6807\u65E0\u6548: ${targetUrl}
+\u8BF7\u68C0\u67E5\u73AF\u5883 baseUrl\uFF0C\u5FC5\u987B\u5E26\u534F\u8BAE\u524D\u7F00\uFF08http:// \u6216 https://\uFF09`
+    );
+    return;
+  }
   const headers = {};
   for (const [name, value] of Object.entries(request.headers)) {
     if (!HOP_BY_HOP_HEADERS.has(String(name).toLowerCase())) headers[name] = value;
   }
-  const upstream = import_node_http.default.request(targetUrl + request.url, {
-    method: request.method,
-    headers
-  }, (upstreamResponse) => {
-    const responseHeaders = {};
-    for (const [name, value] of Object.entries(upstreamResponse.headers)) {
-      if (!HOP_BY_HOP_HEADERS.has(String(name).toLowerCase())) responseHeaders[name] = value;
-    }
-    response.writeHead(upstreamResponse.statusCode || 502, responseHeaders);
-    upstreamResponse.pipe(response);
-  });
+  let upstream;
+  try {
+    upstream = transport.request(targetUrl + request.url, {
+      method: request.method,
+      headers,
+      // serve 是本地联调代理，内网 https 后端普遍使用自签证书；
+      // 与 vite/webpack-dev-server 的 proxy secure:false 同语义，放宽上游证书校验
+      ...transport === import_node_https.default ? { rejectUnauthorized: false } : {}
+    }, (upstreamResponse) => {
+      const responseHeaders = {};
+      for (const [name, value] of Object.entries(upstreamResponse.headers)) {
+        if (!HOP_BY_HOP_HEADERS.has(String(name).toLowerCase())) responseHeaders[name] = value;
+      }
+      response.writeHead(upstreamResponse.statusCode || 502, responseHeaders);
+      upstreamResponse.pipe(response);
+    });
+  } catch (error) {
+    respondProxyError(response, `Bad Gateway: \u63A5\u53E3\u4EE3\u7406\u8BF7\u6C42\u6784\u9020\u5931\u8D25: ${error.message}`);
+    return;
+  }
   upstream.setTimeout(3e4, () => {
     upstream.destroy(new Error("\u63A5\u53E3\u4EE3\u7406\u8D85\u65F6"));
   });
   upstream.on("error", () => {
-    if (response.headersSent) {
-      response.destroy();
-      return;
-    }
-    response.writeHead(502, { "Content-Type": "text/plain; charset=utf-8" });
-    response.end("Bad Gateway: \u65E0\u6CD5\u8FDE\u63A5\u63A5\u53E3\u4EE3\u7406\u76EE\u6807\u6216\u4EE3\u7406\u8D85\u65F6");
+    respondProxyError(response, "Bad Gateway: \u65E0\u6CD5\u8FDE\u63A5\u63A5\u53E3\u4EE3\u7406\u76EE\u6807\u6216\u4EE3\u7406\u8D85\u65F6");
   });
   request.pipe(upstream);
 }

@@ -113,7 +113,7 @@ const SCENARIO_PATTERNS = [
     "        ]",
     "    }));",
     "",
-    "禁止固定 sleep，使用 retryUntil。重试次数、间隔、状态字段和完成状态必须从项目实现、枚举、文档或既有测试确认；无法确认终态时最多生成一次状态查询，不生成 retryUntil。retryUntil 的断言必须比较已确认终态，不能只检查 exists。",
+    "禁止固定 sleep，使用 retryUntil。maxAttempts 是最大尝试总次数（含首次请求）；重试次数、间隔、状态字段和完成状态必须从项目实现、枚举、文档或既有测试确认；无法确认终态时最多生成一次状态查询，不生成 retryUntil。retryUntil 的断言必须比较已确认终态，不能只检查 exists。",
     "",
     "## 模式五：为校验失败与权限拒绝分别建场景",
     "",

@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.18] - 2026-08-17
+
+### 🐛 Bug Fixes
+
+1. **浏览器产物调用 `runScenario`/`createRuntime` 崩溃修复**
+   - `buildGeneratedVars` 曾无条件读取 `process.env.SCENARIO_VERBOSE_ERRORS`，浏览器（UMD/ESM）无 `process` 全局，直接调用公共 API 即抛 `ReferenceError`。
+   - 修复为 `typeof process !== "undefined"` 守卫后读取，Node 行为不变。
+2. **serve 代理协议处理加固（不再因配置错误崩溃）**
+   - https 上游此前用 `http.request` 转发，同步抛 `ERR_INVALID_PROTOCOL` 逃逸为 uncaughtException，整个 serve 进程退出；现按协议选择 `http`/`https` 模块，https 上游可正常转发。
+   - 无协议 / 非法 baseUrl（如 `192.168.1.5:8080`）同步抛 `ERR_INVALID_URL` 导致进程崩溃；现降级为 502 并提示 baseUrl 需带协议前缀。
+   - https 上游支持自签证书（`rejectUnauthorized: false`，与 vite/webpack-dev-server 的 `secure: false` 同语义），适配内网 https 联调。
+3. **`retryUntil.maxAttempts` 语义对齐字段名**
+   - 历史实现为 `maxAttempts + 1`（重试次数语义），与字段名"最大尝试次数"矛盾；现 `maxAttempts` 即最大尝试总次数（含首次请求），默认 10。
+4. **场景报告新增 `CANCELLED` 状态**
+   - 取消恰好落在两步之间时，报告此前返回 `status: "PASSED"` 且 `passed: false` 的自相矛盾组合；现中止且未执行到位的场景状态为 `CANCELLED`。
+
+### ✅ Tests
+
+- 补浏览器环境（无 `process` 全局）回归：`runScenario` 正常执行、缺 envVars 错误消息不泄漏环境变量名。
+- 补 serve 代理回归：https 上游连接失败 502 且进程存活、无协议 baseUrl 502 且进程存活、https 端到端转发（openssl 自签证书，无 openssl 自动跳过）。
+- 补 `maxAttempts` 精确计数与取消时序 `CANCELLED` 状态回归。
+
 ## [0.5.17] - 2026-08-14
 
 ### 📚 Docs

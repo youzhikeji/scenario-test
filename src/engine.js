@@ -92,7 +92,9 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables, options = 
     const vars = { ...(scenario.vars || {}), ...(baseVars || {}), ...identifiers };
 
     // ✅ 是否在错误消息中显示详细信息（仅开发模式）
-    const verboseErrors = options.verboseErrors || process.env.SCENARIO_VERBOSE_ERRORS === "true";
+    // 浏览器产物（UMD/ESM）无 process 全局，必须先探测再读取，否则 runScenario 调用即崩
+    const verboseErrors = options.verboseErrors
+        || (typeof process !== "undefined" && process.env?.SCENARIO_VERBOSE_ERRORS === "true");
 
     for (const [name, environmentName] of Object.entries(scenario.envVars || {})) {
         assertNotReservedVar(name, `场景 envVars`);
@@ -421,7 +423,9 @@ export function createEngine(engineOptions = {}) {
         let assertions = [];
         let stepWarnings = [];
         const retry = step.retryUntil || null;
-        const totalAttempts = retry ? Number(retry.maxAttempts || 10) + 1 : 1;
+        // maxAttempts 语义 = 最大尝试总次数（含首次请求），与字段名一致；默认 10。
+        // 历史实现为 maxAttempts + 1（重试次数语义），与字段名矛盾，v0.5.18 起对齐。
+        const totalAttempts = retry ? Math.max(1, Number(retry.maxAttempts || 10)) : 1;
         // ✅ 添加重试超时保护
         const retryStartTime = now();
         const maxElapsedMs = retry?.maxElapsedMs || 300000; // 默认 5 分钟
@@ -520,7 +524,11 @@ export function createEngine(engineOptions = {}) {
         const executed = results.length - skipped;
         const failed = results.filter((item) => !item.skipped && !item.passed).length;
         const passedSteps = results.filter((item) => !item.skipped && item.passed).length;
-        const status = failed > 0 ? "FAILED" : (executed === 0 ? "SKIPPED" : "PASSED");
+        // 取消（signal 已中止且未执行到位）单列 CANCELLED，避免 status=PASSED 与 passed=false 并存的矛盾报告
+        const cancelled = Boolean(runOptions.signal?.aborted) && results.length < scenario.steps.length;
+        const status = cancelled ? "CANCELLED"
+            : failed > 0 ? "FAILED"
+            : (executed === 0 ? "SKIPPED" : "PASSED");
         return {
             scenarioName: scenario.name,
             passed: failed === 0 && results.length === scenario.steps.length,
