@@ -7,6 +7,9 @@ import {
     registerScenario
 } from "../registry.js";
 
+// ⚠️ 信任前提：配置/场景文件是任意 JS，vm.runInContext 仅做上下文隔离、
+// 不构成安全边界（注入的宿主对象如 console 可经 constructor 链逃逸拿到宿主全局）。
+// 只加载可信来源的配置与场景；不要为不可信输入引入"隔离"依赖——需要真隔离时用子进程。
 export function executeDefinitionFile(filePath, api) {
     const absolutePath = path.resolve(filePath);
     const moduleObject = { exports: {} };

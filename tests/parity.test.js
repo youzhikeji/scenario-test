@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import * as nodeCore from "../src/core.js";
-import { copyText, esc, fmt, safeJson } from "../src/browser/legacy/ui-utils.js";
+import { copyText, esc, fmt, safeJson } from "../src/browser/ui/ui-utils.js";
 
 function runtimeWith(vars = {}) {
     return { vars, lastResponse: null, lastResponseBody: null };

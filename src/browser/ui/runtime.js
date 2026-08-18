@@ -1,17 +1,17 @@
 import * as core from "../../core.js";
 import { createEngine } from "../../engine.js";
 import { esc, safeJson, copyText } from "./ui-utils.js";
-import legacyStyle from './ui-style.js';
-import legacyView from './ui-view.js';
-import legacyAdhoc from './ui-adhoc.js';
+import workbenchStyle from './ui-style.js';
+import workbenchView from './ui-view.js';
+import workbenchAdhoc from './ui-adhoc.js';
 
-export function createLegacyRuntime(options) {
+export function createWorkbenchRuntime(options) {
     'use strict';
 
     // ===== 模块注入依赖 =====
-    var uiStyle = legacyStyle;
-    var uiView = legacyView;
-    var uiAdhoc = legacyAdhoc;
+    var uiStyle = workbenchStyle;
+    var uiView = workbenchView;
+    var uiAdhoc = workbenchAdhoc;
 
     var clone = core.clone;
     var isPlainObject = core.isPlainObject;
@@ -694,6 +694,9 @@ export function createLegacyRuntime(options) {
         });
     }
 
+    // 凭据类变量名启发式：命中则输入框掩码（type=password）并提供明文切换
+    var SECRET_VAR_PATTERN = /(token|secret|password|passwd|auth|credential|api[-_]?key)/i;
+
     function renderScenarioVariableInputs() {
         var container = document.getElementById('scenarioVarsInput');
         if (!container) return;
@@ -705,9 +708,13 @@ export function createLegacyRuntime(options) {
         var stored = getStoredScenarioVariables();
         container.innerHTML = defs.map(function (def) {
             var value = stored[def.name] || '';
+            // 凭据类变量掩码显示（可切换明文），避免联调时 Token 在屏幕侧显
+            var isSecret = SECRET_VAR_PATTERN.test(def.name);
             return '<label class="flex flex-col gap-1.5">' +
-                '<span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">' + esc(def.label) + ' (' + esc(def.name) + ')</span>' +
-                '<input id="scenarioVar_' + esc(def.name) + '" type="text" value="' + esc(value) + '" placeholder="请输入 ' + esc(def.label) + '" class="px-3 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">' +
+                '<span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">' + esc(def.label) + ' (' + esc(def.name) + ')' +
+                    (isSecret ? ' <button type="button" data-toggle-var="' + esc(def.name) + '" class="font-normal normal-case tracking-normal text-emerald-500 hover:text-emerald-400">显示</button>' : '') +
+                '</span>' +
+                '<input id="scenarioVar_' + esc(def.name) + '" type="' + (isSecret ? 'password' : 'text') + '" value="' + esc(value) + '" placeholder="请输入 ' + esc(def.label) + '" autocomplete="off" class="px-3 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">' +
                 '</label>';
         }).join('');
     }
@@ -1213,6 +1220,20 @@ export function createLegacyRuntime(options) {
             state.scenarioSearch = event.target.value;
             renderScenarioSelect();
         });
+
+        // 凭据变量明文/掩码切换（容器 innerHTML 会被重绘，监听挂在容器自身）
+        var varsInputContainer = document.getElementById('scenarioVarsInput');
+        if (varsInputContainer) {
+            varsInputContainer.addEventListener('click', function (event) {
+                var toggleButton = event.target.closest('[data-toggle-var]');
+                if (!toggleButton) return;
+                var input = document.getElementById('scenarioVar_' + toggleButton.dataset.toggleVar);
+                if (!input) return;
+                var reveal = input.type === 'password';
+                input.type = reveal ? 'text' : 'password';
+                toggleButton.textContent = reveal ? '隐藏' : '显示';
+            });
+        }
 
         document.getElementById('runBtn').addEventListener('click', runScenario);
         document.getElementById('stepBtn').addEventListener('click', runNextStep);

@@ -277,7 +277,7 @@ export function applyExtract(step, response, runtime) {
     for (const definition of step.extract || []) {
         if (!definition || !definition.name) continue;
         assertNotReservedVar(definition.name, "extract 变量");
-        // 与 browser legacy core 完全同语义的提取来源解析：
+        // 与浏览器端完全同语义的提取来源解析：
         //   target:'status' / header 为简写（优先级最高）
         //   from: 'headers' | 'bodyText' | 'response'（默认 body）
         let source = response.body;

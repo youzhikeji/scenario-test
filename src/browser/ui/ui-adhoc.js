@@ -1,7 +1,7 @@
 import { esc, fmt, safeJson, sanitizeSensitive } from './ui-utils.js';
 import { clone, isPlainObject, evalExpression } from '../../core.js';
 
-const legacyAdhoc = (function () {
+const workbenchAdhoc = (function () {
     'use strict';
 
     var appConfig = {};
@@ -296,4 +296,4 @@ const legacyAdhoc = (function () {
     };
 })();
 
-export default legacyAdhoc;
+export default workbenchAdhoc;

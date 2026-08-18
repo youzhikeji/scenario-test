@@ -458,3 +458,29 @@ test("serve 代理双向剔除 Connection 头点名的自定义字段（RFC 7230
         fs.rmSync(project, { recursive: true, force: true });
     }
 });
+
+test("serve：--base-url 临时覆盖代理目标并在日志中标注", async () => {
+    const { server: mock, received, port: mockPort } = await startMockBackend();
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-serve-override-"));
+    const dir = path.join(project, "scenario-test");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+        envs: [{ key: "local", name: "本地", baseUrl: "http://127.0.0.1:1" }],
+        defaultEnvKey: "local",
+        scenarios: []
+    }));`, "utf8");
+
+    const servePort = await freePort();
+    const child = spawn(process.execPath, [cli, "serve", "--config", path.join(dir, "scenario.config.js"), "--base-url", `http://127.0.0.1:${mockPort}`, "--port", String(servePort)], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
+    try {
+        await waitForOutput(child, "--base-url 覆盖");
+        // 配置内 baseUrl 指向不可达端口，请求能通说明覆盖生效
+        const response = await fetch(`http://127.0.0.1:${servePort}/api/override`);
+        assert.equal(response.status, 200);
+        assert.equal(received.length, 1, "请求应转发到 --base-url 指定的 mock");
+    } finally {
+        child.kill();
+        mock.close();
+        fs.rmSync(project, { recursive: true, force: true });
+    }
+});

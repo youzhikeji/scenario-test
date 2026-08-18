@@ -62,7 +62,8 @@ try {
         await page.waitForFunction(() => document.querySelectorAll("[data-scenario-file]").length === 4);
         assert.equal(await page.locator("#stepsList li").count(), 1);
         assert.equal(await page.locator("[data-copy-step]").count(), 1, "待执行步骤应提供复制按钮");
-        assert.equal(await page.locator("#scenarioVar_exampleToken").getAttribute("type"), "text");
+        assert.equal(await page.locator("#scenarioVar_exampleToken").getAttribute("type"), "password", "token 命名的凭据变量应掩码显示");
+        assert.equal(await page.locator("#scenarioVar_expectedStatus").getAttribute("type"), "text", "非凭据变量保持明文输入");
         assert.equal(await page.locator("#scenarioVar_expectedStatus").inputValue(), "UP");
         await page.locator("#themeSelect").selectOption("claude-code");
         assert.equal(await page.locator("#scenario-test-root").evaluate((node) => node.classList.contains("theme-claude-code")), true);
@@ -72,6 +73,11 @@ try {
         if (!await page.locator("#scenarioVar_expectedStatus").isVisible()) {
             await page.locator("#configToggleBtn").click();
         }
+        // 凭据变量显隐切换（面板已展开，按钮可点击）
+        await page.locator('[data-toggle-var="exampleToken"]').click();
+        assert.equal(await page.locator("#scenarioVar_exampleToken").getAttribute("type"), "text", "点击显示应切换为明文");
+        await page.locator('[data-toggle-var="exampleToken"]').click();
+        assert.equal(await page.locator("#scenarioVar_exampleToken").getAttribute("type"), "password", "再次点击应恢复掩码");
         await page.locator("#scenarioVar_expectedStatus").fill("DOWN");
         await page.locator("#saveSettingsBtn").click();
         assert.match(await page.locator("#settingsNotice").textContent(), /已保存并生效/);

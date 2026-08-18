@@ -1,4 +1,4 @@
-const legacyStyle = (function () {
+const workbenchStyle = (function () {
     'use strict';
 
     function getWorkspaceStyleBlock() {
@@ -281,4 +281,4 @@ const legacyStyle = (function () {
     };
 })();
 
-export default legacyStyle;
+export default workbenchStyle;

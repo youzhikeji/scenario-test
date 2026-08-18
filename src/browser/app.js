@@ -1,5 +1,5 @@
 import { defineConfig, getConfig, getScenario } from "../registry.js";
-import { createLegacyRuntime } from "./legacy/runtime.js";
+import { createWorkbenchRuntime } from "./ui/runtime.js";
 import { TAILWIND_CSS } from "./tailwind.generated.js";
 
 function resolveMount(mount) {
@@ -58,7 +58,7 @@ export function createApp(options = {}) {
     mount.classList.add("scenario-test-root");
     ensureTailwindStyles();
 
-    const runtime = createLegacyRuntime({ mount, config: toRuntimeConfig(config), getScenario });
+    const runtime = createWorkbenchRuntime({ mount, config: toRuntimeConfig(config), getScenario });
     let destroyed = false;
 
     function loadScenario(idOrUrl) {

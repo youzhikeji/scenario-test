@@ -1,6 +1,6 @@
-// 浏览器工作台 UI 辅助工具（与执行语义无关，从 legacy core.js 迁出）
+// 浏览器工作台 UI 辅助工具（与执行语义无关；目录原名 legacy/，已更名 ui/）
 //
-// 迁移背景：legacy/core.js 已统一到 src/core.js（纯执行语义），本模块仅承载
+// 迁移背景：旧 legacy/core.js 已统一到 src/core.js（纯执行语义），本模块仅承载
 // 依赖 DOM/navigator 的展示与剪贴板辅助函数。顶层不触 DOM，保证 Node 可导入测试。
 
 // ===== HTML 转义 =====
@@ -15,7 +15,7 @@ export function esc(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// ===== 耗时格式化（保留 legacy 语义：<1s 显示 "500.00ms"，勿改用 Node formatDuration）=====
+// ===== 耗时格式化（保留浏览器端历史语义：<1s 显示 "500.00ms"，勿改用 Node formatDuration）=====
 
 export function fmt(ms) {
     if (!isFinite(ms)) return '-';
@@ -42,7 +42,7 @@ export function sanitizeSensitive(value) {
 // Clipboard API 仅在安全上下文（HTTPS/localhost）可用且需要权限；
 // 失败或不可用时回退 textarea + execCommand，保证工作台复制始终可用。
 
-function legacyCopyText(text) {
+function copyTextFallback(text) {
     if (typeof document === 'undefined' || !document.body || typeof document.createElement !== 'function') return false;
     var textarea;
     var activeElement = document.activeElement;
@@ -76,7 +76,7 @@ export function copyText(text) {
         return Promise.resolve()
             .then(function () { return navigator.clipboard.writeText(value); })
             .then(function () { return true; })
-            .catch(function () { return legacyCopyText(value); });
+            .catch(function () { return copyTextFallback(value); });
     }
-    return Promise.resolve().then(function () { return legacyCopyText(value); });
+    return Promise.resolve().then(function () { return copyTextFallback(value); });
 }

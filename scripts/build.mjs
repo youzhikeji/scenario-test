@@ -28,9 +28,9 @@ await import(pathToFileURL(path.join(root, "scripts/generate-dts.mjs")).href);
 const tailwindResult = await postcss([
     tailwindcss({
         content: [
-            path.join(root, "src/browser/legacy/ui-view.js"),
-            path.join(root, "src/browser/legacy/ui-adhoc.js"),
-            path.join(root, "src/browser/legacy/runtime.js")
+            path.join(root, "src/browser/ui/ui-view.js"),
+            path.join(root, "src/browser/ui/ui-adhoc.js"),
+            path.join(root, "src/browser/ui/runtime.js")
         ],
         important: "#scenario-test-root",
         theme: { extend: {} },

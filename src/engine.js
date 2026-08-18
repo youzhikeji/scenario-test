@@ -457,7 +457,7 @@ export function createEngine(engineOptions = {}) {
                     ? await executeAdapter(selection.adapter, selection.name, step, runtime, options)
                     : await executeHttp(step, runtime, options);
                 runtime.lastResponse = lastExecution.response;
-                // lastResponseBody 是解析后的响应体（与 legacy 双端一致）；原始文本见 response.bodyText
+                // lastResponseBody 是解析后的响应体（双端一致）；原始文本见 response.bodyText
                 runtime.lastResponseBody = lastExecution.response.body;
                 const extractResult = applyExtract(step, lastExecution.response, runtime);
                 stepWarnings = extractResult.warnings;

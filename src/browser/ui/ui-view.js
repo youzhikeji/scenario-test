@@ -1,6 +1,6 @@
 import { esc, fmt, safeJson } from './ui-utils.js';
 
-const legacyView = (function () {
+const workbenchView = (function () {
     'use strict';
 
     function stringify(value) {
@@ -692,4 +692,4 @@ const legacyView = (function () {
     };
 })();
 
-export default legacyView;
+export default workbenchView;

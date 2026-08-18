@@ -554,15 +554,23 @@ function serveStaticFile(response, filePath) {
     });
 }
 
-function resolveServeProxyTarget(config, envKey) {
+function resolveServeProxyTarget(config, envKey, baseUrlOverride) {
     // serve 保留环境 baseUrl 作为上游目标，并在返回的 HTML 中注入代理模式标记让浏览器强制使用当前同源地址
     if (config.envs?.length) {
         // 与 run 的 selectEnvironment 一致：环境不存在时报错退出。
         // 静默回退 envs[0] 会把请求代理到错误后端（可能是生产），且日志仍显示用户输入的环境名
         const environment = selectEnvironment(config, envKey);
-        return { key: environment.key, target: String(environment.baseUrl || "").replace(/\/+$/, "") };
+        // --base-url 临时覆盖代理目标（与 run 模式一致）；日志标注覆盖来源，避免与配置环境混淆
+        const overridden = Boolean(baseUrlOverride);
+        return {
+            key: overridden ? `${environment.key}（--base-url 覆盖）` : environment.key,
+            target: String(overridden ? baseUrlOverride : environment.baseUrl || "").replace(/\/+$/, "")
+        };
     }
-    return { key: config.defaultEnvKey || "default", target: String(config.baseUrl || "").replace(/\/+$/, "") };
+    return {
+        key: config.defaultEnvKey || "default",
+        target: String(baseUrlOverride || config.baseUrl || "").replace(/\/+$/, "")
+    };
 }
 
 // 转发时剔除 hop-by-hop 头（RFC 7230 §6.1），避免把客户端连接语义泄漏给上游；
@@ -663,7 +671,7 @@ async function serveCommand(args) {
     const workspace = path.dirname(configPath);
     const libraryDist = path.dirname(path.resolve(process.argv[1]));
     const config = ScenarioTest.loadConfigFile(configPath, ScenarioTest);
-    const { key: proxyEnvKey, target: proxyTarget } = resolveServeProxyTarget(config, args.env);
+    const { key: proxyEnvKey, target: proxyTarget } = resolveServeProxyTarget(config, args.env, args.baseUrl);
     const server = http.createServer((request, response) => {
         try {
             if (!isAllowedServeHost(request.headers.host, args.port)) {
