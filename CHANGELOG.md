@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [0.5.19] - 2026-08-18
 
 > 本版由整体代码审查驱动（4 个专项审查 + 2 轮修复后独立评审），共修复 1 项 HIGH、10 项 MEDIUM 与若干 LOW。
-> **行为变更**（升级注意）：doctor 对 SHA256 失配（运行时文件被替换）由 WARN 提级为 FAIL（退出码 1）；serve 对伪造 Host 头返回 403；`--allow-external-plugins` 的相对路径基准由进程 CWD 改为配置目录；场景最后一步执行中被取消时整体状态由 FAILED 修正为 CANCELLED。
+> **行为变更**（升级注意）：doctor 对 SHA256 失配（运行时文件被替换）由 WARN 提级为 FAIL（退出码 1）；serve 对伪造 Host 头返回 403；`--allow-external-plugins` 的相对路径基准由进程 CWD 改为配置目录；场景最后一步执行中被取消时整体状态由 FAILED 修正为 CANCELLED；`retryUntil.maxElapsedMs` 超限的步骤状态由 ERROR 修正为 TIMEOUT；`start-scenario-test.ps1` 默认端口由固定 4300 改为随机空闲端口（未显式 `-Port` 时）；凭据类场景变量输入框默认掩码显示。
 
 ### 🐛 Bug Fixes
 
