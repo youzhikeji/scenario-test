@@ -144,3 +144,67 @@ const bad = { path: "code", unknownOperator: 1 };
         fs.rmSync(dir, { recursive: true, force: true });
     }
 });
+test("d.ts 形状与运行时实际 API 一致（防手写形状无声漂移）", async () => {
+    const dts = fs.readFileSync(dtsPath, "utf8");
+
+    function interfaceMembers(name) {
+        const start = dts.indexOf(`export interface ${name} {`);
+        assert.ok(start >= 0, `d.ts 缺少 interface ${name}`);
+        const body = dts.slice(start, dts.indexOf("\n}", start));
+        return new Set([...body.matchAll(/^\s+(\w+)\?*[(:]/gm)].map((item) => item[1]));
+    }
+
+    // 1) Engine ↔ createEngine() 实际方法集（双向：不允许多声明也不允许漏声明）
+    const engine = esmExports.createEngine({ fetch: async () => new Response("{}", { status: 200 }) });
+    const engineMethods = new Set(Object.keys(engine));
+    const declaredEngine = interfaceMembers("Engine");
+    assert.deepEqual([...engineMethods].filter((name) => !declaredEngine.has(name)), [], "engine 实际方法未在 d.ts Engine 声明");
+    assert.deepEqual([...declaredEngine].filter((name) => !engineMethods.has(name)), [], "d.ts Engine 声明了 engine 不存在的方法");
+
+    // 2) ScenarioApp ↔ src/browser/app.js createApp 返回形状（app 需 DOM，静态提取源码 return 块）
+    const appSource = fs.readFileSync(path.join(root, "src/browser/app.js"), "utf8");
+    const returnIndex = appSource.lastIndexOf("return {");
+    assert.ok(returnIndex > 0, "app.js 缺少 createApp 返回块");
+    const returnBlock = appSource.slice(returnIndex, appSource.indexOf("};", returnIndex));
+    const appMethods = new Set([...returnBlock.matchAll(/(?:^|\n)\s+(\w+)[,:(]/g)].map((item) => item[1]));
+    const declaredApp = interfaceMembers("ScenarioApp");
+    assert.deepEqual([...appMethods].filter((name) => !declaredApp.has(name)), [], "createApp 实际方法未在 d.ts ScenarioApp 声明");
+    assert.deepEqual([...declaredApp].filter((name) => !appMethods.has(name)), [], "d.ts ScenarioApp 声明了 createApp 不存在的方法");
+
+    // 3) Step 接口必须覆盖契约声明的全部步骤字段
+    const declaredStep = interfaceMembers("Step");
+    for (const key of contract.scenario.stepKeys) {
+        assert.ok(declaredStep.has(key), `d.ts Step 缺少契约步骤字段 ${key}`);
+    }
+
+    // 4) 运行时报告/步骤结果字段 ⊆ d.ts 声明（含超时路径的 cancelled/timedOut）
+    const report = await engine.runScenario(esmExports.defineScenario({
+        name: "形状-通过",
+        steps: [{ name: "ok", path: "p", status: 200 }]
+    }));
+    const timeoutEngine = esmExports.createEngine({
+        fetch: (url, options) => new Promise((resolve, reject) => {
+            options.signal.addEventListener("abort", () => reject(options.signal.reason));
+        })
+    });
+    const timeoutReport = await timeoutEngine.runScenario(esmExports.defineScenario({
+        name: "形状-超时",
+        steps: [{ name: "hang", path: "p", timeoutMs: 10 }]
+    }));
+    const declaredReport = interfaceMembers("ScenarioReport");
+    const declaredStepResult = interfaceMembers("ScenarioStepResult");
+    for (const actual of [report, timeoutReport]) {
+        assert.deepEqual(
+            Object.keys(actual).filter((key) => !declaredReport.has(key)),
+            [],
+            "runScenario 返回了 d.ts ScenarioReport 未声明的字段"
+        );
+        for (const step of actual.results) {
+            assert.deepEqual(
+                Object.keys(step).filter((key) => !declaredStepResult.has(key)),
+                [],
+                "runStep 返回了 d.ts ScenarioStepResult 未声明的字段"
+            );
+        }
+    }
+});

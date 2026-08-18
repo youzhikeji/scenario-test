@@ -589,6 +589,9 @@ export function createLegacyRuntime(options) {
         state.lastReport = null;
         setExecutionButtonsDisabled(true);
         uiView.setRunState('running', '执行中');
+        // 新一轮开始先全量渲染一次待执行占位（同时清掉上一轮遗留的已渲染步骤）；
+        // 循环内改用 appendStepResult 增量追加，避免长场景每步全量重建
+        renderStepsAll();
 
         try {
             for (var i = 0; i < list.length; i += 1) {
@@ -598,7 +601,7 @@ export function createLegacyRuntime(options) {
                 state.steps.push(result);
                 renderStatsAll(iterations);
                 renderFilterAll();
-                renderStepsAll();
+                uiView.appendStepResult(result, i, list, state.executionMode);
                 renderReportPanel();
                 if (!result.passed && (failurePolicy !== 'continue' || runtime.abortController.signal.aborted)) break;
             }
@@ -630,6 +633,8 @@ export function createLegacyRuntime(options) {
             state.stepCheckpoints = [snapshotStepRuntime(state.stepRuntime)];
             state.debugRuntimes = [];
             state.lastReport = null;
+            // 从头开始单步执行：全量渲染待执行占位，清掉上一轮遗留（循环内为增量追加）
+            renderStepsAll();
         }
 
         var runtime = state.stepRuntime;
@@ -650,7 +655,7 @@ export function createLegacyRuntime(options) {
             state.stepCheckpoints[state.nextStepIndex] = snapshotStepRuntime(runtime);
             renderStatsAll(state.scenario.iterations || { run: 1, failed: 0 });
             renderFilterAll();
-            renderStepsAll();
+            uiView.appendStepResult(result, stepIndex, list, state.executionMode);
             expandStepDetails(stepIndex);
             renderReportPanel();
 

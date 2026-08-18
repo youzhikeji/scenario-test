@@ -186,6 +186,8 @@ export interface ScenarioStepResult {
     duration: number;
     passed: boolean;
     skipped?: boolean;
+    cancelled?: boolean;
+    timedOut?: boolean;
     error?: string;
     warnings?: string[];
     assertions: AssertionResult[];

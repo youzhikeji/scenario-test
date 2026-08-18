@@ -1807,7 +1807,13 @@ var legacyView = function() {
   }
   function formatReportPayload(value) {
     var text = stringify(value);
-    return text || "(\u7A7A)";
+    return text ? truncateForDisplay(text) : "(\u7A7A)";
+  }
+  var DISPLAY_PAYLOAD_LIMIT = 65536;
+  function truncateForDisplay(text) {
+    var value = String(text);
+    if (value.length <= DISPLAY_PAYLOAD_LIMIT) return value;
+    return value.slice(0, DISPLAY_PAYLOAD_LIMIT) + "\n\u2026\uFF08\u5C55\u793A\u5DF2\u622A\u65AD\uFF0C\u5171 " + value.length + " \u5B57\u7B26\uFF1B\u5B8C\u6574\u5185\u5BB9\u8BF7\u7528 saveResponseAs \u4FDD\u5B58\u540E\u67E5\u770B\uFF09";
   }
   function setRunState(type, text) {
     var node = document.getElementById("runState");
@@ -2108,6 +2114,37 @@ var legacyView = function() {
       return '<li class="hover:bg-slate-50/60 group transition-all duration-150 border-b border-slate-100/80" data-passed="pending" data-search="' + esc(((step.name || "") + " " + method + " " + stepPath).toLowerCase()) + '"><div class="px-4 py-3 flex items-center justify-between cursor-pointer select-none" onclick="window.__R.toggle(this, event)"><div class="flex items-center space-x-3 min-w-0 flex-1 pr-4"><div class="flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 text-[11px] font-bold bg-slate-200 text-slate-600 shadow-inner">' + seqNum + '</div><span class="text-sm text-slate-800 font-semibold truncate group-hover:text-slate-950" title="' + esc(step.name || "") + '">' + esc(step.name || "\u672A\u547D\u540D\u6B65\u9AA4") + '</span><div class="hidden sm:flex items-center space-x-1.5 bg-slate-100/70 px-2 py-0.5 rounded-md border border-slate-200/60 flex-shrink-0 max-w-[55%]"><span class="text-[10px] font-extrabold ' + methodColor + ' uppercase tracking-wider">' + method + '</span><span class="text-slate-300">|</span><span class="text-[11px] text-slate-600 font-mono truncate" title="' + esc(stepPath) + '">' + esc(stepPath) + '</span></div></div><div class="flex items-center space-x-2.5 flex-shrink-0">' + tags + '<button type="button" data-copy-step="' + (seqNum - 1) + '" class="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 hover:border-emerald-300 hover:text-emerald-700 shadow-sm" title="\u590D\u5236\u6B65\u9AA4\u6807\u9898\u4E0E\u63A5\u53E3\u8DEF\u5F84">\u590D\u5236</button><button type="button" data-adhoc-step="' + (seqNum - 1) + '" class="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 shadow-sm">\u8C03\u8BD5</button><span class="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200/50">\u5F85\u6267\u884C</span><svg class="w-4 h-4 text-slate-400 group-hover:text-slate-600 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></div></div><div class="details-panel px-5 bg-slate-50/70 border-t border-slate-200/60 text-[13px]"><div class="py-4 space-y-3">' + (reqBody ? '<div><div class="flex items-center justify-between text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1.5"><span class="flex items-center"><div class="w-1.5 h-1.5 bg-slate-400 mr-2 rounded-full"></div>\u8BF7\u6C42\u4F53</span><span class="text-slate-400 font-mono font-normal">JSON</span></div><pre class="bg-[#1e293b] p-3.5 rounded-xl text-slate-200 overflow-x-auto font-mono text-[12px] leading-relaxed shadow-sm border border-slate-700/50">' + reqBody + "</pre></div>" : '<div class="text-xs text-slate-400 py-1">\u65E0\u8BF7\u6C42\u4F53\u53C2\u6570</div>') + "</div></div></li>";
     }).join("");
   }
+  function renderStepItem(s, i, executionMode) {
+    var ok = s.passed;
+    var skipped = s.skipped;
+    var seqNum = i + 1;
+    var seqCls = skipped ? "bg-slate-400 text-white" : ok ? "bg-emerald-500 text-white" : "bg-rose-500 text-white";
+    var nameCls = ok ? "text-slate-700 group-hover:text-emerald-700" : "text-rose-800";
+    var statusCls = skipped ? "text-slate-600 bg-slate-100 border-slate-200" : ok ? "text-emerald-600 bg-emerald-50 border-emerald-100" : "text-rose-600 bg-rose-100 border-rose-200 shadow-sm";
+    var timeCls = ok ? "text-slate-400" : "text-rose-400";
+    var bgCls = ok ? "hover:bg-slate-50/50" : "bg-rose-50/20";
+    var methodColor = { GET: "text-emerald-600", POST: "text-orange-500", PUT: "text-amber-600", DELETE: "text-rose-600", PATCH: "text-purple-600" }[s.method] || "text-slate-600";
+    var reqHeaders = s.request && s.request.headers ? esc(truncateForDisplay(typeof s.request.headers === "string" ? s.request.headers : JSON.stringify(s.request.headers, null, 2))) : "";
+    var reqBody = s.request && s.request.body ? esc(truncateForDisplay(typeof s.request.body === "string" ? s.request.body : JSON.stringify(s.request.body, null, 2))) : "";
+    var resHeaders = s.response && s.response.headers ? esc(truncateForDisplay(typeof s.response.headers === "string" ? s.response.headers : JSON.stringify(s.response.headers, null, 2))) : "";
+    var resBody = s.response && s.response.body ? esc(truncateForDisplay(typeof s.response.body === "string" ? s.response.body : JSON.stringify(s.response.body, null, 2))) : "";
+    var errorHtml = "";
+    if (!ok && s.error) {
+      errorHtml = '<div class="my-2 p-2 bg-rose-50 rounded border border-rose-200 flex items-center space-x-2"><svg class="w-4 h-4 text-rose-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span class="text-rose-800 font-bold text-[12px]">\u65AD\u8A00\u5931\u8D25:</span><span class="text-rose-600 text-[12px] font-mono break-all">' + esc(s.error) + "</span></div>";
+    }
+    var assertHtml = "";
+    if (s.assertions && s.assertions.length) {
+      assertHtml = '<div class="py-3 border-t border-slate-200 mt-2"><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-2">\u65AD\u8A00\u7ED3\u679C</div><div class="flex flex-wrap gap-2">' + s.assertions.map(function(a) {
+        var ac = a.passed ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-rose-50 text-rose-700 border-rose-100";
+        var ap = a.passed ? "M5 13l4 4L19 7" : "M6 18L18 6M6 6l12 12";
+        return '<div class="flex items-center px-2 py-1 ' + ac + ' rounded border text-[12px] font-medium" title="Expected: ' + esc(stringify(a.expected)) + " \nActual: " + esc(stringify(a.actual)) + '"><svg class="w-3.5 h-3.5 mr-1.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="' + ap + '"></path></svg>' + esc(a.name) + "</div>";
+      }).join("") + "</div></div>";
+    }
+    var bodyColor = ok ? "text-emerald-400" : "text-rose-400";
+    var detailPanelCls = ok ? "details-panel px-4 bg-slate-50/30 border-t border-slate-100 text-[13px]" : "details-panel px-4 bg-white border-t border-rose-100 text-[13px] shadow-inner";
+    var stepActions = executionMode === "step" ? '<span class="step-run-actions"><button type="button" data-step-action="rewind" data-step-index="' + i + '" title="\u4EC5\u56DE\u9000\u6D4B\u8BD5\u8FD0\u884C\u65F6\u4E0E\u62A5\u544A\uFF0C\u4E0D\u64A4\u9500\u5DF2\u53D1\u51FA\u7684\u4E1A\u52A1\u8BF7\u6C42">\u56DE\u9000</button><button type="button" data-step-action="rerun" data-step-index="' + i + '" title="\u4ECE\u672C\u6B65\u9AA4\u6267\u884C\u524D\u7684\u53D8\u91CF\u5FEB\u7167\u91CD\u65B0\u6267\u884C">\u91CD\u8DD1</button></span>' : "";
+    return '<li class="' + bgCls + ' group transition-colors" data-passed="' + ok + '" data-skipped="' + skipped + '" data-search="' + esc((s.name + " " + s.method + " " + s.path).toLowerCase()) + '"><div class="px-4 py-2.5 flex items-center justify-between cursor-pointer" onclick="window.__R.toggle(this, event)"><div class="flex items-center space-x-3 w-[70%] lg:w-[80%]"><div class="flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 text-[11px] font-bold shadow-sm ' + seqCls + '">' + seqNum + '</div><span class="select-text text-sm ' + nameCls + ' font-semibold truncate transition-colors" title="' + esc(s.name) + '">' + esc(s.name) + '</span><div class="hidden sm:flex items-center space-x-1.5 bg-slate-50 px-2 py-0.5 rounded border border-slate-100 flex-shrink-0 max-w-[50%]"><span class="text-[10px] font-bold ' + methodColor + ' uppercase tracking-wider">' + s.method + '</span><span class="text-slate-300">|</span><span class="select-text text-[12px] text-slate-500 font-mono truncate" title="' + esc(s.path) + '">' + esc(s.path) + '</span></div></div><div class="flex items-center space-x-4 flex-shrink-0"><button type="button" data-copy-step="' + i + '" class="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-bold text-slate-600 hover:border-emerald-300 hover:text-emerald-700" title="\u590D\u5236\u6B65\u9AA4\u6807\u9898\u4E0E\u63A5\u53E3\u8DEF\u5F84">\u590D\u5236</button><button type="button" data-adhoc-step="' + i + '" class="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-bold text-slate-600 hover:border-emerald-300 hover:text-emerald-700">\u8C03\u8BD5</button>' + stepActions + '<span class="text-[12px] font-bold font-mono ' + statusCls + ' px-1.5 py-0.5 rounded border">' + s.status + '</span><span class="' + timeCls + ' text-[12px] font-mono w-16 text-right">' + fmt(s.duration) + '</span><svg class="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></div></div><div class="' + detailPanelCls + '"><div class="sm:hidden mb-3 pb-3 border-b border-slate-200"><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1">\u63A5\u53E3\u5730\u5740</div><div class="flex items-center space-x-2"><span class="text-xs font-bold ' + methodColor + '">' + s.method + '</span><span class="text-xs font-mono break-all">' + esc(s.path) + "</span></div></div>" + errorHtml + '<div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-0 md:divide-x divide-slate-200 py-3"><div class="md:pr-6 space-y-3">' + (reqHeaders ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 bg-slate-300 mr-2 rounded-full"></div>\u8BF7\u6C42\u5934</div><pre class="bg-slate-800 p-2.5 rounded text-slate-300 overflow-x-auto font-mono leading-tight shadow-inner">' + reqHeaders + "</pre></div>" : "") + (reqBody ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 bg-emerald-400 mr-2 rounded-full"></div>\u8BF7\u6C42\u4F53</div><pre class="bg-slate-800 p-2.5 rounded ' + bodyColor + ' overflow-x-auto font-mono leading-tight shadow-inner">' + reqBody + "</pre></div>" : "") + '</div><div class="md:pl-6 space-y-3">' + (resHeaders ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 bg-slate-300 mr-2 rounded-full"></div>\u54CD\u5E94\u5934</div><pre class="bg-slate-800 p-2.5 rounded text-slate-300 overflow-x-auto font-mono leading-tight shadow-inner">' + resHeaders + "</pre></div>" : "") + (resBody ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 ' + (ok ? "bg-emerald-400" : "bg-rose-400") + ' mr-2 rounded-full"></div>\u54CD\u5E94\u4F53</div><pre class="bg-slate-800 p-2.5 rounded ' + bodyColor + ' overflow-x-auto font-mono leading-tight shadow-inner">' + resBody + "</pre></div>" : "") + "</div></div>" + assertHtml + "</div></li>";
+  }
   function renderStepsAll(steps, scenarioSteps, executionMode) {
     var ul = document.getElementById("stepsList");
     if (!ul) return;
@@ -2118,36 +2155,18 @@ var legacyView = function() {
       return;
     }
     ul.innerHTML = steps.map(function(s, i) {
-      var ok = s.passed;
-      var skipped = s.skipped;
-      var seqNum = i + 1;
-      var seqCls = skipped ? "bg-slate-400 text-white" : ok ? "bg-emerald-500 text-white" : "bg-rose-500 text-white";
-      var nameCls = ok ? "text-slate-700 group-hover:text-emerald-700" : "text-rose-800";
-      var statusCls = skipped ? "text-slate-600 bg-slate-100 border-slate-200" : ok ? "text-emerald-600 bg-emerald-50 border-emerald-100" : "text-rose-600 bg-rose-100 border-rose-200 shadow-sm";
-      var timeCls = ok ? "text-slate-400" : "text-rose-400";
-      var bgCls = ok ? "hover:bg-slate-50/50" : "bg-rose-50/20";
-      var methodColor = { GET: "text-emerald-600", POST: "text-orange-500", PUT: "text-amber-600", DELETE: "text-rose-600", PATCH: "text-purple-600" }[s.method] || "text-slate-600";
-      var reqHeaders = s.request && s.request.headers ? esc(typeof s.request.headers === "string" ? s.request.headers : JSON.stringify(s.request.headers, null, 2)) : "";
-      var reqBody = s.request && s.request.body ? esc(typeof s.request.body === "string" ? s.request.body : JSON.stringify(s.request.body, null, 2)) : "";
-      var resHeaders = s.response && s.response.headers ? esc(typeof s.response.headers === "string" ? s.response.headers : JSON.stringify(s.response.headers, null, 2)) : "";
-      var resBody = s.response && s.response.body ? esc(typeof s.response.body === "string" ? s.response.body : JSON.stringify(s.response.body, null, 2)) : "";
-      var errorHtml = "";
-      if (!ok && s.error) {
-        errorHtml = '<div class="my-2 p-2 bg-rose-50 rounded border border-rose-200 flex items-center space-x-2"><svg class="w-4 h-4 text-rose-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span class="text-rose-800 font-bold text-[12px]">\u65AD\u8A00\u5931\u8D25:</span><span class="text-rose-600 text-[12px] font-mono break-all">' + esc(s.error) + "</span></div>";
-      }
-      var assertHtml = "";
-      if (s.assertions && s.assertions.length) {
-        assertHtml = '<div class="py-3 border-t border-slate-200 mt-2"><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-2">\u65AD\u8A00\u7ED3\u679C</div><div class="flex flex-wrap gap-2">' + s.assertions.map(function(a) {
-          var ac = a.passed ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-rose-50 text-rose-700 border-rose-100";
-          var ap = a.passed ? "M5 13l4 4L19 7" : "M6 18L18 6M6 6l12 12";
-          return '<div class="flex items-center px-2 py-1 ' + ac + ' rounded border text-[12px] font-medium" title="Expected: ' + esc(stringify(a.expected)) + " \nActual: " + esc(stringify(a.actual)) + '"><svg class="w-3.5 h-3.5 mr-1.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="' + ap + '"></path></svg>' + esc(a.name) + "</div>";
-        }).join("") + "</div></div>";
-      }
-      var bodyColor = ok ? "text-emerald-400" : "text-rose-400";
-      var detailPanelCls = ok ? "details-panel px-4 bg-slate-50/30 border-t border-slate-100 text-[13px]" : "details-panel px-4 bg-white border-t border-rose-100 text-[13px] shadow-inner";
-      var stepActions = executionMode === "step" ? '<span class="step-run-actions"><button type="button" data-step-action="rewind" data-step-index="' + i + '" title="\u4EC5\u56DE\u9000\u6D4B\u8BD5\u8FD0\u884C\u65F6\u4E0E\u62A5\u544A\uFF0C\u4E0D\u64A4\u9500\u5DF2\u53D1\u51FA\u7684\u4E1A\u52A1\u8BF7\u6C42">\u56DE\u9000</button><button type="button" data-step-action="rerun" data-step-index="' + i + '" title="\u4ECE\u672C\u6B65\u9AA4\u6267\u884C\u524D\u7684\u53D8\u91CF\u5FEB\u7167\u91CD\u65B0\u6267\u884C">\u91CD\u8DD1</button></span>' : "";
-      return '<li class="' + bgCls + ' group transition-colors" data-passed="' + ok + '" data-skipped="' + skipped + '" data-search="' + esc((s.name + " " + s.method + " " + s.path).toLowerCase()) + '"><div class="px-4 py-2.5 flex items-center justify-between cursor-pointer" onclick="window.__R.toggle(this, event)"><div class="flex items-center space-x-3 w-[70%] lg:w-[80%]"><div class="flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 text-[11px] font-bold shadow-sm ' + seqCls + '">' + seqNum + '</div><span class="select-text text-sm ' + nameCls + ' font-semibold truncate transition-colors" title="' + esc(s.name) + '">' + esc(s.name) + '</span><div class="hidden sm:flex items-center space-x-1.5 bg-slate-50 px-2 py-0.5 rounded border border-slate-100 flex-shrink-0 max-w-[50%]"><span class="text-[10px] font-bold ' + methodColor + ' uppercase tracking-wider">' + s.method + '</span><span class="text-slate-300">|</span><span class="select-text text-[12px] text-slate-500 font-mono truncate" title="' + esc(s.path) + '">' + esc(s.path) + '</span></div></div><div class="flex items-center space-x-4 flex-shrink-0"><button type="button" data-copy-step="' + i + '" class="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-bold text-slate-600 hover:border-emerald-300 hover:text-emerald-700" title="\u590D\u5236\u6B65\u9AA4\u6807\u9898\u4E0E\u63A5\u53E3\u8DEF\u5F84">\u590D\u5236</button><button type="button" data-adhoc-step="' + i + '" class="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-bold text-slate-600 hover:border-emerald-300 hover:text-emerald-700">\u8C03\u8BD5</button>' + stepActions + '<span class="text-[12px] font-bold font-mono ' + statusCls + ' px-1.5 py-0.5 rounded border">' + s.status + '</span><span class="' + timeCls + ' text-[12px] font-mono w-16 text-right">' + fmt(s.duration) + '</span><svg class="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></div></div><div class="' + detailPanelCls + '"><div class="sm:hidden mb-3 pb-3 border-b border-slate-200"><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1">\u63A5\u53E3\u5730\u5740</div><div class="flex items-center space-x-2"><span class="text-xs font-bold ' + methodColor + '">' + s.method + '</span><span class="text-xs font-mono break-all">' + esc(s.path) + "</span></div></div>" + errorHtml + '<div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-0 md:divide-x divide-slate-200 py-3"><div class="md:pr-6 space-y-3">' + (reqHeaders ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 bg-slate-300 mr-2 rounded-full"></div>\u8BF7\u6C42\u5934</div><pre class="bg-slate-800 p-2.5 rounded text-slate-300 overflow-x-auto font-mono leading-tight shadow-inner">' + reqHeaders + "</pre></div>" : "") + (reqBody ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 bg-emerald-400 mr-2 rounded-full"></div>\u8BF7\u6C42\u4F53</div><pre class="bg-slate-800 p-2.5 rounded ' + bodyColor + ' overflow-x-auto font-mono leading-tight shadow-inner">' + reqBody + "</pre></div>" : "") + '</div><div class="md:pl-6 space-y-3">' + (resHeaders ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 bg-slate-300 mr-2 rounded-full"></div>\u54CD\u5E94\u5934</div><pre class="bg-slate-800 p-2.5 rounded text-slate-300 overflow-x-auto font-mono leading-tight shadow-inner">' + resHeaders + "</pre></div>" : "") + (resBody ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 ' + (ok ? "bg-emerald-400" : "bg-rose-400") + ' mr-2 rounded-full"></div>\u54CD\u5E94\u4F53</div><pre class="bg-slate-800 p-2.5 rounded ' + bodyColor + ' overflow-x-auto font-mono leading-tight shadow-inner">' + resBody + "</pre></div>" : "") + "</div></div>" + assertHtml + "</div></li>";
+      return renderStepItem(s, i, executionMode);
     }).join("") + renderPendingSteps(scenarioSteps, steps.length);
+  }
+  function appendStepResult(result, index, scenarioSteps, executionMode) {
+    var ul = document.getElementById("stepsList");
+    if (!ul) return;
+    ul.querySelectorAll('li[data-passed="pending"]').forEach(function(node) {
+      node.remove();
+    });
+    var template = document.createElement("template");
+    template.innerHTML = renderStepItem(result, index, executionMode) + renderPendingSteps(scenarioSteps, index + 1);
+    ul.appendChild(template.content);
   }
   function buildOverallReport(steps, scenario, scenarioFile, executionMode, environment) {
     steps = steps || [];
@@ -2299,6 +2318,7 @@ var legacyView = function() {
     renderFilterAll,
     renderPendingSteps,
     renderStepsAll,
+    appendStepResult,
     buildOverallReport,
     buildMarkdownReport,
     renderReportPanel
@@ -3111,6 +3131,7 @@ function createLegacyRuntime(options) {
     state.lastReport = null;
     setExecutionButtonsDisabled(true);
     uiView.setRunState("running", "\u6267\u884C\u4E2D");
+    renderStepsAll();
     try {
       for (var i = 0; i < list.length; i += 1) {
         rememberDebugRuntime(i, runtime);
@@ -3119,7 +3140,7 @@ function createLegacyRuntime(options) {
         state.steps.push(result);
         renderStatsAll(iterations);
         renderFilterAll();
-        renderStepsAll();
+        uiView.appendStepResult(result, i, list, state.executionMode);
         renderReportPanel();
         if (!result.passed && (failurePolicy !== "continue" || runtime.abortController.signal.aborted)) break;
       }
@@ -3150,6 +3171,7 @@ function createLegacyRuntime(options) {
       state.stepCheckpoints = [snapshotStepRuntime(state.stepRuntime)];
       state.debugRuntimes = [];
       state.lastReport = null;
+      renderStepsAll();
     }
     var runtime = state.stepRuntime;
     var stepIndex = state.nextStepIndex;
@@ -3168,7 +3190,7 @@ function createLegacyRuntime(options) {
       state.stepCheckpoints[state.nextStepIndex] = snapshotStepRuntime(runtime);
       renderStatsAll(state.scenario.iterations || { run: 1, failed: 0 });
       renderFilterAll();
-      renderStepsAll();
+      uiView.appendStepResult(result, stepIndex, list, state.executionMode);
       expandStepDetails(stepIndex);
       renderReportPanel();
       if (runtime.cancelled || result.cancelled || result.timedOut) {

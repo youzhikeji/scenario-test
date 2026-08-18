@@ -10,7 +10,17 @@ const legacyView = (function () {
 
     function formatReportPayload(value) {
         var text = stringify(value);
-        return text || '(空)';
+        return text ? truncateForDisplay(text) : '(空)';
+    }
+
+    // 大响应体渲染截断：仅影响步骤列表与报告面板的展示，不改变断言/提取用的原始数据；
+    // 防止 MB 级响应在 esc(JSON.stringify(...)) 与每次重建时拖垮长场景页面
+    var DISPLAY_PAYLOAD_LIMIT = 65536;
+    function truncateForDisplay(text) {
+        var value = String(text);
+        if (value.length <= DISPLAY_PAYLOAD_LIMIT) return value;
+        return value.slice(0, DISPLAY_PAYLOAD_LIMIT)
+            + '\n…（展示已截断，共 ' + value.length + ' 字符；完整内容请用 saveResponseAs 保存后查看）';
     }
 
     function setRunState(type, text) {
@@ -382,17 +392,7 @@ const legacyView = (function () {
         }).join('');
     }
 
-    function renderStepsAll(steps, scenarioSteps, executionMode) {
-        var ul = document.getElementById('stepsList');
-        if (!ul) return;
-        steps = steps || [];
-        scenarioSteps = scenarioSteps || [];
-        if (!steps.length && !scenarioSteps.length) {
-            ul.innerHTML = '<li class="p-8 text-center text-slate-400 text-sm">点击执行场景开始请求</li>';
-            return;
-        }
-
-        ul.innerHTML = steps.map(function (s, i) {
+    function renderStepItem(s, i, executionMode) {
             var ok = s.passed;
             var skipped = s.skipped;
             var seqNum = i + 1;
@@ -403,10 +403,10 @@ const legacyView = (function () {
             var bgCls = ok ? 'hover:bg-slate-50/50' : 'bg-rose-50/20';
             var methodColor = { GET: 'text-emerald-600', POST: 'text-orange-500', PUT: 'text-amber-600', DELETE: 'text-rose-600', PATCH: 'text-purple-600' }[s.method] || 'text-slate-600';
 
-            var reqHeaders = s.request && s.request.headers ? esc(typeof s.request.headers === 'string' ? s.request.headers : JSON.stringify(s.request.headers, null, 2)) : '';
-            var reqBody = s.request && s.request.body ? esc(typeof s.request.body === 'string' ? s.request.body : JSON.stringify(s.request.body, null, 2)) : '';
-            var resHeaders = s.response && s.response.headers ? esc(typeof s.response.headers === 'string' ? s.response.headers : JSON.stringify(s.response.headers, null, 2)) : '';
-            var resBody = s.response && s.response.body ? esc(typeof s.response.body === 'string' ? s.response.body : JSON.stringify(s.response.body, null, 2)) : '';
+            var reqHeaders = s.request && s.request.headers ? esc(truncateForDisplay(typeof s.request.headers === 'string' ? s.request.headers : JSON.stringify(s.request.headers, null, 2))) : '';
+            var reqBody = s.request && s.request.body ? esc(truncateForDisplay(typeof s.request.body === 'string' ? s.request.body : JSON.stringify(s.request.body, null, 2))) : '';
+            var resHeaders = s.response && s.response.headers ? esc(truncateForDisplay(typeof s.response.headers === 'string' ? s.response.headers : JSON.stringify(s.response.headers, null, 2))) : '';
+            var resBody = s.response && s.response.body ? esc(truncateForDisplay(typeof s.response.body === 'string' ? s.response.body : JSON.stringify(s.response.body, null, 2))) : '';
 
             var errorHtml = '';
             if (!ok && s.error) {
@@ -476,7 +476,30 @@ const legacyView = (function () {
                     assertHtml +
                 '</div>' +
             '</li>';
-        }).join('') + renderPendingSteps(scenarioSteps, steps.length);
+    }
+
+    function renderStepsAll(steps, scenarioSteps, executionMode) {
+        var ul = document.getElementById('stepsList');
+        if (!ul) return;
+        steps = steps || [];
+        scenarioSteps = scenarioSteps || [];
+        if (!steps.length && !scenarioSteps.length) {
+            ul.innerHTML = '<li class="p-8 text-center text-slate-400 text-sm">点击执行场景开始请求</li>';
+            return;
+        }
+        ul.innerHTML = steps.map(function (s, i) { return renderStepItem(s, i, executionMode); }).join('')
+            + renderPendingSteps(scenarioSteps, steps.length);
+    }
+
+    // 执行期增量追加：只解析新增步骤与更新后的待执行占位，避免每步全量重建（长场景 O(n²) 卡顿）；
+    // 已渲染步骤的展开/收起状态得以保留（全量重建会重置）。filter/search 与全量重建一样不自动恢复
+    function appendStepResult(result, index, scenarioSteps, executionMode) {
+        var ul = document.getElementById('stepsList');
+        if (!ul) return;
+        ul.querySelectorAll('li[data-passed="pending"]').forEach(function (node) { node.remove(); });
+        var template = document.createElement('template');
+        template.innerHTML = renderStepItem(result, index, executionMode) + renderPendingSteps(scenarioSteps, index + 1);
+        ul.appendChild(template.content);
     }
 
     function buildOverallReport(steps, scenario, scenarioFile, executionMode, environment) {
@@ -656,6 +679,7 @@ const legacyView = (function () {
         renderFilterAll: renderFilterAll,
         renderPendingSteps: renderPendingSteps,
         renderStepsAll: renderStepsAll,
+        appendStepResult: appendStepResult,
         buildOverallReport: buildOverallReport,
         buildMarkdownReport: buildMarkdownReport,
         renderReportPanel: renderReportPanel

@@ -56,6 +56,16 @@ function Write-Error-Custom { param([string]$Message) Write-Host "✗ $Message" 
 function Write-Info { param([string]$Message) Write-Host "ℹ $Message" -ForegroundColor Cyan }
 function Write-Warning-Custom { param([string]$Message) Write-Host "⚠ $Message" -ForegroundColor Yellow }
 
+# Windows PowerShell 5.1（irm | iex 的常见宿主）下，$ErrorActionPreference=Stop 时原生命令的
+# stderr 经 2>&1 重定向会被包装成 ErrorRecord 并直接中断脚本（NativeCommandError）——
+# node/npm 输出任何 stderr（警告、进度）都会让安装中断。捕获期间临时降为 Continue，靠 $LASTEXITCODE 判定成败。
+function Invoke-NativeCapture {
+    param([scriptblock]$Command)
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try { . $Command } finally { $ErrorActionPreference = $previous }
+}
+
 Write-Host "`n=== scenario-test 一键安装 ===" -ForegroundColor Magenta
 if ($UseNpm) {
     Write-Host "模式: npm 安装（显式 -UseNpm）`n" -ForegroundColor Magenta
@@ -66,7 +76,7 @@ if ($UseNpm) {
 # 1. 检查 Node.js 版本
 Write-Info "检查 Node.js 版本..."
 try {
-    $nodeVersionOutput = node -v 2>&1
+    $nodeVersionOutput = Invoke-NativeCapture { node -v 2>&1 }
     if ($LASTEXITCODE -ne 0) {
         throw "Node.js 未安装"
     }
@@ -124,7 +134,7 @@ try {
             $tarballPath = Join-Path $tempRoot "scenario-test.tgz"
             try {
                 Invoke-WebRequest -Uri $PackageTarball -OutFile $tarballPath -UseBasicParsing
-                tar -xzf $tarballPath -C $tempRoot
+                tar -xzf "$tarballPath" -C "$tempRoot"
                 if ($LASTEXITCODE -ne 0) { throw "tar 解压退出码 $LASTEXITCODE" }
             } catch {
                 throw "npm Registry tarball 下载或解压失败: $PackageTarball`n$_"
@@ -145,8 +155,8 @@ try {
         # --no-input：目录已存在时按 keep（保留配置与场景，仅刷新 AI 规则和运行时），
         # 避免 install 脚本在"已存在"时进入被捕获输出吞掉的交互确认而静默卡死。
         # 实时回显 init 输出，避免长时间黑屏；stdin 喂 $null 让非交互判定稳定。
-        $initOutput = node $tempCli init --project $ProjectDir --dir $TargetDir --no-input 2>&1 |
-            ForEach-Object { Write-Host $_ -ForegroundColor Gray; $_ }
+        $initOutput = Invoke-NativeCapture { node "$tempCli" init --project "$ProjectDir" --dir "$TargetDir" --no-input 2>&1 |
+            ForEach-Object { Write-Host $_ -ForegroundColor Gray; $_ } }
         if ($LASTEXITCODE -ne 0) {
             throw "init 命令失败`n$initOutput"
         }
@@ -154,7 +164,7 @@ try {
     } else {
         # 显式 npm 模式：通过 npm 安装运行时（失败即退出，不静默切换）
         Write-Info "通过 npm 安装运行时：@yc_yzkj/scenario-test ..."
-        $installOutput = npm install --save-dev "@yc_yzkj/scenario-test" 2>&1
+        $installOutput = Invoke-NativeCapture { npm install --save-dev "@yc_yzkj/scenario-test" 2>&1 }
         if ($LASTEXITCODE -ne 0) {
             throw "npm 安装失败`n$installOutput"
         }
@@ -163,8 +173,8 @@ try {
         # 4. 执行 init（--no-input：目录已存在时保留配置与场景，避免脚本卡在交互确认）
         Write-Info "初始化场景测试目录：$fullTargetPath ..."
 
-        $initOutput = npx @yc_yzkj/scenario-test init --project $ProjectDir --dir $TargetDir --no-input 2>&1 |
-            ForEach-Object { Write-Host $_ -ForegroundColor Gray; $_ }
+        $initOutput = Invoke-NativeCapture { npx @yc_yzkj/scenario-test init --project "$ProjectDir" --dir "$TargetDir" --no-input 2>&1 |
+            ForEach-Object { Write-Host $_ -ForegroundColor Gray; $_ } }
         if ($LASTEXITCODE -ne 0) {
             throw "init 命令失败`n$initOutput"
         }
@@ -228,9 +238,9 @@ try {
         $configPath = Join-Path $fullTargetPath "scenario.config.js"
 
         if ($UseNpm) {
-            $doctorOutput = npx @yc_yzkj/scenario-test doctor --config $configPath 2>&1
+            $doctorOutput = Invoke-NativeCapture { npx @yc_yzkj/scenario-test doctor --config "$configPath" 2>&1 }
         } else {
-            $doctorOutput = node (Join-Path $internalDir "scenario-test-cli.cjs") doctor --config $configPath 2>&1
+            $doctorOutput = Invoke-NativeCapture { node (Join-Path $internalDir "scenario-test-cli.cjs") doctor --config "$configPath" 2>&1 }
         }
         $doctorExitCode = $LASTEXITCODE
 
