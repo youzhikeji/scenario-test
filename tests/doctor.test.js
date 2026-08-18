@@ -153,12 +153,27 @@ test("doctor：UMD 版本不一致 FAIL；SHA256 被替换 WARN", () => {
         assert.match(result.stdout, /\[FAIL\] umd/);
         assert.match(result.stdout, /版本不一致/);
 
-        // 恢复版本头但改内容：版本一致、SHA256 不一致 → WARN（可被刷新）
+        // 恢复版本头但改内容：版本一致、SHA256 不一致 → FAIL（内容被替换意味着来源不明，健康闸门必须拦下）
         fs.writeFileSync(umdPath, `/*! scenario-test v${VERSION} */ tampered`, "utf8");
         result = runDoctor(dir);
-        assert.equal(result.status, 0, result.stdout + result.stderr);
+        assert.equal(result.status, 1, result.stdout + result.stderr);
         assert.match(result.stdout, /SHA256 与版本锁记录不一致/);
-        assert.match(result.stdout, /\[WARN\] version-lock/);
+        assert.match(result.stdout, /\[FAIL\] version-lock/);
+    } finally {
+        cleanup(project);
+    }
+});
+
+test("doctor：版本锁缺少 sha256 指纹时 WARN 提示刷新，不再静默跳过", () => {
+    const { project, dir } = initProject();
+    try {
+        const lockPath = path.join(dir, ".scenario-test", ".scenario-test-version.json");
+        const lock = JSON.parse(fs.readFileSync(lockPath, "utf8"));
+        delete lock.sha256;
+        fs.writeFileSync(lockPath, JSON.stringify(lock), "utf8");
+        const result = runDoctor(dir);
+        assert.equal(result.status, 0, result.stdout + result.stderr);
+        assert.match(result.stdout, /\[WARN\] version-lock: 版本锁缺少 sha256 指纹记录/);
     } finally {
         cleanup(project);
     }

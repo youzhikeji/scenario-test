@@ -33,6 +33,9 @@ function timeoutErrorMessage(timeoutMs) {
 
 function delay(milliseconds, signal) {
     if (!milliseconds) return Promise.resolve();
+    // 与 createRequestSignal 对齐：signal 已中止时立即拒绝，否则 addEventListener 不会触发，
+    // 取消要白等完整 interval 才被下一轮循环发现
+    if (signal?.aborted) return Promise.reject(abortReason(signal));
     return new Promise((resolveDelay, reject) => {
         const timer = setTimeout(resolveDelay, milliseconds);
         if (signal) {
@@ -201,6 +204,13 @@ function readBodyChunks(response, signal) {
     });
 }
 
+// 按 content-type 的 charset 构造解码器（如 GBK 老系统）；缺省或非法/不支持的 charset 回退 UTF-8
+function decoderForContentType(contentType) {
+    const match = /charset\s*=\s*"?([^;"\s]+)"?/i.exec(String(contentType || ""));
+    if (!match) return new TextDecoder();
+    try { return new TextDecoder(match[1]); } catch { return new TextDecoder(); }
+}
+
 async function readResponse(response, step, io, runtime, signal) {
     const headers = headersToObject(response.headers);
     const contentType = String(headers["content-type"] || "");
@@ -212,7 +222,7 @@ async function readResponse(response, step, io, runtime, signal) {
         const saved = await io.saveResponse(resolveString(step.saveResponseAs, runtime), data, { contentType, headers });
         return { status: response.status, headers, body: saved, bodyText: null };
     }
-    const decoder = new TextDecoder();
+    const decoder = decoderForContentType(contentType);
     const bodyText = chunks.map((chunk) => decoder.decode(chunk, { stream: true })).join("") + decoder.decode();
     return { status: response.status, headers, body: parseBody(bodyText, contentType), bodyText };
 }

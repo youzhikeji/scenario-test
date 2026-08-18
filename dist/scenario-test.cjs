@@ -977,6 +977,7 @@ function timeoutErrorMessage(timeoutMs) {
 }
 function delay(milliseconds, signal) {
   if (!milliseconds) return Promise.resolve();
+  if (signal?.aborted) return Promise.reject(abortReason(signal));
   return new Promise((resolveDelay, reject) => {
     const timer = setTimeout(resolveDelay, milliseconds);
     if (signal) {
@@ -1125,6 +1126,15 @@ function readBodyChunks(response, signal) {
     })();
   });
 }
+function decoderForContentType(contentType) {
+  const match = /charset\s*=\s*"?([^;"\s]+)"?/i.exec(String(contentType || ""));
+  if (!match) return new TextDecoder();
+  try {
+    return new TextDecoder(match[1]);
+  } catch {
+    return new TextDecoder();
+  }
+}
 async function readResponse(response, step, io, runtime, signal) {
   const headers = headersToObject(response.headers);
   const contentType = String(headers["content-type"] || "");
@@ -1139,7 +1149,7 @@ async function readResponse(response, step, io, runtime, signal) {
     const saved = await io.saveResponse(resolveString(step.saveResponseAs, runtime), data, { contentType, headers });
     return { status: response.status, headers, body: saved, bodyText: null };
   }
-  const decoder = new TextDecoder();
+  const decoder = decoderForContentType(contentType);
   const bodyText = chunks.map((chunk) => decoder.decode(chunk, { stream: true })).join("") + decoder.decode();
   return { status: response.status, headers, body: parseBody(bodyText, contentType), bodyText };
 }
@@ -1761,6 +1771,7 @@ var legacyStyle = function() {
             .report-status { flex: 0 0 auto; padding: 4px 7px; border-radius: 999px; font-size: 10px; font-weight: 700; }
             .report-status--passed { background: #ecfdf5; color: #047857; }
             .report-status--failed { background: #fff1f2; color: #be123c; }
+            .report-status--cancelled { background: #fffbeb; color: #b45309; }
             .report-status--running { background: #eff6ff; color: #2563eb; }
             .report-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); overflow: hidden; border: 1px solid var(--workspace-line); border-radius: 6px; background: #ffffff; }
             .report-metric { min-width: 0; padding: 11px 10px; border-right: 1px solid var(--workspace-line); }
@@ -2223,7 +2234,10 @@ var legacyView = function() {
     var duration = steps.reduce(function(sum, item) {
       return sum + (item.duration || 0);
     }, 0);
-    var status = failed > 0 ? "FAILED" : executed === 0 ? "SKIPPED" : "PASSED";
+    var cancelled = steps.some(function(item) {
+      return item.cancelled;
+    });
+    var status = cancelled ? "CANCELLED" : failed > 0 ? "FAILED" : executed === 0 ? "SKIPPED" : "PASSED";
     return {
       title: scenario && scenario.name || scenarioFile || "\u6D4B\u8BD5\u62A5\u544A",
       scenarioFile: scenarioFile || "",
@@ -2270,7 +2284,7 @@ var legacyView = function() {
     lines.push("- **\u573A\u666F\u6587\u4EF6**: `" + (report.scenarioFile || "-") + "`");
     lines.push("- **\u6D4B\u8BD5\u73AF\u5883**: " + (report.environment || "-"));
     lines.push("- **\u6267\u884C\u6A21\u5F0F**: " + (report.executionMode || "-"));
-    var resultText = summary.failedSteps ? "\u274C \u5B58\u5728\u5931\u8D25" : summary.skippedSteps && summary.executedSteps === 0 ? "\u23ED\uFE0F \u5168\u90E8\u8DF3\u8FC7" : "\u2705 \u5168\u90E8\u901A\u8FC7";
+    var resultText = report.status === "CANCELLED" ? "\u{1F6AB} \u5DF2\u53D6\u6D88" : summary.failedSteps ? "\u274C \u5B58\u5728\u5931\u8D25" : summary.skippedSteps && summary.executedSteps === 0 ? "\u23ED\uFE0F \u5168\u90E8\u8DF3\u8FC7" : "\u2705 \u5168\u90E8\u901A\u8FC7";
     lines.push("- **\u7ED3\u679C**: " + resultText + " (" + summary.passedSteps + "/" + summary.executedSteps + ")");
     lines.push("- **\u901A\u8FC7\u7387**: " + summary.passRate);
     lines.push("- **\u7EDF\u8BA1**: \u901A\u8FC7 " + summary.passedSteps + " / \u5931\u8D25 " + summary.failedSteps + " / \u8DF3\u8FC7 " + summary.skippedSteps + " / \u6267\u884C " + summary.executedSteps + " / \u8BA1\u5212 " + summary.plannedSteps);
@@ -2318,11 +2332,12 @@ var legacyView = function() {
     var report = buildOverallReport(steps, scenario, scenarioFile, executionMode, environment);
     var summary = report.summary;
     var pending = summary.totalSteps - summary.executedSteps;
+    var cancelled = report.status === "CANCELLED";
     var hasFailure = summary.failedSteps > 0;
     var allSkipped = !hasFailure && summary.executedSteps === 0 && summary.skippedSteps > 0;
     var completed = pending <= 0;
-    var statusClass = hasFailure ? "report-status--failed" : allSkipped ? "report-status--skipped" : completed ? "report-status--passed" : "report-status--running";
-    var statusText = hasFailure ? "\u5B58\u5728\u5931\u8D25" : allSkipped ? "\u5168\u90E8\u8DF3\u8FC7" : completed ? "\u5168\u90E8\u901A\u8FC7" : "\u6267\u884C\u4E2D";
+    var statusClass = cancelled ? "report-status--cancelled" : hasFailure ? "report-status--failed" : allSkipped ? "report-status--skipped" : completed ? "report-status--passed" : "report-status--running";
+    var statusText = cancelled ? "\u5DF2\u53D6\u6D88" : hasFailure ? "\u5B58\u5728\u5931\u8D25" : allSkipped ? "\u5168\u90E8\u8DF3\u8FC7" : completed ? "\u5168\u90E8\u901A\u8FC7" : "\u6267\u884C\u4E2D";
     var modeText = report.executionMode === "step" ? "\u5355\u6B65\u6267\u884C" : "\u5168\u91CF\u6267\u884C";
     var progressText = summary.executedSteps + " / " + summary.totalSteps;
     var reportSteps = hasFailure ? report.steps.filter(function(step) {
@@ -3639,6 +3654,15 @@ function createLegacyRuntime(options) {
     return new Promise(function(resolveLoad, rejectLoad) {
       if (!file) {
         rejectLoad(new Error("\u672A\u6307\u5B9A\u6587\u4EF6"));
+        return;
+      }
+      var known = (appConfig.scenarios || []).some(function(entry) {
+        return entry && ["url", "file", "path"].some(function(key) {
+          return entry[key] === file;
+        });
+      });
+      if (!known) {
+        rejectLoad(new Error("\u573A\u666F\u6587\u4EF6\u4E0D\u5728\u914D\u7F6E\u6E05\u5355\u4E2D\uFF0C\u5DF2\u62D2\u7EDD\u52A0\u8F7D: " + file));
         return;
       }
       if (state.scenarioScript) {

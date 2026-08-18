@@ -1100,6 +1100,16 @@ export function createLegacyRuntime(options) {
                 rejectLoad(new Error('未指定文件'));
                 return;
             }
+            // 场景文件加载白名单：?scenario= 等 URL 输入必须命中配置场景清单才允许加载。
+            // registerScenario 校验发生在脚本执行之后（onload），先行校验避免诱导链接
+            // 让工作台执行工作区内任意 JS（如 node_modules 中的脚本）并读取页面凭据
+            var known = (appConfig.scenarios || []).some(function (entry) {
+                return entry && ['url', 'file', 'path'].some(function (key) { return entry[key] === file; });
+            });
+            if (!known) {
+                rejectLoad(new Error('场景文件不在配置清单中，已拒绝加载: ' + file));
+                return;
+            }
             if (state.scenarioScript) {
                 state.scenarioScript.remove();
                 state.scenarioScript = null;

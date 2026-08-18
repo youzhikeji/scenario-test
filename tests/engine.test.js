@@ -606,3 +606,52 @@ test("浏览器环境（无 process 全局）下缺少 envVars 的错误消息�
     assert.doesNotMatch(result.stdout, /MY_SECRET_ENV/, "非 verbose 模式不应泄漏环境变量映射名");
 });
 
+
+test("重试等待前已取消：立即以 CANCELLED 返回，不等待 intervalMs", async () => {
+    const controller = new AbortController();
+    // 适配器在返回失败响应前取消执行：断言失败进入重试时 signal 已中止，
+    // delay 应立即拒绝而非等待完整 intervalMs（默认实现会白等后由下一轮循环顶部发现取消）
+    const engine = createEngine({
+        fetch: () => { throw new Error("适配器步骤不应发起 HTTP 请求"); },
+        adapters: {
+            cancelThenFail: {
+                execute: async () => {
+                    controller.abort();
+                    return { response: { status: 500, headers: {}, body: { ok: false } } };
+                }
+            }
+        }
+    });
+    const runtime = { vars: {}, lastResponse: null, lastResponseBody: null };
+    const startedAt = Date.now();
+    const result = await engine.runStep({
+        name: "重试前取消",
+        adapter: "cancelThenFail",
+        retryUntil: { maxAttempts: 5, intervalMs: 5000, maxElapsedMs: 60000 }
+    }, runtime, { signal: controller.signal });
+    const duration = Date.now() - startedAt;
+    assert.equal(result.status, "CANCELLED");
+    assert.equal(result.cancelled, true);
+    assert.ok(duration < 2000, `取消应立即生效，实际耗时 ${duration}ms`);
+});
+
+test("响应体按 content-type charset 解码（GBK）", async () => {
+    // {"name":"中文"} 的 GBK 字节（中=D6D0、文=CEC4），硬编码避免依赖 Node Buffer 的 gbk 编码能力
+    const gbkBytes = new Uint8Array([0x7B, 0x22, 0x6E, 0x61, 0x6D, 0x65, 0x22, 0x3A, 0x22, 0xD6, 0xD0, 0xCE, 0xC4, 0x22, 0x7D]);
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        fetch: async () => new Response(gbkBytes, { status: 200, headers: { "Content-Type": "application/json;charset=GBK" } })
+    });
+    const scenario = defineScenario({
+        name: "GBK 解码",
+        steps: [{
+            name: "中文字段",
+            path: "gbk",
+            extract: [{ name: "city", path: "name" }],
+            assertions: [{ path: "name", equals: "中文" }]
+        }]
+    });
+    const report = await engine.runScenario(scenario);
+    assert.equal(report.passed, true, JSON.stringify(report.results[0].assertions));
+    assert.equal(report.vars.city, "中文");
+});

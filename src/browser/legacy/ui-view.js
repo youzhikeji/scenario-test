@@ -487,7 +487,10 @@ const legacyView = (function () {
         var passed = steps.filter(function (item) { return !item.skipped && item.passed; }).length;
         var failed = steps.filter(function (item) { return !item.skipped && !item.passed; }).length;
         var duration = steps.reduce(function (sum, item) { return sum + (item.duration || 0); }, 0);
-        var status = failed > 0 ? 'FAILED' : (executed === 0 ? 'SKIPPED' : 'PASSED');
+        // 与 engine.runScenario 对齐：任一步骤被取消时整体状态为 CANCELLED，
+        // 不再把取消步骤计入 failed 而误报"存在失败"（头部 runState 与报告面板因此不再互相矛盾）
+        var cancelled = steps.some(function (item) { return item.cancelled; });
+        var status = cancelled ? 'CANCELLED' : failed > 0 ? 'FAILED' : (executed === 0 ? 'SKIPPED' : 'PASSED');
         return {
             title: (scenario && scenario.name) || scenarioFile || '测试报告',
             scenarioFile: scenarioFile || '',
@@ -535,7 +538,7 @@ const legacyView = (function () {
         lines.push('- **场景文件**: `' + (report.scenarioFile || '-') + '`');
         lines.push('- **测试环境**: ' + (report.environment || '-'));
         lines.push('- **执行模式**: ' + (report.executionMode || '-'));
-        var resultText = summary.failedSteps ? '❌ 存在失败' : (summary.skippedSteps && summary.executedSteps === 0 ? '⏭️ 全部跳过' : '✅ 全部通过');
+        var resultText = report.status === 'CANCELLED' ? '🚫 已取消' : summary.failedSteps ? '❌ 存在失败' : (summary.skippedSteps && summary.executedSteps === 0 ? '⏭️ 全部跳过' : '✅ 全部通过');
         lines.push('- **结果**: ' + resultText + ' (' + summary.passedSteps + '/' + summary.executedSteps + ')');
         lines.push('- **通过率**: ' + summary.passRate);
         lines.push('- **统计**: 通过 ' + summary.passedSteps + ' / 失败 ' + summary.failedSteps + ' / 跳过 ' + summary.skippedSteps + ' / 执行 ' + summary.executedSteps + ' / 计划 ' + summary.plannedSteps);
@@ -586,11 +589,12 @@ const legacyView = (function () {
         var report = buildOverallReport(steps, scenario, scenarioFile, executionMode, environment);
         var summary = report.summary;
         var pending = summary.totalSteps - summary.executedSteps;
+        var cancelled = report.status === 'CANCELLED';
         var hasFailure = summary.failedSteps > 0;
         var allSkipped = !hasFailure && summary.executedSteps === 0 && summary.skippedSteps > 0;
         var completed = pending <= 0;
-        var statusClass = hasFailure ? 'report-status--failed' : (allSkipped ? 'report-status--skipped' : (completed ? 'report-status--passed' : 'report-status--running'));
-        var statusText = hasFailure ? '存在失败' : (allSkipped ? '全部跳过' : (completed ? '全部通过' : '执行中'));
+        var statusClass = cancelled ? 'report-status--cancelled' : hasFailure ? 'report-status--failed' : (allSkipped ? 'report-status--skipped' : (completed ? 'report-status--passed' : 'report-status--running'));
+        var statusText = cancelled ? '已取消' : hasFailure ? '存在失败' : (allSkipped ? '全部跳过' : (completed ? '全部通过' : '执行中'));
         var modeText = report.executionMode === 'step' ? '单步执行' : '全量执行';
         var progressText = summary.executedSteps + ' / ' + summary.totalSteps;
         var reportSteps = hasFailure ? report.steps.filter(function (step) { return !step.passed; }) : [];

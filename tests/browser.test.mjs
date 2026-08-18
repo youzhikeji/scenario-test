@@ -168,6 +168,9 @@ try {
         // 取消文案：结构化映射为中文提示，而非原始英文 DOMException
         assert.match(await page.locator("#stepsList").textContent(), /用户已取消执行/);
         assert.match(await page.locator("#stepsList").textContent(), /CANCELLED/);
+        // 整体报告与 engine 的 CANCELLED 语义对齐：不再把取消误报为"存在失败"
+        assert.match(await page.locator("#reportPanel").textContent(), /已取消/);
+        assert.doesNotMatch(await page.locator("#reportPanel").textContent(), /存在失败/);
 
         await page.locator('[data-scenario-file="scenarios/cleanup.js"]').click();
         await page.waitForFunction(() => document.querySelector("#scenarioTitle").textContent.includes("条件清理"));
@@ -229,6 +232,23 @@ try {
         assert.ok(box && box.width > 0 && box.height > 0, `${viewport.name} 布局尺寸异常`);
         await page.screenshot({ path: path.join(artifacts, `${viewport.name}.png`), fullPage: true });
         await page.close();
+    }
+
+    // ?scenario= 白名单：URL 参数指向未列入配置清单的文件时必须拒绝加载，
+    // 不得把工作区内任意 JS 当场景脚本执行（registerScenario 校验在脚本执行之后，挡不住注入）
+    const evilPath = path.join(root, "examples/basic/evil-unlisted-test.js");
+    fs.writeFileSync(evilPath, "window.__PWNED__ = true;\n", "utf8");
+    try {
+        const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+        await page.goto(`http://127.0.0.1:${port}/?scenario=evil-unlisted-test.js`, { waitUntil: "networkidle" });
+        await page.waitForFunction(() => document.querySelector("#statsPanel").textContent.includes("不在配置清单"));
+        assert.equal(await page.evaluate(() => window.__PWNED__), undefined, "未列入清单的脚本不得被执行");
+        // 清单内场景经 URL 参数加载不受影响
+        await page.goto(`http://127.0.0.1:${port}/?scenario=scenarios/health.js`, { waitUntil: "networkidle" });
+        await page.waitForFunction(() => document.querySelector("#scenarioTitle").textContent.length > 0);
+        await page.close();
+    } finally {
+        fs.rmSync(evilPath, { force: true });
     }
 } finally {
     await browser?.close();

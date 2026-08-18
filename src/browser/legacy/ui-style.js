@@ -181,6 +181,7 @@ const legacyStyle = (function () {
             .report-status { flex: 0 0 auto; padding: 4px 7px; border-radius: 999px; font-size: 10px; font-weight: 700; }
             .report-status--passed { background: #ecfdf5; color: #047857; }
             .report-status--failed { background: #fff1f2; color: #be123c; }
+            .report-status--cancelled { background: #fffbeb; color: #b45309; }
             .report-status--running { background: #eff6ff; color: #2563eb; }
             .report-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); overflow: hidden; border: 1px solid var(--workspace-line); border-radius: 6px; background: #ffffff; }
             .report-metric { min-width: 0; padding: 11px 10px; border-right: 1px solid var(--workspace-line); }

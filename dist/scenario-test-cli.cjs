@@ -985,6 +985,7 @@ function timeoutErrorMessage(timeoutMs) {
 }
 function delay(milliseconds, signal) {
   if (!milliseconds) return Promise.resolve();
+  if (signal?.aborted) return Promise.reject(abortReason(signal));
   return new Promise((resolveDelay, reject) => {
     const timer = setTimeout(resolveDelay, milliseconds);
     if (signal) {
@@ -1133,6 +1134,15 @@ function readBodyChunks(response, signal) {
     })();
   });
 }
+function decoderForContentType(contentType2) {
+  const match = /charset\s*=\s*"?([^;"\s]+)"?/i.exec(String(contentType2 || ""));
+  if (!match) return new TextDecoder();
+  try {
+    return new TextDecoder(match[1]);
+  } catch {
+    return new TextDecoder();
+  }
+}
 async function readResponse(response, step, io, runtime, signal) {
   const headers = headersToObject(response.headers);
   const contentType2 = String(headers["content-type"] || "");
@@ -1147,7 +1157,7 @@ async function readResponse(response, step, io, runtime, signal) {
     const saved = await io.saveResponse(resolveString(step.saveResponseAs, runtime), data, { contentType: contentType2, headers });
     return { status: response.status, headers, body: saved, bodyText: null };
   }
-  const decoder = new TextDecoder();
+  const decoder = decoderForContentType(contentType2);
   const bodyText = chunks.map((chunk) => decoder.decode(chunk, { stream: true })).join("") + decoder.decode();
   return { status: response.status, headers, body: parseBody(bodyText, contentType2), bodyText };
 }
@@ -1769,6 +1779,7 @@ var legacyStyle = function() {
             .report-status { flex: 0 0 auto; padding: 4px 7px; border-radius: 999px; font-size: 10px; font-weight: 700; }
             .report-status--passed { background: #ecfdf5; color: #047857; }
             .report-status--failed { background: #fff1f2; color: #be123c; }
+            .report-status--cancelled { background: #fffbeb; color: #b45309; }
             .report-status--running { background: #eff6ff; color: #2563eb; }
             .report-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); overflow: hidden; border: 1px solid var(--workspace-line); border-radius: 6px; background: #ffffff; }
             .report-metric { min-width: 0; padding: 11px 10px; border-right: 1px solid var(--workspace-line); }
@@ -2231,7 +2242,10 @@ var legacyView = function() {
     var duration = steps.reduce(function(sum, item) {
       return sum + (item.duration || 0);
     }, 0);
-    var status = failed > 0 ? "FAILED" : executed === 0 ? "SKIPPED" : "PASSED";
+    var cancelled = steps.some(function(item) {
+      return item.cancelled;
+    });
+    var status = cancelled ? "CANCELLED" : failed > 0 ? "FAILED" : executed === 0 ? "SKIPPED" : "PASSED";
     return {
       title: scenario && scenario.name || scenarioFile || "\u6D4B\u8BD5\u62A5\u544A",
       scenarioFile: scenarioFile || "",
@@ -2278,7 +2292,7 @@ var legacyView = function() {
     lines.push("- **\u573A\u666F\u6587\u4EF6**: `" + (report.scenarioFile || "-") + "`");
     lines.push("- **\u6D4B\u8BD5\u73AF\u5883**: " + (report.environment || "-"));
     lines.push("- **\u6267\u884C\u6A21\u5F0F**: " + (report.executionMode || "-"));
-    var resultText = summary.failedSteps ? "\u274C \u5B58\u5728\u5931\u8D25" : summary.skippedSteps && summary.executedSteps === 0 ? "\u23ED\uFE0F \u5168\u90E8\u8DF3\u8FC7" : "\u2705 \u5168\u90E8\u901A\u8FC7";
+    var resultText = report.status === "CANCELLED" ? "\u{1F6AB} \u5DF2\u53D6\u6D88" : summary.failedSteps ? "\u274C \u5B58\u5728\u5931\u8D25" : summary.skippedSteps && summary.executedSteps === 0 ? "\u23ED\uFE0F \u5168\u90E8\u8DF3\u8FC7" : "\u2705 \u5168\u90E8\u901A\u8FC7";
     lines.push("- **\u7ED3\u679C**: " + resultText + " (" + summary.passedSteps + "/" + summary.executedSteps + ")");
     lines.push("- **\u901A\u8FC7\u7387**: " + summary.passRate);
     lines.push("- **\u7EDF\u8BA1**: \u901A\u8FC7 " + summary.passedSteps + " / \u5931\u8D25 " + summary.failedSteps + " / \u8DF3\u8FC7 " + summary.skippedSteps + " / \u6267\u884C " + summary.executedSteps + " / \u8BA1\u5212 " + summary.plannedSteps);
@@ -2326,11 +2340,12 @@ var legacyView = function() {
     var report = buildOverallReport(steps, scenario, scenarioFile, executionMode, environment);
     var summary = report.summary;
     var pending = summary.totalSteps - summary.executedSteps;
+    var cancelled = report.status === "CANCELLED";
     var hasFailure = summary.failedSteps > 0;
     var allSkipped = !hasFailure && summary.executedSteps === 0 && summary.skippedSteps > 0;
     var completed = pending <= 0;
-    var statusClass = hasFailure ? "report-status--failed" : allSkipped ? "report-status--skipped" : completed ? "report-status--passed" : "report-status--running";
-    var statusText = hasFailure ? "\u5B58\u5728\u5931\u8D25" : allSkipped ? "\u5168\u90E8\u8DF3\u8FC7" : completed ? "\u5168\u90E8\u901A\u8FC7" : "\u6267\u884C\u4E2D";
+    var statusClass = cancelled ? "report-status--cancelled" : hasFailure ? "report-status--failed" : allSkipped ? "report-status--skipped" : completed ? "report-status--passed" : "report-status--running";
+    var statusText = cancelled ? "\u5DF2\u53D6\u6D88" : hasFailure ? "\u5B58\u5728\u5931\u8D25" : allSkipped ? "\u5168\u90E8\u8DF3\u8FC7" : completed ? "\u5168\u90E8\u901A\u8FC7" : "\u6267\u884C\u4E2D";
     var modeText = report.executionMode === "step" ? "\u5355\u6B65\u6267\u884C" : "\u5168\u91CF\u6267\u884C";
     var progressText = summary.executedSteps + " / " + summary.totalSteps;
     var reportSteps = hasFailure ? report.steps.filter(function(step) {
@@ -3649,6 +3664,15 @@ function createLegacyRuntime(options) {
         rejectLoad(new Error("\u672A\u6307\u5B9A\u6587\u4EF6"));
         return;
       }
+      var known = (appConfig.scenarios || []).some(function(entry) {
+        return entry && ["url", "file", "path"].some(function(key) {
+          return entry[key] === file;
+        });
+      });
+      if (!known) {
+        rejectLoad(new Error("\u573A\u666F\u6587\u4EF6\u4E0D\u5728\u914D\u7F6E\u6E05\u5355\u4E2D\uFF0C\u5DF2\u62D2\u7EDD\u52A0\u8F7D: " + file));
+        return;
+      }
       if (state.scenarioScript) {
         state.scenarioScript.remove();
         state.scenarioScript = null;
@@ -4541,16 +4565,34 @@ function checkVersionLock(filePath) {
     }
   }
   const sha256 = lock.sha256 && typeof lock.sha256 === "object" ? lock.sha256 : null;
-  if (sha256) {
+  if (!sha256) {
+    extras.push({
+      name: "version-lock",
+      status: "WARN",
+      message: "\u7248\u672C\u9501\u7F3A\u5C11 sha256 \u6307\u7EB9\u8BB0\u5F55\uFF0C\u65E0\u6CD5\u6821\u9A8C\u8FD0\u884C\u65F6\u6587\u4EF6\u5B8C\u6574\u6027",
+      fix: "\u7528\u5F53\u524D\u7248\u672C CLI \u91CD\u65B0 init \u5237\u65B0\u7248\u672C\u9501"
+    });
+  } else {
     for (const [fileName, expected] of Object.entries(sha256)) {
       const target = import_node_path5.default.join(import_node_path5.default.dirname(filePath), fileName);
       if (!import_node_fs4.default.existsSync(target)) continue;
       if (sha256Of(target) !== expected) {
         extras.push({
           name: "version-lock",
-          status: "WARN",
-          message: `${fileName} \u7684 SHA256 \u4E0E\u7248\u672C\u9501\u8BB0\u5F55\u4E0D\u4E00\u81F4\uFF08\u53EF\u80FD\u88AB\u66FF\u6362\uFF09`,
+          status: "FAIL",
+          message: `${fileName} \u7684 SHA256 \u4E0E\u7248\u672C\u9501\u8BB0\u5F55\u4E0D\u4E00\u81F4\uFF08\u6587\u4EF6\u53EF\u80FD\u88AB\u66FF\u6362\uFF09`,
           fix: "\u82E5\u662F\u6709\u610F\u66FF\u6362\u8FD0\u884C\u65F6\u6587\u4EF6\uFF0C\u7528\u5F53\u524D\u7248\u672C CLI \u91CD\u65B0 init \u5237\u65B0\u7248\u672C\u9501\uFF1B\u5426\u5219\u68C0\u67E5\u6587\u4EF6\u6765\u6E90"
+        });
+      }
+    }
+    if (files) {
+      const uncovered = [...new Set(Object.values(files))].filter((fileName) => !(fileName in sha256));
+      if (uncovered.length) {
+        extras.push({
+          name: "version-lock",
+          status: "WARN",
+          message: `\u7248\u672C\u9501 sha256 \u672A\u8986\u76D6\u6587\u4EF6: ${uncovered.join(", ")}`,
+          fix: "\u7528\u5F53\u524D\u7248\u672C CLI \u91CD\u65B0 init \u5237\u65B0\u7248\u672C\u9501"
         });
       }
     }
@@ -5260,10 +5302,10 @@ function serveStaticFile(response, filePath) {
 }
 function resolveServeProxyTarget(config, envKey) {
   if (config.envs?.length) {
-    const environment = config.envs.find((item) => item.key === (envKey || config.defaultEnvKey)) || config.envs[0];
-    return String(environment.baseUrl || "").replace(/\/+$/, "");
+    const environment = selectEnvironment(config, envKey);
+    return { key: environment.key, target: String(environment.baseUrl || "").replace(/\/+$/, "") };
   }
-  return String(config.baseUrl || "").replace(/\/+$/, "");
+  return { key: config.defaultEnvKey || "default", target: String(config.baseUrl || "").replace(/\/+$/, "") };
 }
 var HOP_BY_HOP_HEADERS = /* @__PURE__ */ new Set([
   "connection",
@@ -5336,14 +5378,23 @@ function proxyRequest(request, response, targetUrl) {
   });
   request.pipe(upstream);
 }
+function isAllowedServeHost(hostHeader, port) {
+  const host = String(hostHeader || "").trim().toLowerCase();
+  return [`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`, "127.0.0.1", "localhost", "[::1]"].includes(host);
+}
 async function serveCommand(args) {
   const configPath = resolveConfigPath(args.config);
   const workspace = import_node_path6.default.dirname(configPath);
   const libraryDist = import_node_path6.default.dirname(import_node_path6.default.resolve(process.argv[1]));
   const config = loadConfigFile(configPath, node_exports);
-  const proxyTarget = resolveServeProxyTarget(config, args.env);
+  const { key: proxyEnvKey, target: proxyTarget } = resolveServeProxyTarget(config, args.env);
   const server = import_node_http.default.createServer((request, response) => {
     try {
+      if (!isAllowedServeHost(request.headers.host, args.port)) {
+        response.writeHead(403);
+        response.end("Forbidden");
+        return;
+      }
       const pathname = decodeURIComponent(new URL(request.url, "http://127.0.0.1").pathname);
       let filePath;
       if (pathname === "/__scenario-test__/scenario-test.umd.js") filePath = import_node_path6.default.join(libraryDist, "scenario-test.umd.js");
@@ -5389,7 +5440,7 @@ async function serveCommand(args) {
   server.listen(args.port, "127.0.0.1", () => {
     console.log(`\u573A\u666F\u6D4B\u8BD5\u5DE5\u4F5C\u53F0: http://127.0.0.1:${args.port}/`);
     console.log(`\u914D\u7F6E\u76EE\u5F55: ${workspace}`);
-    if (proxyTarget) console.log(`\u63A5\u53E3\u4EE3\u7406: ${args.env || config.defaultEnvKey || "default"} -> ${proxyTarget}`);
+    if (proxyTarget) console.log(`\u63A5\u53E3\u4EE3\u7406: ${proxyEnvKey} -> ${proxyTarget}`);
     console.log("\u63D0\u793A: serve \u5DF2\u81EA\u52A8\u542F\u7528\u540C\u6E90\u63A5\u53E3\u4EE3\u7406\uFF1B\u6D4F\u89C8\u5668\u8BF7\u6C42\u4F1A\u5148\u5230\u5F53\u524D\u5DE5\u4F5C\u53F0\u5730\u5740\u3002\u53CC\u51FB\u9879\u76EE\u5185 start-scenario-test.cmd \u53EF\u4E00\u952E\u542F\u52A8\u3002");
   });
 }

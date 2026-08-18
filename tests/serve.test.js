@@ -36,16 +36,32 @@ function startMockBackend() {
     });
 }
 
+// 每个 serve 子进程维护一份累积输出缓冲：多行日志可能同 chunk 到达，
+// 逐次独立监听会错过已被上一个 waitForOutput 消费掉的 chunk
+const serveOutputBuffers = new WeakMap();
+
 function waitForOutput(child, pattern) {
+    if (!serveOutputBuffers.has(child)) {
+        let buffer = "";
+        serveOutputBuffers.set(child, () => buffer);
+        child.stdout.on("data", (chunk) => { buffer += String(chunk); });
+    }
+    const bufferOf = serveOutputBuffers.get(child);
     return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error("serve 启动超时")), 10000);
-        child.stdout.on("data", (chunk) => {
-            if (String(chunk).includes(pattern)) {
+        if (bufferOf().includes(pattern)) { resolve(); return; }
+        const timer = setTimeout(() => {
+            child.stdout.off("data", onData);
+            reject(new Error("serve 启动超时"));
+        }, 10000);
+        const onData = () => {
+            if (bufferOf().includes(pattern)) {
                 clearTimeout(timer);
+                child.stdout.off("data", onData);
                 resolve();
             }
-        });
-        child.on("exit", (code) => reject(new Error(`serve 提前退出: ${code}`)));
+        };
+        child.stdout.on("data", onData);
+        child.on("exit", (code) => { clearTimeout(timer); reject(new Error(`serve 提前退出: ${code}`)); });
     });
 }
 
@@ -73,7 +89,8 @@ test("serve 同源代理：非静态请求转发到环境 baseUrl，静态文件
     const child = spawn(process.execPath, [cli, "serve", "--config", path.join(dir, "scenario.config.js"), "--port", String(servePort)], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
     try {
         await waitForOutput(child, "场景测试工作台");
-        await waitForOutput(child, "接口代理");
+        // 日志必须打印实际生效的环境 key（而非用户输入），避免误导代理目标
+        await waitForOutput(child, "接口代理: local -> ");
 
         const proxyResponse = await fetch(`http://127.0.0.1:${servePort}/api/health`, {
             method: "POST",
@@ -312,6 +329,76 @@ test("serve：https 上游端到端转发（需 openssl，自签证书容忍）"
             await new Promise((resolve) => mock.close(resolve));
         }
     } finally {
+        fs.rmSync(project, { recursive: true, force: true });
+    }
+});
+test("serve：--env 指定未知环境时报错退出，不静默回退 envs[0]", async () => {
+    const { server: mock, port: mockPort } = await startMockBackend();
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-serve-env-"));
+    const dir = path.join(project, "scenario-test");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+        envs: [
+            { key: "local", name: "本地", baseUrl: "http://127.0.0.1:${mockPort}" },
+            { key: "prod", name: "生产", baseUrl: "http://127.0.0.1:1" }
+        ],
+        defaultEnvKey: "local",
+        scenarios: []
+    }));`, "utf8");
+
+    try {
+        const servePort = await freePort();
+        const result = await new Promise((resolve, reject) => {
+            const child = spawn(process.execPath, [cli, "serve", "--config", path.join(dir, "scenario.config.js"), "--env", "prod-typo", "--port", String(servePort)], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
+            let stderr = "";
+            child.stderr.on("data", (chunk) => { stderr += chunk; });
+            child.on("error", reject);
+            child.on("close", (code) => resolve({ code, stderr }));
+        });
+        assert.equal(result.code, 1, "未知环境应导致非零退出码");
+        assert.match(result.stderr, /未找到环境 prod-typo/);
+        assert.match(result.stderr, /可用值: local, prod/);
+    } finally {
+        mock.close();
+        fs.rmSync(project, { recursive: true, force: true });
+    }
+});
+
+test("serve：Host 头非本机回环时返回 403，阻断 DNS rebinding 读取面", async () => {
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-serve-host-"));
+    const dir = path.join(project, "scenario-test");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+        envs: [{ key: "local", name: "本地", baseUrl: "http://127.0.0.1:1" }],
+        defaultEnvKey: "local",
+        scenarios: []
+    }));`, "utf8");
+    fs.writeFileSync(path.join(dir, "scenario.config.js.bak"), "TOKEN=secret", "utf8");
+
+    const servePort = await freePort();
+    const child = spawn(process.execPath, [cli, "serve", "--config", path.join(dir, "scenario.config.js"), "--port", String(servePort)], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
+    try {
+        await waitForOutput(child, "场景测试工作台");
+
+        const requestWithHost = (hostHeader) => new Promise((resolve, reject) => {
+            const request = http.request(
+                { host: "127.0.0.1", port: servePort, path: "/scenario.config.js.bak", headers: { Host: hostHeader } },
+                (response) => {
+                    response.resume();
+                    response.on("end", () => resolve(response.statusCode));
+                }
+            );
+            request.on("error", reject);
+            request.end();
+        });
+
+        assert.equal(await requestWithHost("attacker.example.com"), 403, "伪造 Host（DNS rebinding）应被拒绝");
+        assert.equal(await requestWithHost("attacker.example.com:443"), 403);
+        // 正常回环 Host（浏览器同源访问形态）不受影响
+        assert.equal(await requestWithHost(`127.0.0.1:${servePort}`), 200);
+        assert.equal(await requestWithHost(`localhost:${servePort}`), 200);
+    } finally {
+        child.kill();
         fs.rmSync(project, { recursive: true, force: true });
     }
 });

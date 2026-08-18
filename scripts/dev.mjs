@@ -34,10 +34,17 @@ function scheduleRebuild() {
     rebuildTimer = setTimeout(rebuild, 300);
 }
 
+// build 每次都会写回 src 下的生成文件；watch 必须排除它们，否则构建产物写盘
+// 再次触发重建事件，形成"构建→写盘→再构建"的自触发无限循环
+const GENERATED_SOURCES = new Set(["version.generated.js", "browser/tailwind.generated.js"]);
+
 function watchSources() {
     fs.watch(srcDir, { recursive: true }, (eventType, filename) => {
-        if (filename && /\.(js|mjs)$/.test(String(filename))) {
-            console.log(`[dev] 变更: ${filename}，重建中...`);
+        // Windows 下 filename 用反斜杠分隔，统一归一化后再比对
+        const normalized = String(filename || "").replace(/\\/g, "/");
+        if (GENERATED_SOURCES.has(normalized)) return;
+        if (/\.(js|mjs)$/.test(normalized)) {
+            console.log(`[dev] 变更: ${normalized}，重建中...`);
             scheduleRebuild();
         }
     });

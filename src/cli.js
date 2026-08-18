@@ -557,10 +557,12 @@ function serveStaticFile(response, filePath) {
 function resolveServeProxyTarget(config, envKey) {
     // serve 保留环境 baseUrl 作为上游目标，并在返回的 HTML 中注入代理模式标记让浏览器强制使用当前同源地址
     if (config.envs?.length) {
-        const environment = config.envs.find((item) => item.key === (envKey || config.defaultEnvKey)) || config.envs[0];
-        return String(environment.baseUrl || "").replace(/\/+$/, "");
+        // 与 run 的 selectEnvironment 一致：环境不存在时报错退出。
+        // 静默回退 envs[0] 会把请求代理到错误后端（可能是生产），且日志仍显示用户输入的环境名
+        const environment = selectEnvironment(config, envKey);
+        return { key: environment.key, target: String(environment.baseUrl || "").replace(/\/+$/, "") };
     }
-    return String(config.baseUrl || "").replace(/\/+$/, "");
+    return { key: config.defaultEnvKey || "default", target: String(config.baseUrl || "").replace(/\/+$/, "") };
 }
 
 // 转发时剔除 hop-by-hop 头（RFC 7230 §6.1），避免把客户端连接语义泄漏给上游；
@@ -635,14 +637,27 @@ function proxyRequest(request, response, targetUrl) {
     request.pipe(upstream);
 }
 
+// Host 白名单：serve 绑定 127.0.0.1 仅供本机回环访问。校验 Host 头可阻断 DNS rebinding 等
+// 跨源读取（攻击域名解析到 127.0.0.1 后，浏览器请求仍会携带攻击者的 Host），
+// 与 vite/webpack-dev-server 的 host 校验同类加固
+function isAllowedServeHost(hostHeader, port) {
+    const host = String(hostHeader || "").trim().toLowerCase();
+    return [`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`, "127.0.0.1", "localhost", "[::1]"].includes(host);
+}
+
 async function serveCommand(args) {
     const configPath = resolveConfigPath(args.config);
     const workspace = path.dirname(configPath);
     const libraryDist = path.dirname(path.resolve(process.argv[1]));
     const config = ScenarioTest.loadConfigFile(configPath, ScenarioTest);
-    const proxyTarget = resolveServeProxyTarget(config, args.env);
+    const { key: proxyEnvKey, target: proxyTarget } = resolveServeProxyTarget(config, args.env);
     const server = http.createServer((request, response) => {
         try {
+            if (!isAllowedServeHost(request.headers.host, args.port)) {
+                response.writeHead(403);
+                response.end("Forbidden");
+                return;
+            }
             const pathname = decodeURIComponent(new URL(request.url, "http://127.0.0.1").pathname);
             let filePath;
             if (pathname === "/__scenario-test__/scenario-test.umd.js") filePath = path.join(libraryDist, "scenario-test.umd.js");
@@ -684,7 +699,7 @@ async function serveCommand(args) {
     server.listen(args.port, "127.0.0.1", () => {
         console.log(`场景测试工作台: http://127.0.0.1:${args.port}/`);
         console.log(`配置目录: ${workspace}`);
-        if (proxyTarget) console.log(`接口代理: ${args.env || config.defaultEnvKey || "default"} -> ${proxyTarget}`);
+        if (proxyTarget) console.log(`接口代理: ${proxyEnvKey} -> ${proxyTarget}`);
         console.log("提示: serve 已自动启用同源接口代理；浏览器请求会先到当前工作台地址。双击项目内 start-scenario-test.cmd 可一键启动。");
     });
 }

@@ -141,16 +141,37 @@ function checkVersionLock(filePath) {
         }
     }
     const sha256 = lock.sha256 && typeof lock.sha256 === "object" ? lock.sha256 : null;
-    if (sha256) {
+    if (!sha256) {
+        // 与 files 缺失同样显式告警：旧格式/被截断的锁不应静默跳过内容校验仍判 PASS
+        extras.push({
+            name: "version-lock",
+            status: "WARN",
+            message: "版本锁缺少 sha256 指纹记录，无法校验运行时文件完整性",
+            fix: "用当前版本 CLI 重新 init 刷新版本锁"
+        });
+    } else {
         for (const [fileName, expected] of Object.entries(sha256)) {
             const target = path.join(path.dirname(filePath), fileName);
             if (!fs.existsSync(target)) continue;
             if (sha256Of(target) !== expected) {
+                // 内容被替换是最强可疑信号：文件缺失可由 init 修复，内容被替换意味着来源不明，
+                // 必须 FAIL（退出码 1）拦下，避免 CI/安装脚本把被篡改的运行时当健康放行
+                extras.push({
+                    name: "version-lock",
+                    status: "FAIL",
+                    message: `${fileName} 的 SHA256 与版本锁记录不一致（文件可能被替换）`,
+                    fix: "若是有意替换运行时文件，用当前版本 CLI 重新 init 刷新版本锁；否则检查文件来源"
+                });
+            }
+        }
+        if (files) {
+            const uncovered = [...new Set(Object.values(files))].filter((fileName) => !(fileName in sha256));
+            if (uncovered.length) {
                 extras.push({
                     name: "version-lock",
                     status: "WARN",
-                    message: `${fileName} 的 SHA256 与版本锁记录不一致（可能被替换）`,
-                    fix: "若是有意替换运行时文件，用当前版本 CLI 重新 init 刷新版本锁；否则检查文件来源"
+                    message: `版本锁 sha256 未覆盖文件: ${uncovered.join(", ")}`,
+                    fix: "用当前版本 CLI 重新 init 刷新版本锁"
                 });
             }
         }
