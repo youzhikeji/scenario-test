@@ -110,4 +110,4 @@ node .\dist\scenario-test-cli.cjs `
 - [变更日志](../CHANGELOG.md)
 - [发布流程](../docs/RELEASING.md)
 
-当前版本：v0.5.18
+当前版本：v0.5.19

@@ -2,6 +2,53 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.19] - 2026-08-18
+
+> 本版由整体代码审查驱动（4 个专项审查 + 2 轮修复后独立评审），共修复 1 项 HIGH、10 项 MEDIUM 与若干 LOW。
+> **行为变更**（升级注意）：doctor 对 SHA256 失配（运行时文件被替换）由 WARN 提级为 FAIL（退出码 1）；serve 对伪造 Host 头返回 403；`--allow-external-plugins` 的相对路径基准由进程 CWD 改为配置目录；场景最后一步执行中被取消时整体状态由 FAILED 修正为 CANCELLED。
+
+### 🐛 Bug Fixes
+
+1. **入口脚本**
+   - `start-scenario-test.ps1` 优先调用项目内免 npm 运行时副本（`npx --no-install` 降级为回退路径），未显式 `-Port` 时向系统申请随机空闲端口（与 `.cmd` 一致）。
+   - `install.ps1` 兼容 Windows PowerShell 5.1：捕获原生命令输出期间临时降低 `ErrorActionPreference`，node/npm 输出 stderr 不再中断安装；路径参数统一加引号（含空格路径可用）。
+   - `install.sh` 安装提示的执行命令补上 `run` 子命令。
+   - `dev.mjs` 修复构建产物自触发无限重建（watch 排除 build 写回 `src` 的两个生成文件）。
+2. **serve 安全与正确性**
+   - 未知 `--env` 报错退出（不再静默回退 `envs[0]` 可能代理到生产），启动日志打印实际生效的环境 key。
+   - Host 头白名单校验：仅放行本机回环域名，伪造 Host（DNS rebinding）返回 403。
+   - 代理双向剔除 `Connection` 头点名的自定义字段（RFC 7230 §6.1）。
+   - `--base-url` 对 serve 生效（临时覆盖代理目标，日志标注覆盖来源）。
+3. **浏览器工作台**
+   - `?scenario=` 必须命中配置场景清单，未清单文件拒绝加载（注册校验原本发生在脚本执行之后，防诱导链接执行工作区内任意 JS）。
+   - 整体报告 CANCELLED 语义与 engine 对齐（含最后一步取消的边界）；取消步骤不再列入"失败步骤"区。
+   - 长场景：执行期增量渲染（不再每步全量重建），大响应体展示超 64K 截断（复制 MD/JSON 保留完整内容）。
+   - 凭据类场景变量（token/secret/password 等命名）输入框掩码显示并提供明文切换。
+   - 步骤列表 method/status 渲染统一转义。
+4. **执行引擎**
+   - `delay()` 增加预中止检查，取消不再白等 `intervalMs`。
+   - 响应体按 `content-type` 的 charset 解码（GBK 等中文响应不再乱码），非法标签回退 UTF-8。
+   - 重试总时长（`retryUntil.maxElapsedMs`）超限状态由 ERROR 修正为 TIMEOUT，保留"重试超时"诊断消息。
+5. **doctor 完整性**
+   - SHA256 失配（运行时文件被替换）提级 FAIL（退出码 1）；版本锁缺 `sha256` 显式 WARN；失配判定限定锁声明文件（与 init 自愈刷新范围对齐）。
+6. **其他**
+   - `--allow-external-plugins` 相对路径以配置目录为基准解析（与未加 flag 时一致）。
+   - `ScenarioStepResult` 类型补声明 `cancelled`/`timedOut` 字段。
+
+### 🔧 Refactor
+
+- `src/browser/legacy` 更名 `src/browser/ui`（git mv 保历史）：该目录是唯一且活跃的工作台实现，原名误导；`createLegacyRuntime` 更名 `createWorkbenchRuntime`，相关引用同步。
+
+### 📚 Docs
+
+- `loader.js` 与 SECURITY.md 明确信任前提：vm 仅上下文隔离、非安全边界，配置即代码、只加载可信来源。
+- SECURITY.md 新增 serve 本地暴露面章节（回环绑定与 Host 校验边界、同机进程可读工作区、勿放生产凭据）。
+
+### ✅ Tests
+
+- 新增回归：Host 白名单、未知环境（含看门狗）、Connection 点名字段双向、`--base-url` 覆盖、GBK 解码、重试前取消、末步取消、重试超时、doctor 锁缺失/篡改、`?scenario=` 未清单拒绝、大响应体截断边界、d.ts 形状漂移防线（Engine/ScenarioApp/Step/报告形状双向一致）。
+- `waitForOutput` 改累积缓冲消除 chunk 竞态，并加 settle 守卫与监听器清理。
+
 ## [0.5.18] - 2026-08-17
 
 ### 🐛 Bug Fixes
