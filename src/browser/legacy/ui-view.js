@@ -8,9 +8,11 @@ const legacyView = (function () {
         return typeof value === 'string' ? value : JSON.stringify(value, null, 2);
     }
 
-    function formatReportPayload(value) {
+    function formatReportPayload(value, options) {
         var text = stringify(value);
-        return text ? truncateForDisplay(text) : '(空)';
+        if (!text) return '(空)';
+        // 复制用途（MD 报告）保留完整内容；面板渲染按展示上限截断
+        return options && options.full ? text : truncateForDisplay(text);
     }
 
     // 大响应体渲染截断：仅影响步骤列表与报告面板的展示，不改变断言/提取用的原始数据；
@@ -589,11 +591,11 @@ const legacyView = (function () {
             lines.push('- **完整响应**:');
             lines.push('  - **响应头**:');
             lines.push('```json');
-            lines.push(formatReportPayload(response.headers || {}));
+            lines.push(formatReportPayload(response.headers || {}, { full: true }));
             lines.push('```');
             lines.push('  - **响应体**:');
             lines.push('```');
-            lines.push(formatReportPayload(response.bodyText !== undefined ? response.bodyText : response.body));
+            lines.push(formatReportPayload(response.bodyText !== undefined ? response.bodyText : response.body, { full: true }));
             lines.push('```');
             lines.push('');
         });
@@ -620,7 +622,9 @@ const legacyView = (function () {
         var statusText = cancelled ? '已取消' : hasFailure ? '存在失败' : (allSkipped ? '全部跳过' : (completed ? '全部通过' : '执行中'));
         var modeText = report.executionMode === 'step' ? '单步执行' : '全量执行';
         var progressText = summary.executedSteps + ' / ' + summary.totalSteps;
-        var reportSteps = hasFailure ? report.steps.filter(function (step) { return !step.passed; }) : [];
+        // "失败步骤"区只列真实失败：取消步骤不再出现在失败标题下（其状态徽章在左侧步骤列表可见）
+        var reportSteps = report.steps.filter(function (step) { return !step.passed && !step.cancelled; });
+        var hasRealFailure = reportSteps.length > 0;
         var stepHtml = reportSteps.map(function (step) {
             var method = String(step.method || 'GET').toUpperCase();
             var methodClass = 'report-method--' + method.toLowerCase();
@@ -647,11 +651,13 @@ const legacyView = (function () {
                 '<div class="report-step__result"><span class="report-step__code">' + esc(String(step.status || '-')) + '</span><span class="report-step__duration">' + esc(step.durationFmt || '-') + '</span></div>' +
             '</div>';
         }).join('');
-        var diagnosisHtml = hasFailure
+        var diagnosisHtml = hasRealFailure
             ? '<div class="report-steps"><div class="report-steps__title">失败步骤</div>' + stepHtml + '</div>'
-            : (allSkipped
+            : (cancelled
+                ? '<div class="report-healthy"><div class="report-healthy__title">执行已取消</div><div class="report-healthy__hint">取消的步骤不计入失败；详细请求与响应请在左侧步骤列表查看。</div></div>'
+                : (allSkipped
                 ? '<div class="report-healthy"><div class="report-healthy__title">所有步骤均因条件不满足而跳过</div><div class="report-healthy__hint">本次执行未发起任何请求，详细跳过原因请在左侧步骤列表查看。</div></div>'
-                : '<div class="report-healthy"><div class="report-healthy__title">' + (completed ? '所有步骤均已通过' : '当前已执行步骤均通过') + '</div><div class="report-healthy__hint">详细请求与响应请在左侧步骤列表查看；完整报告可通过顶部按钮复制。</div></div>');
+                : '<div class="report-healthy"><div class="report-healthy__title">' + (completed ? '所有步骤均已通过' : '当前已执行步骤均通过') + '</div><div class="report-healthy__hint">详细请求与响应请在左侧步骤列表查看；完整报告可通过顶部按钮复制。</div></div>'));
 
         node.innerHTML = '<div class="report-content">' +
             '<div class="report-overview">' +

@@ -679,3 +679,24 @@ test("重试总时长超限：报告状态为 TIMEOUT 并保留重试超时消�
     assert.match(report.results[0].error, /重试超时/);
     assert.ok(calls < 50, `应在总时长超限后停止重试（实际请求 ${calls} 次）`);
 });
+
+test("最后一步执行中被取消：整体状态 CANCELLED 而非 FAILED", async () => {
+    const controller = new AbortController();
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        // fetch 响应 signal 取消（真实取消路径：HTTP 步骤因 abort 拒绝，runStep 的 catch 才带 cancelled 标记）
+        fetch: (url, options) => new Promise((resolve, reject) => {
+            if (options.signal.aborted) { reject(options.signal.reason); return; }
+            options.signal.addEventListener("abort", () => reject(options.signal.reason));
+        })
+    });
+    controller.abort();
+    const report = await engine.runScenario(
+        defineScenario({ name: "单步取消", steps: [{ name: "唯一步骤", path: "only" }] }),
+        { signal: controller.signal }
+    );
+    assert.equal(report.results[0].cancelled, true);
+    assert.equal(report.results.length, report.planned, "步骤已全部产生结果（最后一步取消的边界）");
+    assert.equal(report.status, "CANCELLED", "任一步骤被取消即 CANCELLED，步数已满不应误判 FAILED");
+    assert.equal(report.passed, false);
+});

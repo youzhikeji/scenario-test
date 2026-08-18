@@ -1336,7 +1336,7 @@ function createEngine(engineOptions = {}) {
     const executed = results.length - skipped;
     const failed = results.filter((item) => !item.skipped && !item.passed).length;
     const passedSteps = results.filter((item) => !item.skipped && item.passed).length;
-    const cancelled = Boolean(runOptions.signal?.aborted) && results.length < scenario.steps.length;
+    const cancelled = results.some((item) => item.cancelled) || Boolean(runOptions.signal?.aborted) && results.length < scenario.steps.length;
     const status = cancelled ? "CANCELLED" : failed > 0 ? "FAILED" : executed === 0 ? "SKIPPED" : "PASSED";
     return {
       scenarioName: scenario.name,
@@ -1806,9 +1806,10 @@ var legacyView = function() {
     if (value === void 0 || value === null || value === "") return "";
     return typeof value === "string" ? value : JSON.stringify(value, null, 2);
   }
-  function formatReportPayload(value) {
+  function formatReportPayload(value, options) {
     var text = stringify(value);
-    return text ? truncateForDisplay(text) : "(\u7A7A)";
+    if (!text) return "(\u7A7A)";
+    return options && options.full ? text : truncateForDisplay(text);
   }
   var DISPLAY_PAYLOAD_LIMIT = 65536;
   function truncateForDisplay(text) {
@@ -2262,11 +2263,11 @@ var legacyView = function() {
       lines.push("- **\u5B8C\u6574\u54CD\u5E94**:");
       lines.push("  - **\u54CD\u5E94\u5934**:");
       lines.push("```json");
-      lines.push(formatReportPayload(response.headers || {}));
+      lines.push(formatReportPayload(response.headers || {}, { full: true }));
       lines.push("```");
       lines.push("  - **\u54CD\u5E94\u4F53**:");
       lines.push("```");
-      lines.push(formatReportPayload(response.bodyText !== void 0 ? response.bodyText : response.body));
+      lines.push(formatReportPayload(response.bodyText !== void 0 ? response.bodyText : response.body, { full: true }));
       lines.push("```");
       lines.push("");
     });
@@ -2291,9 +2292,10 @@ var legacyView = function() {
     var statusText = cancelled ? "\u5DF2\u53D6\u6D88" : hasFailure ? "\u5B58\u5728\u5931\u8D25" : allSkipped ? "\u5168\u90E8\u8DF3\u8FC7" : completed ? "\u5168\u90E8\u901A\u8FC7" : "\u6267\u884C\u4E2D";
     var modeText = report.executionMode === "step" ? "\u5355\u6B65\u6267\u884C" : "\u5168\u91CF\u6267\u884C";
     var progressText = summary.executedSteps + " / " + summary.totalSteps;
-    var reportSteps = hasFailure ? report.steps.filter(function(step) {
-      return !step.passed;
-    }) : [];
+    var reportSteps = report.steps.filter(function(step) {
+      return !step.passed && !step.cancelled;
+    });
+    var hasRealFailure = reportSteps.length > 0;
     var stepHtml = reportSteps.map(function(step) {
       var method = String(step.method || "GET").toUpperCase();
       var methodClass = "report-method--" + method.toLowerCase();
@@ -2306,7 +2308,7 @@ var legacyView = function() {
       var responseHtml = '<details class="report-step__response"><summary>\u5B8C\u6574\u54CD\u5E94</summary><div class="report-step__response-section">\u54CD\u5E94\u5934</div><pre>' + esc(formatReportPayload(response.headers || {})) + '</pre><div class="report-step__response-section">\u54CD\u5E94\u4F53</div><pre>' + esc(formatReportPayload(responseBody)) + "</pre></details>";
       return '<div class="report-step ' + (step.passed ? "report-step--passed" : "report-step--failed") + '"><div class="report-step__marker" aria-hidden="true">' + (step.passed ? "\u2713" : "!") + '</div><div class="report-step__content"><div class="report-step__heading"><span class="report-step__number">\u6B65\u9AA4 ' + step.stepNo + '</span><span class="report-step__name" title="' + esc(step.name || "") + '">' + esc(step.name || "\u672A\u547D\u540D\u6B65\u9AA4") + '</span></div><div class="report-step__request"><span class="report-method ' + methodClass + '">' + esc(method) + '</span><span class="report-step__path" title="' + esc(step.path || "") + '">' + esc(step.path || "-") + "</span></div>" + (issue ? '<div class="report-step__issue">' + esc(issue) + "</div>" : "") + responseHtml + '</div><div class="report-step__result"><span class="report-step__code">' + esc(String(step.status || "-")) + '</span><span class="report-step__duration">' + esc(step.durationFmt || "-") + "</span></div></div>";
     }).join("");
-    var diagnosisHtml = hasFailure ? '<div class="report-steps"><div class="report-steps__title">\u5931\u8D25\u6B65\u9AA4</div>' + stepHtml + "</div>" : allSkipped ? '<div class="report-healthy"><div class="report-healthy__title">\u6240\u6709\u6B65\u9AA4\u5747\u56E0\u6761\u4EF6\u4E0D\u6EE1\u8DB3\u800C\u8DF3\u8FC7</div><div class="report-healthy__hint">\u672C\u6B21\u6267\u884C\u672A\u53D1\u8D77\u4EFB\u4F55\u8BF7\u6C42\uFF0C\u8BE6\u7EC6\u8DF3\u8FC7\u539F\u56E0\u8BF7\u5728\u5DE6\u4FA7\u6B65\u9AA4\u5217\u8868\u67E5\u770B\u3002</div></div>' : '<div class="report-healthy"><div class="report-healthy__title">' + (completed ? "\u6240\u6709\u6B65\u9AA4\u5747\u5DF2\u901A\u8FC7" : "\u5F53\u524D\u5DF2\u6267\u884C\u6B65\u9AA4\u5747\u901A\u8FC7") + '</div><div class="report-healthy__hint">\u8BE6\u7EC6\u8BF7\u6C42\u4E0E\u54CD\u5E94\u8BF7\u5728\u5DE6\u4FA7\u6B65\u9AA4\u5217\u8868\u67E5\u770B\uFF1B\u5B8C\u6574\u62A5\u544A\u53EF\u901A\u8FC7\u9876\u90E8\u6309\u94AE\u590D\u5236\u3002</div></div>';
+    var diagnosisHtml = hasRealFailure ? '<div class="report-steps"><div class="report-steps__title">\u5931\u8D25\u6B65\u9AA4</div>' + stepHtml + "</div>" : cancelled ? '<div class="report-healthy"><div class="report-healthy__title">\u6267\u884C\u5DF2\u53D6\u6D88</div><div class="report-healthy__hint">\u53D6\u6D88\u7684\u6B65\u9AA4\u4E0D\u8BA1\u5165\u5931\u8D25\uFF1B\u8BE6\u7EC6\u8BF7\u6C42\u4E0E\u54CD\u5E94\u8BF7\u5728\u5DE6\u4FA7\u6B65\u9AA4\u5217\u8868\u67E5\u770B\u3002</div></div>' : allSkipped ? '<div class="report-healthy"><div class="report-healthy__title">\u6240\u6709\u6B65\u9AA4\u5747\u56E0\u6761\u4EF6\u4E0D\u6EE1\u8DB3\u800C\u8DF3\u8FC7</div><div class="report-healthy__hint">\u672C\u6B21\u6267\u884C\u672A\u53D1\u8D77\u4EFB\u4F55\u8BF7\u6C42\uFF0C\u8BE6\u7EC6\u8DF3\u8FC7\u539F\u56E0\u8BF7\u5728\u5DE6\u4FA7\u6B65\u9AA4\u5217\u8868\u67E5\u770B\u3002</div></div>' : '<div class="report-healthy"><div class="report-healthy__title">' + (completed ? "\u6240\u6709\u6B65\u9AA4\u5747\u5DF2\u901A\u8FC7" : "\u5F53\u524D\u5DF2\u6267\u884C\u6B65\u9AA4\u5747\u901A\u8FC7") + '</div><div class="report-healthy__hint">\u8BE6\u7EC6\u8BF7\u6C42\u4E0E\u54CD\u5E94\u8BF7\u5728\u5DE6\u4FA7\u6B65\u9AA4\u5217\u8868\u67E5\u770B\uFF1B\u5B8C\u6574\u62A5\u544A\u53EF\u901A\u8FC7\u9876\u90E8\u6309\u94AE\u590D\u5236\u3002</div></div>';
     node.innerHTML = '<div class="report-content"><div class="report-overview"><div class="report-overview__top"><div><div class="report-overview__eyebrow">\u5F53\u524D\u6267\u884C\u6982\u89C8</div><div class="report-overview__title">' + esc(report.title || "\u6D4B\u8BD5\u62A5\u544A") + '</div></div><span class="report-status ' + statusClass + '">' + statusText + '</span></div><div class="report-overview__meta"><span>' + esc(report.environment || "\u9ED8\u8BA4\u73AF\u5883") + "</span><span>" + modeText + "</span><span>\u5DF2\u6267\u884C " + progressText + '</span></div></div><div class="report-metrics"><div class="report-metric"><span class="report-metric__label">\u901A\u8FC7</span><strong class="report-metric__value report-metric__value--passed">' + summary.passedSteps + '</strong></div><div class="report-metric"><span class="report-metric__label">\u5931\u8D25</span><strong class="report-metric__value ' + (hasFailure ? "report-metric__value--failed" : "") + '">' + summary.failedSteps + "</strong></div>" + (summary.skippedSteps > 0 ? '<div class="report-metric"><span class="report-metric__label">\u8DF3\u8FC7</span><strong class="report-metric__value">' + summary.skippedSteps + "</strong></div>" : "") + '<div class="report-metric"><span class="report-metric__label">\u603B\u8017\u65F6</span><strong class="report-metric__value report-metric__duration">' + esc(summary.totalDurationFmt) + '</strong></div></div><div class="report-progress"><div class="report-progress__labels"><span>\u6267\u884C\u8FDB\u5EA6</span><strong>' + progressText + " \xB7 " + esc(summary.passRate) + '</strong></div><div class="report-progress__track' + (hasFailure ? " report-progress__track--failed" : "") + '"><span style="width:' + (summary.totalSteps ? summary.executedSteps / summary.totalSteps * 100 : 0) + '%"></span></div></div>' + diagnosisHtml + "</div>";
     return report;
   }

@@ -150,7 +150,11 @@ function checkVersionLock(filePath) {
             fix: "用当前版本 CLI 重新 init 刷新版本锁"
         });
     } else {
+        // 判失配的范围与 init 的 shouldRefreshFramework 对齐（锁声明 files 之内的框架文件）：
+        // 锁内出现框架之外的 sha256 条目时失配可自愈（重新 init 不刷新），不应 FAIL 卡死
+        const declaredFiles = files ? new Set(Object.values(files)) : null;
         for (const [fileName, expected] of Object.entries(sha256)) {
+            if (declaredFiles && !declaredFiles.has(fileName)) continue;
             const target = path.join(path.dirname(filePath), fileName);
             if (!fs.existsSync(target)) continue;
             if (sha256Of(target) !== expected) {

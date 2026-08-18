@@ -49,19 +49,22 @@ function waitForOutput(child, pattern) {
     const bufferOf = serveOutputBuffers.get(child);
     return new Promise((resolve, reject) => {
         if (bufferOf().includes(pattern)) { resolve(); return; }
-        const timer = setTimeout(() => {
+        let settled = false;
+        const finish = (settle, value) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
             child.stdout.off("data", onData);
-            reject(new Error("serve 启动超时"));
-        }, 10000);
-        const onData = () => {
-            if (bufferOf().includes(pattern)) {
-                clearTimeout(timer);
-                child.stdout.off("data", onData);
-                resolve();
-            }
+            child.off("exit", onExit);
+            settle(value);
         };
+        const timer = setTimeout(() => finish(reject, new Error("serve 启动超时")), 10000);
+        const onData = () => {
+            if (bufferOf().includes(pattern)) finish(resolve);
+        };
+        const onExit = (code) => finish(reject, new Error(`serve 提前退出: ${code}`));
         child.stdout.on("data", onData);
-        child.on("exit", (code) => { clearTimeout(timer); reject(new Error(`serve 提前退出: ${code}`)); });
+        child.on("exit", onExit);
     });
 }
 
@@ -351,9 +354,18 @@ test("serve：--env 指定未知环境时报错退出，不静默回退 envs[0]"
         const result = await new Promise((resolve, reject) => {
             const child = spawn(process.execPath, [cli, "serve", "--config", path.join(dir, "scenario.config.js"), "--env", "prod-typo", "--port", String(servePort)], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
             let stderr = "";
+            // 看门狗：若修复被回退（未知环境静默回退 envs[0]），serve 会一直存活而 close 永不触发，
+            // 没有超时保护时表现为整个测试文件挂死而非快速失败
+            const timer = setTimeout(() => {
+                child.kill();
+                reject(new Error("未知环境用例超时：serve 未按预期退出（可能静默回退了 envs[0]）"));
+            }, 10000);
             child.stderr.on("data", (chunk) => { stderr += chunk; });
             child.on("error", reject);
-            child.on("close", (code) => resolve({ code, stderr }));
+            child.on("close", (code) => {
+                clearTimeout(timer);
+                resolve({ code, stderr });
+            });
         });
         assert.equal(result.code, 1, "未知环境应导致非零退出码");
         assert.match(result.stderr, /未找到环境 prod-typo/);

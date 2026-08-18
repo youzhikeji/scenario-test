@@ -40,7 +40,7 @@ try {
         await page.route(`http://127.0.0.1:${port}/health?*`, (route) => route.fulfill({
             status: 200,
             contentType: "application/json",
-            body: JSON.stringify({ status: "UP" })
+            body: JSON.stringify({ status: "UP", padding: "x".repeat(70000) })
         }));
         await page.route(`http://127.0.0.1:${port}/slow?*`, async (route) => {
             await new Promise((resolve) => setTimeout(resolve, 5000));
@@ -94,12 +94,17 @@ try {
         // 复制功能：mock 剪贴板后验证报告 MD/JSON 与步骤复制的反馈
         await page.evaluate(() => {
             Object.defineProperty(navigator, "clipboard", {
-                value: { writeText: async () => {} },
+                value: { writeText: async (text) => { window.__lastCopiedText = text; } },
                 configurable: true
             });
         });
         await page.locator("#copyReportMarkdownBtn").click();
         await page.waitForFunction(() => document.querySelector("#copyReportMarkdownBtn").textContent.includes("已复制"));
+        // 大响应体（>64K）：截断只影响展示层——复制 MD 保留完整内容，步骤详情带截断标记
+        const copiedMd = await page.evaluate(() => window.__lastCopiedText);
+        assert.ok(copiedMd && copiedMd.length > 65536, `复制 MD 应包含完整大响应体（实际 ${copiedMd && copiedMd.length} 字符）`);
+        assert.ok(!copiedMd.includes("展示已截断"), "复制 MD 不应受展示截断影响");
+        assert.match(await page.locator("#stepsList .details-panel").first().textContent(), /展示已截断/, "步骤详情的大响应体应有截断标记");
         await page.locator("#copyReportMarkdownBtn").click();
         await page.locator("#copyReportJsonBtn").click();
         await page.waitForFunction(() => document.querySelector("#copyReportJsonBtn").textContent.includes("已复制"));

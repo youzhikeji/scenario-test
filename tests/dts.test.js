@@ -151,7 +151,13 @@ test("d.ts 形状与运行时实际 API 一致（防手写形状无声漂移）"
         const start = dts.indexOf(`export interface ${name} {`);
         assert.ok(start >= 0, `d.ts 缺少 interface ${name}`);
         const body = dts.slice(start, dts.indexOf("\n}", start));
-        return new Set([...body.matchAll(/^\s+(\w+)\?*[(:]/gm)].map((item) => item[1]));
+        const members = new Set();
+        for (const line of body.split("\n")) {
+            if (/^\s*(\/\/|\*|\/\*)/.test(line)) continue;
+            const match = /^\s+(\w+)\?*[(:]/.exec(line);
+            if (match) members.add(match[1]);
+        }
+        return members;
     }
 
     // 1) Engine ↔ createEngine() 实际方法集（双向：不允许多声明也不允许漏声明）
@@ -162,11 +168,16 @@ test("d.ts 形状与运行时实际 API 一致（防手写形状无声漂移）"
     assert.deepEqual([...declaredEngine].filter((name) => !engineMethods.has(name)), [], "d.ts Engine 声明了 engine 不存在的方法");
 
     // 2) ScenarioApp ↔ src/browser/app.js createApp 返回形状（app 需 DOM，静态提取源码 return 块）
+    // 从 createApp 函数体内定位 return 块（app.js 有多个 return 块，lastIndexOf 会取错），
+    // 块内按 8 空格缩进只取顶层属性名，纯格式重构（如 return ({ ... })）不应让防线误报
     const appSource = fs.readFileSync(path.join(root, "src/browser/app.js"), "utf8");
-    const returnIndex = appSource.lastIndexOf("return {");
-    assert.ok(returnIndex > 0, "app.js 缺少 createApp 返回块");
-    const returnBlock = appSource.slice(returnIndex, appSource.indexOf("};", returnIndex));
-    const appMethods = new Set([...returnBlock.matchAll(/(?:^|\n)\s+(\w+)[,:(]/g)].map((item) => item[1]));
+    const fnIndex = appSource.indexOf("export function createApp");
+    assert.ok(fnIndex > 0, "app.js 缺少 export function createApp");
+    const bodyStart = appSource.indexOf("return", fnIndex);
+    assert.ok(bodyStart > 0, "app.js createApp 缺少 return 块");
+    const braceStart = appSource.indexOf("{", bodyStart);
+    const returnBlock = appSource.slice(bodyStart, appSource.indexOf("};", braceStart));
+    const appMethods = new Set([...returnBlock.matchAll(/(?:^|\n)\s{8}(\w+)[,:(]/g)].map((item) => item[1]));
     const declaredApp = interfaceMembers("ScenarioApp");
     assert.deepEqual([...appMethods].filter((name) => !declaredApp.has(name)), [], "createApp 实际方法未在 d.ts ScenarioApp 声明");
     assert.deepEqual([...declaredApp].filter((name) => !appMethods.has(name)), [], "d.ts ScenarioApp 声明了 createApp 不存在的方法");

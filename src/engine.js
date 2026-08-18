@@ -535,8 +535,10 @@ export function createEngine(engineOptions = {}) {
         const executed = results.length - skipped;
         const failed = results.filter((item) => !item.skipped && !item.passed).length;
         const passedSteps = results.filter((item) => !item.skipped && item.passed).length;
-        // 取消（signal 已中止且未执行到位）单列 CANCELLED，避免 status=PASSED 与 passed=false 并存的矛盾报告
-        const cancelled = Boolean(runOptions.signal?.aborted) && results.length < scenario.steps.length;
+        // 取消单列 CANCELLED：任一步骤被取消即判 CANCELLED，或 signal 中止且未执行到位（步骤间取消）。
+        // 最后一步执行中被取消时 results 已满员，仅看长度会误判 FAILED——与浏览器 buildOverallReport 对齐
+        const cancelled = results.some((item) => item.cancelled)
+            || (Boolean(runOptions.signal?.aborted) && results.length < scenario.steps.length);
         const status = cancelled ? "CANCELLED"
             : failed > 0 ? "FAILED"
             : (executed === 0 ? "SKIPPED" : "PASSED");
