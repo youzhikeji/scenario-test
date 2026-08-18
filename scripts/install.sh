@@ -272,17 +272,17 @@ echo ""
 echo -e "${YELLOW}3. 命令行执行场景：${NC}"
 if [ "$USE_NPM" = "true" ]; then
     echo -e "${GRAY}   # 执行所有非 manual 场景${NC}"
-    echo -e "${CYAN}   npx @yc_yzkj/scenario-test --config $CONFIG_RELATIVE --env local --all${NC}"
+    echo -e "${CYAN}   npx @yc_yzkj/scenario-test run --config $CONFIG_RELATIVE --env local --all${NC}"
     echo ""
     echo -e "${GRAY}   # 执行指定场景${NC}"
-    echo -e "${CYAN}   npx @yc_yzkj/scenario-test --config $CONFIG_RELATIVE --env local --scenario <场景ID>${NC}"
+    echo -e "${CYAN}   npx @yc_yzkj/scenario-test run --config $CONFIG_RELATIVE --env local --scenario <场景ID>${NC}"
 else
     CLI_RELATIVE="$TARGET_DIR/.scenario-test/scenario-test-cli.cjs"
     echo -e "${GRAY}   # 执行所有非 manual 场景${NC}"
-    echo -e "${CYAN}   node $CLI_RELATIVE --config $CONFIG_RELATIVE --env local --all${NC}"
+    echo -e "${CYAN}   node $CLI_RELATIVE run --config $CONFIG_RELATIVE --env local --all${NC}"
     echo ""
     echo -e "${GRAY}   # 执行指定场景${NC}"
-    echo -e "${CYAN}   node $CLI_RELATIVE --config $CONFIG_RELATIVE --env local --scenario <场景ID>${NC}"
+    echo -e "${CYAN}   node $CLI_RELATIVE run --config $CONFIG_RELATIVE --env local --scenario <场景ID>${NC}"
 fi
 echo ""
 

@@ -371,9 +371,9 @@ async function loadPlugins(config, configDir, options = {}) {
             absolutePath = validatePath(configDir, pluginPath);
         } catch (error) {
             if (options.allowExternalPlugins) {
-                // 明确允许外部插件
+                // 明确允许外部插件：相对路径仍以配置目录为基准（与未加 flag 时的解析基准一致）
                 console.warn(`⚠️  加载外部插件: ${pluginPath}`);
-                absolutePath = path.resolve(pluginPath);
+                absolutePath = path.isAbsolute(pluginPath) ? pluginPath : path.resolve(configDir, pluginPath);
             } else {
                 throw new Error(
                     `插件路径不安全: ${pluginPath}\n` +
@@ -591,6 +591,14 @@ function proxyTransport(targetUrl) {
     return null;
 }
 
+// RFC 7230 §6.1：Connection 头点名的字段同样是逐跳的，需随静态名单一并剔除
+function connectionNamedHeaders(connectionValue) {
+    return String(connectionValue || "")
+        .split(",")
+        .map((item) => item.trim().toLowerCase())
+        .filter(Boolean);
+}
+
 function proxyRequest(request, response, targetUrl) {
     const transport = proxyTransport(targetUrl);
     if (!transport) {
@@ -602,8 +610,10 @@ function proxyRequest(request, response, targetUrl) {
         return;
     }
     const headers = {};
+    const requestCloseNamed = new Set(connectionNamedHeaders(request.headers.connection));
     for (const [name, value] of Object.entries(request.headers)) {
-        if (!HOP_BY_HOP_HEADERS.has(String(name).toLowerCase())) headers[name] = value;
+        const lower = String(name).toLowerCase();
+        if (!HOP_BY_HOP_HEADERS.has(lower) && !requestCloseNamed.has(lower)) headers[name] = value;
     }
     let upstream;
     try {
@@ -615,10 +625,13 @@ function proxyRequest(request, response, targetUrl) {
             // 与 vite/webpack-dev-server 的 proxy secure:false 同语义，放宽上游证书校验
             ...(transport === https ? { rejectUnauthorized: false } : {})
         }, (upstreamResponse) => {
-            // 响应方向同样剔除 hop-by-hop 头，避免把上游连接语义（transfer-encoding/keep-alive 等）透传给浏览器
+            // 响应方向同样剔除 hop-by-hop 头，避免把上游连接语义（transfer-encoding/keep-alive 等）透传给浏览器；
+            // Connection 点名的自定义字段同样剔除
             const responseHeaders = {};
+            const upstreamCloseNamed = new Set(connectionNamedHeaders(upstreamResponse.headers.connection));
             for (const [name, value] of Object.entries(upstreamResponse.headers)) {
-                if (!HOP_BY_HOP_HEADERS.has(String(name).toLowerCase())) responseHeaders[name] = value;
+                const lower = String(name).toLowerCase();
+                if (!HOP_BY_HOP_HEADERS.has(lower) && !upstreamCloseNamed.has(lower)) responseHeaders[name] = value;
             }
             response.writeHead(upstreamResponse.statusCode || 502, responseHeaders);
             upstreamResponse.pipe(response);

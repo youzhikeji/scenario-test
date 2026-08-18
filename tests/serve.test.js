@@ -402,3 +402,47 @@ test("serve：Host 头非本机回环时返回 403，阻断 DNS rebinding 读取
         fs.rmSync(project, { recursive: true, force: true });
     }
 });
+
+test("serve 代理双向剔除 Connection 头点名的自定义字段（RFC 7230 §6.1）", async () => {
+    let sawRequestHopHeader = "unset";
+    const mock = http.createServer((request, response) => {
+        sawRequestHopHeader = request.headers["x-req-hop"] === undefined ? null : request.headers["x-req-hop"];
+        response.writeHead(200, { "Content-Type": "application/json", "Connection": "X-Custom-Hop", "X-Custom-Hop": "leak" });
+        response.end("{}");
+    });
+    await new Promise((resolve) => mock.listen(0, "127.0.0.1", resolve));
+    const mockPort = mock.address().port;
+
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-serve-conn-"));
+    const dir = path.join(project, "scenario-test");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+        envs: [{ key: "local", name: "本地", baseUrl: "http://127.0.0.1:${mockPort}" }],
+        defaultEnvKey: "local",
+        scenarios: []
+    }));`, "utf8");
+
+    const servePort = await freePort();
+    const child = spawn(process.execPath, [cli, "serve", "--config", path.join(dir, "scenario.config.js"), "--port", String(servePort)], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
+    try {
+        await waitForOutput(child, "场景测试工作台");
+        const result = await new Promise((resolve, reject) => {
+            const request = http.request(
+                { host: "127.0.0.1", port: servePort, path: "/api/hop", headers: { "Connection": "X-Req-Hop", "X-Req-Hop": "1" } },
+                (response) => {
+                    response.resume();
+                    response.on("end", () => resolve({ status: response.statusCode, hop: response.headers["x-custom-hop"] ?? null }));
+                }
+            );
+            request.on("error", reject);
+            request.end();
+        });
+        assert.equal(result.status, 200);
+        assert.equal(result.hop, null, "响应方向：Connection 点名的字段不应透传给浏览器");
+        assert.equal(sawRequestHopHeader, null, "请求方向：Connection 点名的字段不应转发给上游");
+    } finally {
+        child.kill();
+        await new Promise((resolve) => mock.close(resolve));
+        fs.rmSync(project, { recursive: true, force: true });
+    }
+});

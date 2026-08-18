@@ -443,7 +443,7 @@ const legacyView = (function () {
                         '<div class="flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 text-[11px] font-bold shadow-sm ' + seqCls + '">' + seqNum + '</div>' +
                         '<span class="select-text text-sm ' + nameCls + ' font-semibold truncate transition-colors" title="' + esc(s.name) + '">' + esc(s.name) + '</span>' +
                         '<div class="hidden sm:flex items-center space-x-1.5 bg-slate-50 px-2 py-0.5 rounded border border-slate-100 flex-shrink-0 max-w-[50%]">' +
-                            '<span class="text-[10px] font-bold ' + methodColor + ' uppercase tracking-wider">' + s.method + '</span>' +
+                            '<span class="text-[10px] font-bold ' + methodColor + ' uppercase tracking-wider">' + esc(String(s.method)) + '</span>' +
                             '<span class="text-slate-300">|</span>' +
                             '<span class="select-text text-[12px] text-slate-500 font-mono truncate" title="' + esc(s.path) + '">' + esc(s.path) + '</span>' +
                         '</div>' +
@@ -452,7 +452,7 @@ const legacyView = (function () {
                         '<button type="button" data-copy-step="' + i + '" class="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-bold text-slate-600 hover:border-emerald-300 hover:text-emerald-700" title="复制步骤标题与接口路径">复制</button>' +
                         '<button type="button" data-adhoc-step="' + i + '" class="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-bold text-slate-600 hover:border-emerald-300 hover:text-emerald-700">调试</button>' +
                         stepActions +
-                        '<span class="text-[12px] font-bold font-mono ' + statusCls + ' px-1.5 py-0.5 rounded border">' + s.status + '</span>' +
+                        '<span class="text-[12px] font-bold font-mono ' + statusCls + ' px-1.5 py-0.5 rounded border">' + esc(String(s.status)) + '</span>' +
                         '<span class="' + timeCls + ' text-[12px] font-mono w-16 text-right">' + fmt(s.duration) + '</span>' +
                         '<svg class="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>' +
                     '</div>' +
@@ -460,7 +460,7 @@ const legacyView = (function () {
                 '<div class="' + detailPanelCls + '">' +
                     '<div class="sm:hidden mb-3 pb-3 border-b border-slate-200">' +
                          '<div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1">接口地址</div>' +
-                         '<div class="flex items-center space-x-2"><span class="text-xs font-bold ' + methodColor + '">' + s.method + '</span><span class="text-xs font-mono break-all">' + esc(s.path) + '</span></div>' +
+                         '<div class="flex items-center space-x-2"><span class="text-xs font-bold ' + methodColor + '">' + esc(String(s.method)) + '</span><span class="text-xs font-mono break-all">' + esc(s.path) + '</span></div>' +
                     '</div>' +
                     errorHtml +
                     '<div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-0 md:divide-x divide-slate-200 py-3">' +

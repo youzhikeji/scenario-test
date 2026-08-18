@@ -48,8 +48,8 @@ function delay(milliseconds, signal) {
 }
 
 // 超时错误：带结构化标记，供调用方精确识别超时（不依赖匹配本地化文案）
-function createTimeoutError(timeoutMs) {
-    const error = new Error(timeoutErrorMessage(timeoutMs));
+function createTimeoutError(timeoutMs, message) {
+    const error = new Error(message || timeoutErrorMessage(timeoutMs));
     error.scenarioTimedOut = true;
     return error;
 }
@@ -443,9 +443,10 @@ export function createEngine(engineOptions = {}) {
             for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
                 if (options.signal?.aborted) throw abortReason(options.signal);
 
-                // ✅ 检查总耗时
+                // ✅ 检查总耗时（同样标记为结构化超时，报告状态为 TIMEOUT 而非 ERROR）
                 if (retry && (now() - retryStartTime) > maxElapsedMs) {
-                    throw new Error(
+                    throw createTimeoutError(
+                        maxElapsedMs,
                         `重试超时: 已尝试 ${attempt - 1} 次，耗时超过 ${maxElapsedMs}ms\n` +
                         `提示: 考虑调整 retryUntil.maxElapsedMs 或检查接口响应`
                     );
@@ -490,7 +491,7 @@ export function createEngine(engineOptions = {}) {
             const timedOut = !cancelled && Boolean(error?.scenarioTimedOut || context?.timedOut);
             const errorMessage = cancelled
                 ? "用户已取消执行"
-                : (timedOut ? (context?.timeoutMs ? timeoutErrorMessage(context.timeoutMs) : "请求超时") : (error?.message || "请求执行失败"));
+                : (timedOut ? (error?.message?.includes("超时") ? error.message : (context?.timeoutMs ? timeoutErrorMessage(context.timeoutMs) : "请求超时")) : (error?.message || "请求执行失败"));
             const method = (context && context.method)
                 || String(step.method || (step.request && step.request.method) || "GET").toUpperCase();
             const path = (context && context.path) || resolveString(step.path || "", runtime);

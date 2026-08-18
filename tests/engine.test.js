@@ -655,3 +655,27 @@ test("响应体按 content-type charset 解码（GBK）", async () => {
     assert.equal(report.passed, true, JSON.stringify(report.results[0].assertions));
     assert.equal(report.vars.city, "中文");
 });
+
+test("重试总时长超限：报告状态为 TIMEOUT 并保留重试超时消息", async () => {
+    let calls = 0;
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        fetch: async () => {
+            calls += 1;
+            return jsonResponse({ code: 500 }, 500);
+        }
+    });
+    const scenario = defineScenario({
+        name: "重试超时",
+        steps: [{
+            name: "一直失败",
+            path: "flaky",
+            retryUntil: { maxAttempts: 50, intervalMs: 100, maxElapsedMs: 150 }
+        }]
+    });
+    const report = await engine.runScenario(scenario);
+    assert.equal(report.results[0].status, "TIMEOUT");
+    assert.equal(report.results[0].timedOut, true);
+    assert.match(report.results[0].error, /重试超时/);
+    assert.ok(calls < 50, `应在总时长超限后停止重试（实际请求 ${calls} 次）`);
+});
