@@ -347,7 +347,8 @@ const workbenchView = (function () {
     function renderPendingSteps(scenarioSteps, startIndex) {
         if (!Array.isArray(scenarioSteps) || startIndex >= scenarioSteps.length) return '';
         return scenarioSteps.slice(startIndex).map(function (step, idx) {
-            var seqNum = startIndex + idx + 1;
+            var stepIndex = startIndex + idx;
+            var seqNum = stepIndex + 1;
             var method = String(step.method || 'GET').toUpperCase();
             var stepPath = step.path || '';
             var methodColor = { GET: 'text-emerald-600', POST: 'text-orange-500', PUT: 'text-amber-600', DELETE: 'text-rose-600', PATCH: 'text-purple-600' }[method] || 'text-slate-600';
@@ -358,34 +359,35 @@ const workbenchView = (function () {
             if (extractCount) tags += '<span class="px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-700 border border-zinc-200 text-[10px] font-bold ml-1">' + extractCount + ' 提取</span>';
             var reqBody = step.request && step.request.body ? esc(typeof step.request.body === 'string' ? step.request.body : JSON.stringify(step.request.body, null, 2)) : '';
 
-            return '<li class="hover:bg-slate-50/60 group transition-all duration-150 border-b border-slate-100/80" data-passed="pending" data-search="' + esc(((step.name || '') + ' ' + method + ' ' + stepPath).toLowerCase()) + '">' +
-                '<div class="px-4 py-3 flex items-center justify-between cursor-pointer select-none" onclick="window.__R.toggle(this, event)">' +
+            return '<li class="hover:bg-slate-50/60 group transition-all duration-150 border-b border-slate-100" data-passed="pending" data-step-idx="' + stepIndex + '" data-search="' + esc(((step.name || '') + ' ' + method + ' ' + stepPath).toLowerCase()) + '">' +
+                '<div class="px-4 py-2.5 flex items-center justify-between cursor-pointer select-none" onclick="window.__R.toggle(this, event)">' +
                     '<div class="flex items-center space-x-3 min-w-0 flex-1 pr-4">' +
                         '<div class="flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 text-[11px] font-bold bg-slate-200 text-slate-600 shadow-inner">' + seqNum + '</div>' +
                         '<span class="text-sm text-slate-800 font-semibold truncate group-hover:text-slate-950" title="' + esc(step.name || '') + '">' + esc(step.name || '未命名步骤') + '</span>' +
-                        '<div class="hidden sm:flex items-center space-x-1.5 bg-slate-100/70 px-2 py-0.5 rounded-md border border-slate-200/60 flex-shrink-0 max-w-[55%]">' +
-                            '<span class="text-[10px] font-extrabold ' + methodColor + ' uppercase tracking-wider">' + method + '</span>' +
+                        '<div class="hidden sm:flex items-center space-x-1.5 bg-slate-100/70 px-2 py-0.5 rounded border border-slate-200/60 flex-shrink-0 max-w-[55%]">' +
+                            '<span class="text-[10px] font-extrabold ' + methodColor + ' uppercase tracking-wider font-mono">' + method + '</span>' +
                             '<span class="text-slate-300">|</span>' +
                             '<span class="text-[11px] text-slate-600 font-mono truncate" title="' + esc(stepPath) + '">' + esc(stepPath) + '</span>' +
                         '</div>' +
                     '</div>' +
-                    '<div class="flex items-center space-x-2.5 flex-shrink-0">' +
+                    '<div class="flex items-center space-x-2 flex-shrink-0">' +
                         tags +
-                        '<button type="button" data-copy-step="' + (seqNum - 1) + '" class="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 hover:border-emerald-300 hover:text-emerald-700 shadow-sm" title="复制步骤标题与接口路径">复制</button>' +
-                        '<button type="button" data-adhoc-step="' + (seqNum - 1) + '" class="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 shadow-sm">调试</button>' +
-                        '<span class="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200/50">待执行</span>' +
+                        '<button type="button" data-copy-step="' + stepIndex + '" class="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900" title="复制步骤标题与接口路径">复制</button>' +
+                        '<button type="button" data-curl-step="' + stepIndex + '" class="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900" title="复制为 cURL 命令行">cURL</button>' +
+                        '<button type="button" data-adhoc-step="' + stepIndex + '" class="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900">调试</button>' +
+                        '<span class="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200/50">待执行</span>' +
                         '<svg class="w-4 h-4 text-slate-400 group-hover:text-slate-600 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>' +
                     '</div>' +
                 '</div>' +
-                '<div class="details-panel px-5 bg-slate-50/70 border-t border-slate-200/60 text-[13px]">' +
-                    '<div class="py-4 space-y-3">' +
+                '<div class="details-panel px-4 bg-slate-50/70 border-t border-slate-200/60 text-[13px]">' +
+                    '<div class="py-3 space-y-3">' +
                         (reqBody
                             ? '<div>' +
                                 '<div class="flex items-center justify-between text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1.5">' +
                                     '<span class="flex items-center"><div class="w-1.5 h-1.5 bg-slate-400 mr-2 rounded-full"></div>请求体</span>' +
-                                    '<span class="text-slate-400 font-mono font-normal">JSON</span>' +
+                                    '<div class="flex items-center gap-2"><span class="text-slate-400 font-mono font-normal">JSON</span><button type="button" class="code-copy-btn text-[10px] text-slate-400 hover:text-slate-200" data-code-copy="pending-req-body-' + stepIndex + '">复制</button></div>' +
                                 '</div>' +
-                                '<pre class="bg-[#1e293b] p-3.5 rounded-xl text-slate-200 overflow-x-auto font-mono text-[12px] leading-relaxed shadow-sm border border-slate-700/50">' + reqBody + '</pre>' +
+                                '<pre id="pending-req-body-' + stepIndex + '" class="bg-slate-800 p-2.5 rounded text-slate-200 overflow-x-auto font-mono text-[11px] leading-relaxed shadow-inner border border-slate-700/50">' + reqBody + '</pre>' +
                             '</div>'
                             : '<div class="text-xs text-slate-400 py-1">无请求体参数</div>') +
                     '</div>' +
@@ -399,7 +401,7 @@ const workbenchView = (function () {
             var skipped = s.skipped;
             var seqNum = i + 1;
             var seqCls = skipped ? 'bg-slate-400 text-white' : (ok ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white');
-            var nameCls = ok ? 'text-slate-700 group-hover:text-emerald-700' : 'text-rose-800';
+            var nameCls = ok ? 'text-slate-700 group-hover:text-slate-950' : 'text-rose-800 font-bold';
             var statusCls = skipped ? 'text-slate-600 bg-slate-100 border-slate-200' : (ok ? 'text-emerald-600 bg-emerald-50 border-emerald-100' : 'text-rose-600 bg-rose-100 border-rose-200 shadow-sm');
             var timeCls = ok ? 'text-slate-400' : 'text-rose-400';
             var bgCls = ok ? 'hover:bg-slate-50/50' : 'bg-rose-50/20';
@@ -412,23 +414,50 @@ const workbenchView = (function () {
 
             var errorHtml = '';
             if (!ok && s.error) {
-                errorHtml = '<div class="my-2 p-2 bg-rose-50 rounded border border-rose-200 flex items-center space-x-2">' +
-                    '<svg class="w-4 h-4 text-rose-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>' +
-                    '<span class="text-rose-800 font-bold text-[12px]">断言失败:</span>' +
-                    '<span class="text-rose-600 text-[12px] font-mono break-all">' + esc(s.error) + '</span></div>';
+                var isNetworkErr = /Failed to fetch|NetworkError|ECONNREFUSED|ENOTFOUND/i.test(s.error);
+                if (isNetworkErr) {
+                    errorHtml = '<div class="my-2 p-2.5 bg-rose-50 rounded border border-rose-200 flex items-start space-x-2.5">' +
+                        '<svg class="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>' +
+                        '<div class="text-xs text-rose-800">' +
+                            '<div class="font-bold">网络连接失败 (Failed to fetch)</div>' +
+                            '<div class="text-rose-600 mt-0.5">目标服务未响应。请检查本地接口服务（如 ' + esc(s.path) + '）是否已启动，或点击右上角「配置参数」调整地址。</div>' +
+                        '</div>' +
+                    '</div>';
+                } else {
+                    errorHtml = '<div class="my-2 p-2 bg-rose-50 rounded border border-rose-200 flex items-center space-x-2">' +
+                        '<svg class="w-4 h-4 text-rose-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>' +
+                        '<span class="text-rose-800 font-bold text-[12px]">失败:</span>' +
+                        '<span class="text-rose-600 text-[12px] font-mono break-all">' + esc(s.error) + '</span></div>';
+                }
             }
 
             var assertHtml = '';
             if (s.assertions && s.assertions.length) {
+                var failedList = s.assertions.filter(function (a) { return !a.passed; });
+                var diffHtml = '';
+                if (failedList.length > 0) {
+                    diffHtml = '<div class="mt-2 space-y-1.5">' + failedList.map(function (a) {
+                        return '<div class="p-2 rounded bg-rose-50/70 border border-rose-200 text-xs">' +
+                            '<div class="font-bold text-rose-700">' + esc(a.name) + '</div>' +
+                            '<div class="mt-1.5 grid grid-cols-1 sm:grid-cols-2 gap-2 font-mono text-[11px]">' +
+                                '<div class="p-1.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800"><span class="font-bold text-[10px] uppercase block mb-0.5">预期值 (Expected)</span>' + esc(stringify(a.expected)) + '</div>' +
+                                '<div class="p-1.5 rounded bg-rose-50 border border-rose-200 text-rose-800"><span class="font-bold text-[10px] uppercase block mb-0.5">实际值 (Actual)</span>' + esc(stringify(a.actual)) + '</div>' +
+                            '</div>' +
+                        '</div>';
+                    }).join('') + '</div>';
+                }
+
                 assertHtml = '<div class="py-3 border-t border-slate-200 mt-2">' +
-                    '<div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-2">断言结果</div>' +
+                    '<div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-2">断言结果 (' + (s.assertions.length - failedList.length) + '/' + s.assertions.length + ')</div>' +
                     '<div class="flex flex-wrap gap-2">' + s.assertions.map(function (a) {
                         var ac = a.passed ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-rose-50 text-rose-700 border-rose-100';
                         var ap = a.passed ? 'M5 13l4 4L19 7' : 'M6 18L18 6M6 6l12 12';
                         return '<div class="flex items-center px-2 py-1 ' + ac + ' rounded border text-[12px] font-medium" title="Expected: ' + esc(stringify(a.expected)) + ' \nActual: ' + esc(stringify(a.actual)) + '">' +
                             '<svg class="w-3.5 h-3.5 mr-1.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="' + ap + '"></path></svg>' +
                             esc(a.name) + '</div>';
-                    }).join('') + '</div></div>';
+                    }).join('') + '</div>' +
+                    diffHtml +
+                    '</div>';
             }
 
             var bodyColor = ok ? 'text-emerald-400' : 'text-rose-400';
@@ -439,20 +468,21 @@ const workbenchView = (function () {
                 ? '<span class="step-run-actions"><button type="button" data-step-action="rewind" data-step-index="' + i + '" title="仅回退测试运行时与报告，不撤销已发出的业务请求">回退</button><button type="button" data-step-action="rerun" data-step-index="' + i + '" title="从本步骤执行前的变量快照重新执行">重跑</button></span>'
                 : '';
 
-            return '<li class="' + bgCls + ' group transition-colors" data-passed="' + ok + '" data-skipped="' + skipped + '" data-search="' + esc((s.name + ' ' + s.method + ' ' + s.path).toLowerCase()) + '">' +
+            return '<li class="' + bgCls + ' group transition-colors" data-passed="' + ok + '" data-skipped="' + skipped + '" data-step-idx="' + i + '" data-search="' + esc((s.name + ' ' + s.method + ' ' + s.path).toLowerCase()) + '">' +
                 '<div class="px-4 py-2.5 flex items-center justify-between cursor-pointer" onclick="window.__R.toggle(this, event)">' +
                     '<div class="flex items-center space-x-3 w-[70%] lg:w-[80%]">' +
                         '<div class="flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 text-[11px] font-bold shadow-sm ' + seqCls + '">' + seqNum + '</div>' +
                         '<span class="select-text text-sm ' + nameCls + ' font-semibold truncate transition-colors" title="' + esc(s.name) + '">' + esc(s.name) + '</span>' +
                         '<div class="hidden sm:flex items-center space-x-1.5 bg-slate-50 px-2 py-0.5 rounded border border-slate-100 flex-shrink-0 max-w-[50%]">' +
-                            '<span class="text-[10px] font-bold ' + methodColor + ' uppercase tracking-wider">' + esc(String(s.method)) + '</span>' +
+                            '<span class="text-[10px] font-bold ' + methodColor + ' uppercase tracking-wider font-mono">' + esc(String(s.method)) + '</span>' +
                             '<span class="text-slate-300">|</span>' +
                             '<span class="select-text text-[12px] text-slate-500 font-mono truncate" title="' + esc(s.path) + '">' + esc(s.path) + '</span>' +
                         '</div>' +
                     '</div>' +
-                    '<div class="flex items-center space-x-4 flex-shrink-0">' +
-                        '<button type="button" data-copy-step="' + i + '" class="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-bold text-slate-600 hover:border-emerald-300 hover:text-emerald-700" title="复制步骤标题与接口路径">复制</button>' +
-                        '<button type="button" data-adhoc-step="' + i + '" class="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-bold text-slate-600 hover:border-emerald-300 hover:text-emerald-700">调试</button>' +
+                    '<div class="flex items-center space-x-2 flex-shrink-0">' +
+                        '<button type="button" data-copy-step="' + i + '" class="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-bold text-slate-600 hover:border-slate-300 hover:text-slate-900" title="复制步骤标题与接口路径">复制</button>' +
+                        '<button type="button" data-curl-step="' + i + '" class="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-bold text-slate-600 hover:border-slate-300 hover:text-slate-900" title="复制为 cURL 命令行">cURL</button>' +
+                        '<button type="button" data-adhoc-step="' + i + '" class="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-bold text-slate-600 hover:border-slate-300 hover:text-slate-900">调试</button>' +
                         stepActions +
                         '<span class="text-[12px] font-bold font-mono ' + statusCls + ' px-1.5 py-0.5 rounded border">' + esc(String(s.status)) + '</span>' +
                         '<span class="' + timeCls + ' text-[12px] font-mono w-16 text-right">' + fmt(s.duration) + '</span>' +
@@ -467,12 +497,12 @@ const workbenchView = (function () {
                     errorHtml +
                     '<div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-0 md:divide-x divide-slate-200 py-3">' +
                         '<div class="md:pr-6 space-y-3">' +
-                            (reqHeaders ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 bg-slate-300 mr-2 rounded-full"></div>请求头</div><pre class="bg-slate-800 p-2.5 rounded text-slate-300 overflow-x-auto font-mono leading-tight shadow-inner">' + reqHeaders + '</pre></div>' : '') +
-                            (reqBody ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 bg-emerald-400 mr-2 rounded-full"></div>请求体</div><pre class="bg-slate-800 p-2.5 rounded ' + bodyColor + ' overflow-x-auto font-mono leading-tight shadow-inner">' + reqBody + '</pre></div>' : '') +
+                            (reqHeaders ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center justify-between"><span class="flex items-center"><div class="w-1 h-3 bg-slate-300 mr-2 rounded-full"></div>请求头</span><button type="button" class="code-copy-btn text-[10px] text-slate-400 hover:text-slate-600" data-code-copy="step-' + i + '-req-headers">复制</button></div><pre id="step-' + i + '-req-headers" class="bg-slate-800 p-2.5 rounded text-slate-300 overflow-x-auto font-mono leading-tight shadow-inner text-[11px]">' + reqHeaders + '</pre></div>' : '') +
+                            (reqBody ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center justify-between"><span class="flex items-center"><div class="w-1 h-3 bg-emerald-400 mr-2 rounded-full"></div>请求体</span><button type="button" class="code-copy-btn text-[10px] text-slate-400 hover:text-slate-600" data-code-copy="step-' + i + '-req-body">复制</button></div><pre id="step-' + i + '-req-body" class="bg-slate-800 p-2.5 rounded ' + bodyColor + ' overflow-x-auto font-mono leading-tight shadow-inner text-[11px]">' + reqBody + '</pre></div>' : '') +
                         '</div>' +
                         '<div class="md:pl-6 space-y-3">' +
-                            (resHeaders ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 bg-slate-300 mr-2 rounded-full"></div>响应头</div><pre class="bg-slate-800 p-2.5 rounded text-slate-300 overflow-x-auto font-mono leading-tight shadow-inner">' + resHeaders + '</pre></div>' : '') +
-                            (resBody ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center"><div class="w-1 h-3 ' + (ok ? 'bg-emerald-400' : 'bg-rose-400') + ' mr-2 rounded-full"></div>响应体</div><pre class="bg-slate-800 p-2.5 rounded ' + bodyColor + ' overflow-x-auto font-mono leading-tight shadow-inner">' + resBody + '</pre></div>' : '') +
+                            (resHeaders ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center justify-between"><span class="flex items-center"><div class="w-1 h-3 bg-slate-300 mr-2 rounded-full"></div>响应头</span><button type="button" class="code-copy-btn text-[10px] text-slate-400 hover:text-slate-600" data-code-copy="step-' + i + '-res-headers">复制</button></div><pre id="step-' + i + '-res-headers" class="bg-slate-800 p-2.5 rounded text-slate-300 overflow-x-auto font-mono leading-tight shadow-inner text-[11px]">' + resHeaders + '</pre></div>' : '') +
+                            (resBody ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center justify-between"><span class="flex items-center"><div class="w-1 h-3 ' + (ok ? 'bg-emerald-400' : 'bg-rose-400') + ' mr-2 rounded-full"></div>响应体</span><button type="button" class="code-copy-btn text-[10px] text-slate-400 hover:text-slate-600" data-code-copy="step-' + i + '-res-body">复制</button></div><pre id="step-' + i + '-res-body" class="bg-slate-800 p-2.5 rounded ' + bodyColor + ' overflow-x-auto font-mono leading-tight shadow-inner text-[11px]">' + resBody + '</pre></div>' : '') +
                         '</div>' +
                     '</div>' +
                     assertHtml +

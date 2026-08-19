@@ -564,6 +564,39 @@ export function createWorkbenchRuntime(options) {
         uiView.setRunState(failed ? 'failed' : (executed === 0 ? 'skipped' : 'success'), failed ? '存在失败' : (executed === 0 ? '全部跳过' : '执行成功'));
         renderReportPanel();
     }
+    function highlightActiveStep(stepIndex) {
+        var ul = document.getElementById('stepsList');
+        if (!ul) return;
+        ul.querySelectorAll('.scenario-step--running').forEach(function (node) {
+            node.classList.remove('scenario-step--running');
+        });
+        var stepNode = ul.querySelector('li[data-step-idx="' + stepIndex + '"]') || ul.children[stepIndex];
+        if (stepNode) {
+            stepNode.classList.add('scenario-step--running');
+            if (typeof stepNode.scrollIntoView === 'function') {
+                stepNode.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }
+    }
+
+    function clearActiveStepHighlight() {
+        var ul = document.getElementById('stepsList');
+        if (!ul) return;
+        ul.querySelectorAll('.scenario-step--running').forEach(function (node) {
+            node.classList.remove('scenario-step--running');
+        });
+    }
+
+    function expandStepDetails(stepIndex) {
+        var ul = document.getElementById('stepsList');
+        if (!ul) return;
+        var stepNode = ul.querySelector('li[data-step-idx="' + stepIndex + '"]') || ul.children[stepIndex];
+        if (!stepNode) return;
+        var panel = stepNode.querySelector('.details-panel');
+        var chevron = stepNode.querySelector('.chevron');
+        if (panel) panel.classList.add('open');
+        if (chevron) chevron.classList.add('rotate-180');
+    }
 
     async function runScenario() {
         if (!state.scenario || state.running) return;
@@ -595,6 +628,7 @@ export function createWorkbenchRuntime(options) {
 
         try {
             for (var i = 0; i < list.length; i += 1) {
+                highlightActiveStep(i);
                 rememberDebugRuntime(i, runtime);
                 var result = await executeStep(list[i], runtime, cfg);
                 result.stepNo = i + 1;
@@ -605,11 +639,14 @@ export function createWorkbenchRuntime(options) {
                 renderReportPanel();
                 if (!result.passed && (failurePolicy !== 'continue' || runtime.abortController.signal.aborted)) break;
             }
+            clearActiveStepHighlight();
             finishExecutionState(runtime);
         } catch (error) {
+            clearActiveStepHighlight();
             uiView.setRunState('failed', '执行异常');
             document.getElementById('reportPanel').innerHTML = '<div class="rounded border border-rose-200 bg-rose-50 p-3 text-rose-700">' + esc(error.message || error) + '</div>';
         } finally {
+            clearActiveStepHighlight();
             state.running = false;
             state.activeRuntime = null;
             setExecutionButtonsDisabled(false);
@@ -643,6 +680,7 @@ export function createWorkbenchRuntime(options) {
         state.activeRuntime = runtime;
         state.executionMode = 'step';
         setExecutionButtonsDisabled(true);
+        highlightActiveStep(stepIndex);
         uiView.setRunState('running', '执行第 ' + (stepIndex + 1) + ' 步');
         uiView.setStepLoading(true, '正在执行第 ' + (stepIndex + 1) + ' 步：' + (list[stepIndex].name || '未命名步骤'));
 
@@ -672,6 +710,7 @@ export function createWorkbenchRuntime(options) {
             uiView.setRunState('failed', '执行异常');
             document.getElementById('reportPanel').innerHTML = '<div class="rounded border border-rose-200 bg-rose-50 p-3 text-rose-700">' + esc(error.message || error) + '</div>';
         } finally {
+            clearActiveStepHighlight();
             uiView.setStepLoading(false);
             state.running = false;
             state.activeRuntime = null;
@@ -1038,6 +1077,160 @@ export function createWorkbenchRuntime(options) {
         }
     }
 
+    function generateStepCurl(step, stepIndex) {
+        if (!step) return '';
+        var method = String(step.method || 'GET').toUpperCase();
+        var baseUrl = getRequestBaseUrl(step);
+        var rawVars = Object.assign({}, getConfiguredScenarioVariables(), getStoredScenarioVariables());
+        var resolvedVars = clone(rawVars);
+        if (state.activeRuntime && state.activeRuntime.vars) {
+            Object.assign(resolvedVars, state.activeRuntime.vars);
+        } else if (state.stepRuntime && state.stepRuntime.vars) {
+            Object.assign(resolvedVars, state.stepRuntime.vars);
+        }
+        var fullUrl = core.buildUrl(baseUrl, step.path || '', resolvedVars, step.query, getEffectiveGlobals());
+        var parts = ['curl -X ' + method + ' "' + fullUrl + '"'];
+
+        var globals = getEffectiveGlobals();
+        var headers = {};
+        globals.forEach(function (g) {
+            if (g.type === 'header' && g.name) {
+                headers[g.name] = core.resolveString(g.value || '', resolvedVars);
+            }
+        });
+        if (step.request && step.request.headers) {
+            var reqHeaders = step.request.headers;
+            if (typeof reqHeaders === 'object' && reqHeaders !== null) {
+                Object.keys(reqHeaders).forEach(function (k) {
+                    headers[k] = core.resolveString(String(reqHeaders[k]), resolvedVars);
+                });
+            }
+        }
+        Object.keys(headers).forEach(function (key) {
+            parts.push('-H "' + key + ': ' + String(headers[key]).replace(/"/g, '\\"') + '"');
+        });
+
+        if (step.request && step.request.body != null) {
+            var bodyVal = step.request.body;
+            var bodyStr = typeof bodyVal === 'string' ? bodyVal : JSON.stringify(bodyVal);
+            bodyStr = core.resolveString(bodyStr, resolvedVars);
+            parts.push("-d '" + bodyStr.replace(/'/g, "'\\''") + "'");
+        }
+        return parts.join(' \\\n  ');
+    }
+
+    function bindStepCurlActions() {
+        var ul = document.getElementById('stepsList');
+        if (!ul) return;
+        ul.addEventListener('click', function (event) {
+            var button = event.target && event.target.closest ? event.target.closest('[data-curl-step]') : null;
+            if (!button) return;
+            var index = Number(button.getAttribute('data-curl-step'));
+            if (!Number.isInteger(index)) return;
+            var step = state.scenario && Array.isArray(state.scenario.steps) ? state.scenario.steps[index] : null;
+            if (!step) return;
+            var curlCmd = generateStepCurl(step, index);
+            Promise.resolve()
+                .then(function () { return copyText(curlCmd); })
+                .then(function (ok) {
+                    if (button.__copyFeedbackTimer) window.clearTimeout(button.__copyFeedbackTimer);
+                    if (button.__copyOriginalText == null) button.__copyOriginalText = button.textContent;
+                    button.textContent = ok ? '已复制' : '失败';
+                    button.__copyFeedbackTimer = window.setTimeout(function () {
+                        button.textContent = button.__copyOriginalText;
+                        button.__copyFeedbackTimer = null;
+                    }, 1500);
+                })
+                .catch(function () {
+                    button.textContent = '失败';
+                });
+        });
+    }
+
+    function bindCodeCopyActions() {
+        document.addEventListener('click', function (event) {
+            var button = event.target && event.target.closest ? event.target.closest('[data-code-copy]') : null;
+            if (!button) return;
+            var targetId = button.getAttribute('data-code-copy');
+            var targetEl = document.getElementById(targetId);
+            if (!targetEl) return;
+            var text = targetEl.textContent || '';
+            Promise.resolve()
+                .then(function () { return copyText(text); })
+                .then(function (ok) {
+                    if (button.__copyFeedbackTimer) window.clearTimeout(button.__copyFeedbackTimer);
+                    if (button.__copyOriginalText == null) button.__copyOriginalText = button.textContent;
+                    button.textContent = ok ? '已复制' : '复制失败';
+                    button.classList.toggle('code-copy-btn--success', ok);
+                    button.__copyFeedbackTimer = window.setTimeout(function () {
+                        button.textContent = button.__copyOriginalText;
+                        button.classList.remove('code-copy-btn--success');
+                        button.__copyFeedbackTimer = null;
+                    }, 1500);
+                })
+                .catch(function () {
+                    button.textContent = '复制失败';
+                });
+        });
+    }
+
+    function bindGlobalShortcuts() {
+        document.addEventListener('keydown', function (event) {
+            var activeEl = document.activeElement;
+            var isEditing = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT' || activeEl.isContentEditable);
+
+            // Ctrl + Enter / Meta + Enter -> 执行全部
+            if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+                event.preventDefault();
+                var runBtn = document.getElementById('runBtn');
+                if (runBtn && !runBtn.disabled) runBtn.click();
+                return;
+            }
+
+            // Alt + Enter -> 执行下一步
+            if (event.key === 'Enter' && event.altKey) {
+                event.preventDefault();
+                var stepBtn = document.getElementById('stepBtn');
+                if (stepBtn && !stepBtn.disabled) stepBtn.click();
+                return;
+            }
+
+            // Alt + R -> 清除行
+            if ((event.key === 'r' || event.key === 'R') && event.altKey) {
+                event.preventDefault();
+                var resetBtn = document.getElementById('resetBtn');
+                if (resetBtn && !resetBtn.disabled) resetBtn.click();
+                return;
+            }
+
+            if (!isEditing) {
+                // Space -> 执行下一步
+                if (event.key === ' ' || event.code === 'Space') {
+                    var configModal = document.getElementById('configModal');
+                    var adhocModal = document.getElementById('adhocModal');
+                    var isModalOpen = (configModal && !configModal.classList.contains('hidden')) || (adhocModal && !adhocModal.classList.contains('hidden'));
+                    if (!isModalOpen) {
+                        event.preventDefault();
+                        var stepBtn2 = document.getElementById('stepBtn');
+                        if (stepBtn2 && !stepBtn2.disabled) stepBtn2.click();
+                        return;
+                    }
+                }
+
+                // / 键 或 Ctrl+K 聚焦场景搜索框
+                if (event.key === '/' || ((event.ctrlKey || event.metaKey) && (event.key === 'k' || event.key === 'K'))) {
+                    event.preventDefault();
+                    var searchInput = document.getElementById('scenarioSearchInput');
+                    if (searchInput) {
+                        searchInput.focus();
+                        searchInput.select();
+                    }
+                    return;
+                }
+            }
+        });
+    }
+
     function extractScenarioDisplayName(sourceText) {
         var text = String(sourceText || '');
         var head = text;
@@ -1174,6 +1367,9 @@ export function createWorkbenchRuntime(options) {
         bindGlobalsEvents();
         bindReportActions();
         bindStepCopyActions();
+        bindStepCurlActions();
+        bindCodeCopyActions();
+        bindGlobalShortcuts();
 
         uiAdhoc.bindAdhocRequestEvents(
             function (idx) {
@@ -1277,3 +1473,4 @@ export function createWorkbenchRuntime(options) {
         getState: function () { return state; }
     };
 }
+
