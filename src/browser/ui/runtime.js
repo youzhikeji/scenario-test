@@ -39,10 +39,53 @@ export function createWorkbenchRuntime(options) {
 
     if (uiAdhoc.setConfig) uiAdhoc.setConfig(appConfig);
 
+    // ===== 步骤复合筛选状态管理 =====
+    var stepsFilterState = {
+        type: 'all',
+        keyword: ''
+    };
+
+    function applyStepsFilter() {
+        var type = stepsFilterState.type || 'all';
+        var keyword = String(stepsFilterState.keyword || '').trim().toLowerCase();
+
+        // 保持过滤按钮的高亮激活状态
+        document.querySelectorAll('.filter-btn').forEach(function (b) {
+            var active = b.dataset.f === type;
+            if (active) {
+                b.className = 'filter-btn px-2.5 py-1 text-xs font-bold text-slate-900 bg-white rounded-md shadow-2xs transition-all';
+            } else {
+                b.className = 'filter-btn px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-white/60 rounded-md transition-all';
+            }
+        });
+
+        // 复合过滤步骤列表项
+        document.querySelectorAll('#stepsList li').forEach(function (li) {
+            var searchData = String(li.dataset.search || '').toLowerCase();
+            var matchSearch = !keyword || searchData.indexOf(keyword) >= 0;
+
+            var passedAttr = li.dataset.passed;
+            var skipped = li.dataset.skipped === 'true';
+            var matchFilter = false;
+
+            if (type === 'all') {
+                matchFilter = true;
+            } else if (type === 'pass') {
+                matchFilter = passedAttr === 'true' && !skipped;
+            } else if (type === 'fail') {
+                matchFilter = passedAttr === 'false' && !skipped;
+            } else if (type === 'skip') {
+                matchFilter = skipped;
+            }
+
+            li.style.display = (matchSearch && matchFilter) ? '' : 'none';
+        });
+    }
+
     // ===== 全局交互桥接（挂载至 window.__R 供 DOM 内联 onclick 调用）=====
     window.__R = {
         toggle: function (el, event) {
-            if (event && event.target.closest('button')) return;
+            if (event && event.target.closest('button, input, textarea, select, a')) return;
             var selection = window.getSelection && window.getSelection();
             if (selection && !selection.isCollapsed && selection.toString().trim()) return;
             var panel = el.nextElementSibling;
@@ -56,31 +99,17 @@ export function createWorkbenchRuntime(options) {
             }
         },
         filter: function (type) {
-            document.querySelectorAll('.filter-btn').forEach(function (b) {
-                var active = b.dataset.f === type;
-                var activeCls = '';
-                if (type === 'all') activeCls = 'font-bold text-blue-700 bg-white border border-blue-200 rounded shadow-sm';
-                else if (type === 'pass') activeCls = 'font-bold text-emerald-700 bg-white border border-emerald-200 rounded shadow-sm';
-                else if (type === 'fail') activeCls = 'font-bold text-rose-700 bg-white border border-rose-200 rounded shadow-sm';
-                else if (type === 'skip') activeCls = 'font-bold text-slate-700 bg-white border border-slate-300 rounded shadow-sm';
-                b.className = 'filter-btn px-3 py-1 text-xs ' + (active ? activeCls : 'font-medium text-slate-600 hover:bg-white rounded');
-            });
-            document.querySelectorAll('#stepsList li').forEach(function (li) {
-                var passed = li.dataset.passed === 'true';
-                var skipped = li.dataset.skipped === 'true';
-                var visible = type === 'all'
-                    || (type === 'pass' && passed && !skipped)
-                    || (type === 'fail' && !passed)
-                    || (type === 'skip' && skipped);
-                li.style.display = visible ? '' : 'none';
-            });
+            stepsFilterState.type = type;
+            applyStepsFilter();
         },
         search: function (q) {
-            var lower = q.toLowerCase();
-            document.querySelectorAll('#stepsList li').forEach(function (li) {
-                li.style.display = li.dataset.search.includes(lower) ? '' : 'none';
-            });
-        }
+            stepsFilterState.keyword = q;
+            applyStepsFilter();
+        },
+        getFilterState: function () {
+            return stepsFilterState;
+        },
+        applyFilter: applyStepsFilter
     };
 
     // ===== 应用状态管理 =====
@@ -393,7 +422,7 @@ export function createWorkbenchRuntime(options) {
     }
 
     function renderFilterAll() {
-        uiView.renderFilterAll(state.steps);
+        uiView.renderFilterAll(state.steps, state.scenario && state.scenario.steps ? state.scenario.steps : []);
     }
 
     function renderReportPanel() {
@@ -510,9 +539,14 @@ export function createWorkbenchRuntime(options) {
         var resetBtn = document.getElementById('resetBtn');
         if (resetBtn) resetBtn.disabled = disabled;
         document.getElementById('cancelBtn').disabled = !disabled;
-        ['environmentSelect', 'configToggleBtn'].forEach(function (id) {
+        ['environmentSelect', 'configToggleBtn', 'envDropdownTrigger', 'themeDropdownTrigger'].forEach(function (id) {
             var element = document.getElementById(id);
-            if (element) element.disabled = disabled;
+            if (element) {
+                element.disabled = disabled;
+                element.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+                element.classList.toggle('opacity-50', disabled);
+                element.classList.toggle('pointer-events-none', disabled);
+            }
         });
         document.querySelectorAll('#configModal input, #configModal select, #configModal button').forEach(function (element) {
             element.disabled = disabled;
@@ -538,6 +572,8 @@ export function createWorkbenchRuntime(options) {
         state.nextStepIndex = 0;
         state.lastReport = null;
         state.executionMode = 'full';
+        stepsFilterState.type = 'all';
+        stepsFilterState.keyword = '';
         renderStatsAll((state.scenario && state.scenario.iterations) || { run: 1, failed: 0 });
         renderFilterAll();
         renderStepsAll();
@@ -1079,8 +1115,8 @@ export function createWorkbenchRuntime(options) {
 
     function generateStepCurl(step, stepIndex) {
         if (!step) return '';
-        var method = String(step.method || 'GET').toUpperCase();
-        var baseUrl = getRequestBaseUrl(step);
+        var method = String(step.method || (step.request && step.request.method) || 'GET').toUpperCase();
+        var baseUrl = getRequestBaseUrl();
         var rawVars = Object.assign({}, getConfiguredScenarioVariables(), getStoredScenarioVariables());
         var resolvedVars = clone(rawVars);
         if (state.activeRuntime && state.activeRuntime.vars) {
@@ -1088,24 +1124,61 @@ export function createWorkbenchRuntime(options) {
         } else if (state.stepRuntime && state.stepRuntime.vars) {
             Object.assign(resolvedVars, state.stepRuntime.vars);
         }
-        var fullUrl = core.buildUrl(baseUrl, step.path || '', resolvedVars, step.query, getEffectiveGlobals());
-        var parts = ['curl -X ' + method + ' "' + fullUrl + '"'];
+        var runtime = { vars: resolvedVars };
+        var stepPath = step.path || (step.request && step.request.path) || '';
+        var stepParams = step.params || (step.request && step.request.params);
+        var requestPath = core.buildUrl(stepPath, stepParams, runtime);
 
         var globals = getEffectiveGlobals();
         var headers = {};
+
+        // 拼接 globals 的 query
+        var queryIndex = requestPath.indexOf('?');
+        var existingKeys = new Set();
+        if (queryIndex >= 0) {
+            requestPath.slice(queryIndex + 1).split('&').forEach(function (pair) {
+                var key = pair.split('=')[0];
+                if (key) existingKeys.add(decodeURIComponent(key));
+            });
+        }
+        var queryPairs = [];
+        globals.forEach(function (global) {
+            if (global.type !== 'query' || existingKeys.has(global.name)) return;
+            queryPairs.push(encodeURIComponent(global.name) + '=' + encodeURIComponent(String(core.resolveString(global.value, runtime))));
+        });
+        if (queryPairs.length) {
+            requestPath += (queryIndex >= 0 ? '&' : '?') + queryPairs.join('&');
+        }
+
+        // 拼接 globals 的 cookie
+        var cookieParts = globals
+            .filter(function (global) { return global.type === 'cookie'; })
+            .map(function (global) { return global.name + '=' + core.resolveString(global.value, runtime); });
+
+        // headers
         globals.forEach(function (g) {
             if (g.type === 'header' && g.name) {
-                headers[g.name] = core.resolveString(g.value || '', resolvedVars);
+                headers[g.name] = core.resolveString(g.value || '', runtime);
             }
         });
         if (step.request && step.request.headers) {
             var reqHeaders = step.request.headers;
             if (typeof reqHeaders === 'object' && reqHeaders !== null) {
                 Object.keys(reqHeaders).forEach(function (k) {
-                    headers[k] = core.resolveString(String(reqHeaders[k]), resolvedVars);
+                    headers[k] = core.resolveString(String(reqHeaders[k]), runtime);
                 });
             }
         }
+        if (cookieParts.length) {
+            var cookieKey = Object.keys(headers).find(function (key) { return key.toLowerCase() === 'cookie'; });
+            var mergedCookie = cookieKey ? (headers[cookieKey] + '; ' + cookieParts.join('; ')) : cookieParts.join('; ');
+            if (cookieKey) headers[cookieKey] = mergedCookie;
+            else headers.Cookie = mergedCookie;
+        }
+
+        var fullUrl = core.joinUrl(baseUrl, requestPath);
+        var parts = ['curl -X ' + method + ' "' + fullUrl + '"'];
+
         Object.keys(headers).forEach(function (key) {
             parts.push('-H "' + key + ': ' + String(headers[key]).replace(/"/g, '\\"') + '"');
         });
@@ -1113,7 +1186,7 @@ export function createWorkbenchRuntime(options) {
         if (step.request && step.request.body != null) {
             var bodyVal = step.request.body;
             var bodyStr = typeof bodyVal === 'string' ? bodyVal : JSON.stringify(bodyVal);
-            bodyStr = core.resolveString(bodyStr, resolvedVars);
+            bodyStr = core.resolveString(bodyStr, runtime);
             parts.push("-d '" + bodyStr.replace(/'/g, "'\\''") + "'");
         }
         return parts.join(' \\\n  ');
@@ -1177,7 +1250,13 @@ export function createWorkbenchRuntime(options) {
     function bindGlobalShortcuts() {
         document.addEventListener('keydown', function (event) {
             var activeEl = document.activeElement;
-            var isEditing = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT' || activeEl.isContentEditable);
+            var isEditing = activeEl && (
+                activeEl.tagName === 'INPUT' ||
+                activeEl.tagName === 'TEXTAREA' ||
+                activeEl.tagName === 'SELECT' ||
+                activeEl.tagName === 'BUTTON' ||
+                activeEl.isContentEditable
+            );
 
             // Ctrl + Enter / Meta + Enter -> 执行全部
             if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
@@ -1375,12 +1454,26 @@ export function createWorkbenchRuntime(options) {
             function (idx) {
                 return state.scenario && Array.isArray(state.scenario.steps) ? state.scenario.steps[idx] : null;
             },
-            getDebugRuntime,
+            function (idx) {
+                var debugRt = getDebugRuntime(idx);
+                if (debugRt) return debugRt;
+                var rawVars = Object.assign({}, getConfiguredScenarioVariables(), getStoredScenarioVariables(), (state.scenario && state.scenario.vars) || {});
+                return { vars: rawVars, lastResponse: null, lastResponseBody: null };
+            },
             executeStep,
             getSelectedEnvironment,
             getRequestBaseUrl,
             getEffectiveAuthorization,
-            getEffectiveGlobals
+            getEffectiveGlobals,
+            function () {
+                var rawVars = Object.assign({}, getConfiguredScenarioVariables(), getStoredScenarioVariables(), (state.scenario && state.scenario.vars) || {});
+                if (state.activeRuntime && state.activeRuntime.vars) {
+                    Object.assign(rawVars, state.activeRuntime.vars);
+                } else if (state.stepRuntime && state.stepRuntime.vars) {
+                    Object.assign(rawVars, state.stepRuntime.vars);
+                }
+                return rawVars;
+            }
         );
 
         updateHeader();

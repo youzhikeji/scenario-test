@@ -44,35 +44,51 @@ const workbenchView = (function () {
 
     function buildSkeleton(mount) {
         (mount || document.body).innerHTML = `
-        <header class="bg-white border-b border-slate-200 px-4 py-2 flex flex-wrap gap-3 justify-between items-center sticky top-0 z-10 shadow-sm">
+        <header class="bg-white border-b border-slate-200 px-4 py-2 flex flex-wrap gap-3 justify-between items-center sticky top-0 z-10 shadow-xs">
             <div class="flex items-center gap-2 min-w-0">
-                <span id="envNameLabel" class="text-[10px] font-medium text-slate-400 whitespace-nowrap"></span>
-                <span class="text-slate-300" aria-hidden="true">›</span>
-                <h1 id="scenarioTitle" class="text-xs font-bold text-slate-800 truncate max-w-[280px] sm:max-w-xl">未加载场景</h1>
+                <div class="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100/80 border border-slate-200/60">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                    <span id="envNameLabel" class="text-[11px] font-semibold text-slate-500 whitespace-nowrap"></span>
+                </div>
+                <span class="text-slate-300 select-none" aria-hidden="true">›</span>
+                <h1 id="scenarioTitle" class="text-xs font-bold text-slate-800 tracking-tight truncate max-w-[280px] sm:max-w-xl">未加载场景</h1>
             </div>
             <div class="scenario-header-actions flex items-center">
-                <div class="scenario-header-select relative">
-                    <span class="scenario-header-select__label">环境：</span>
-                    <select id="environmentSelect" aria-label="快速切换环境" class="appearance-none bg-transparent py-1 pr-5 text-[10px] font-medium text-slate-700 outline-none cursor-pointer"></select>
-                    <svg class="scenario-header-select__arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                <div class="custom-dropdown" id="envDropdown" title="快速切换运行环境">
+                    <button type="button" class="custom-dropdown__trigger" id="envDropdownTrigger" aria-haspopup="listbox" aria-expanded="false">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 ring-2 ring-emerald-500/20"></span>
+                        <span class="text-slate-400 text-[10.5px] font-semibold">环境</span>
+                        <span class="custom-dropdown__label font-bold text-slate-800" id="envDropdownLabel">-</span>
+                        <svg class="custom-dropdown__arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
+                    </button>
+                    <div class="custom-dropdown__menu" id="envDropdownMenu" role="listbox"></div>
+                    <select id="environmentSelect" class="sr-only" aria-label="快速切换环境" tabindex="-1"></select>
                 </div>
-                <div class="scenario-header-select relative">
-                    <span class="scenario-header-select__label">风格：</span>
-                    <select id="themeSelect" aria-label="切换界面风格" class="appearance-none bg-transparent py-1 pl-2 pr-5 text-[10px] font-medium text-slate-700 outline-none cursor-pointer">
-                        <option value="default">本地开发</option>
-                        <option value="claude-code">暖调风格</option>
+                <div class="custom-dropdown" id="themeDropdown" title="切换界面视觉风格">
+                    <button type="button" class="custom-dropdown__trigger" id="themeDropdownTrigger" aria-haspopup="listbox" aria-expanded="false">
+                        <svg class="w-3 h-3 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4 5 5 0 015-5h4l4-4a2.828 2.828 0 114 4l-4 4v4a5 5 0 01-5 5H7z"></path></svg>
+                        <span class="text-slate-400 text-[10.5px] font-semibold">风格</span>
+                        <span class="custom-dropdown__label font-bold text-slate-800" id="themeDropdownLabel">现代简约</span>
+                        <svg class="custom-dropdown__arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
+                    </button>
+                    <div class="custom-dropdown__menu" id="themeDropdownMenu" role="listbox"></div>
+                    <select id="themeSelect" class="sr-only" aria-label="切换界面风格" tabindex="-1">
+                        <option value="default" selected>现代简约</option>
+                        <option value="claude-code">温暖纸韵</option>
                     </select>
-                    <svg class="scenario-header-select__arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                 </div>
                 <div class="scenario-header-step relative">
-                    <button id="stepBtn" class="scenario-header-button scenario-header-button--secondary">执行下一步</button>
+                    <button id="stepBtn" class="scenario-header-button scenario-header-button--secondary" title="单步执行下一条用例">执行下一步</button>
                     <span class="scenario-header-step__arrow" aria-hidden="true"><svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></span>
                 </div>
-                <button id="runBtn" class="scenario-header-button scenario-header-button--primary">执行全部</button>
+                <button id="runBtn" class="scenario-header-button scenario-header-button--primary">
+                    <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    <span>执行全部</span>
+                </button>
                 <button id="cancelBtn" disabled class="scenario-header-text-action scenario-header-text-action--danger">停止</button>
                 <button id="resetBtn" class="scenario-header-text-action">清除行</button>
-                <button id="configToggleBtn" class="scenario-header-button scenario-header-button--config">
-                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                <button id="configToggleBtn" class="scenario-header-button scenario-header-button--config" title="配置环境参数与全局变量">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                     <span>配置参数</span>
                 </button>
                 <span id="runState" aria-live="polite" class="sr-only">待执行</span>
@@ -101,105 +117,113 @@ const workbenchView = (function () {
                 <option value="X-Token"></option>
             </datalist>
             <div class="scenario-grid grid grid-cols-1 xl:grid-cols-[minmax(164px,1fr)_minmax(500px,3.18fr)_minmax(280px,1.75fr)] gap-2 mb-2">
-                <aside class="scenario-pane scenario-pane--scenarios bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden xl:max-h-[calc(100vh-52px)] flex flex-col">
-                    <div class="px-4 py-3 border-b border-slate-100 bg-slate-50/50 flex-shrink-0">
-                        <div class="text-sm font-bold text-slate-800">场景列表</div>
-                        <div class="text-[10px] text-slate-400 mt-0.5">切换仅加载，不会自动执行</div>
-                        <input id="scenarioSearchInput" type="search" placeholder="搜索场景名称或路径" class="mt-3 w-full px-2.5 py-1.5 rounded border border-slate-200 bg-white text-xs text-slate-700 placeholder-slate-400 outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">
+                <aside class="scenario-pane scenario-pane--scenarios bg-white rounded-lg shadow-xs border border-slate-200 overflow-hidden xl:max-h-[calc(100vh-52px)] flex flex-col">
+                    <div class="px-3.5 py-3 border-b border-slate-100 bg-slate-50/50 flex-shrink-0">
+                        <div class="flex items-center justify-between">
+                            <div class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                                <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                                <span>场景列表</span>
+                            </div>
+                            <span class="text-[10px] text-slate-400">点击即加载</span>
+                        </div>
+                        <div class="relative mt-2">
+                            <svg class="pointer-events-none absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                            <input id="scenarioSearchInput" type="search" placeholder="搜索用例名称或路径..." class="w-full pl-8 pr-2.5 py-1.5 rounded-md border border-slate-200 bg-white text-xs text-slate-700 placeholder-slate-400 outline-none transition-all focus:border-slate-800 focus:ring-1 focus:ring-slate-800">
+                        </div>
                     </div>
                     <div id="scenarioList" class="p-2 space-y-1 overflow-y-auto flex-1"></div>
                 </aside>
-                <div class="scenario-pane scenario-pane--steps bg-white rounded-lg shadow-sm border border-slate-200 flex flex-col overflow-hidden xl:max-h-[calc(100vh-52px)]">
-                    <div id="statsPanel" class="p-4 flex flex-wrap justify-between items-center border-b border-slate-100 bg-white flex-shrink-0">
-                        <div class="text-sm text-slate-500">场景未加载或未执行</div>
+                <div class="scenario-pane scenario-pane--steps bg-white rounded-lg shadow-xs border border-slate-200 flex flex-col overflow-hidden xl:max-h-[calc(100vh-52px)]">
+                    <div id="statsPanel" class="p-3 flex flex-wrap justify-between items-center border-b border-slate-100 bg-white flex-shrink-0">
+                        <div class="text-xs text-slate-400">场景未加载或未执行</div>
                     </div>
-                    <div id="filterBar" class="flex items-center justify-between bg-slate-50/50 px-3 py-2 border-b border-slate-100 flex-shrink-0">
-                        <div class="text-xs text-slate-400 py-1">等待加载...</div>
+                    <div id="filterBar" class="flex items-center justify-between bg-slate-50/50 px-3 py-1.5 border-b border-slate-100 flex-shrink-0">
+                        <div class="text-xs text-slate-400 py-1">未加载场景</div>
                     </div>
                     <ul id="stepsList" class="divide-y divide-slate-100 bg-white flex-1 overflow-y-auto"></ul>
                 </div>
-                <div class="scenario-pane scenario-pane--report bg-white rounded-lg shadow-sm border border-slate-200 flex flex-col overflow-hidden xl:max-h-[calc(100vh-52px)]">
-                    <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 flex-shrink-0">
+                <div class="scenario-pane scenario-pane--report bg-white rounded-lg shadow-xs border border-slate-200 flex flex-col overflow-hidden xl:max-h-[calc(100vh-52px)]">
+                    <div class="px-3.5 py-2.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 flex-shrink-0">
                         <div>
-                            <div class="text-sm font-bold text-slate-800 flex items-center space-x-1.5"><svg class="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg><span>AI 测试报告</span></div>
-                            <div class="text-[10px] text-slate-400 mt-0.5">结构化输出，适合 AI 智能分析</div>
+                            <div class="text-xs font-bold text-slate-800 flex items-center space-x-1.5"><svg class="w-3.5 h-3.5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg><span>AI 测试报告</span></div>
+                            <div class="text-[10px] text-slate-400 mt-0.5">结构化总结，支持快速导出</div>
                         </div>
-                        <div class="flex flex-col gap-1.5">
-                            <button id="copyReportMarkdownBtn" class="px-2.5 py-1 rounded bg-indigo-50 text-indigo-700 border border-indigo-100 text-[11px] font-bold hover:bg-indigo-100 transition-colors flex items-center justify-center"><svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg>复制 MD</button>
-                            <button id="copyReportJsonBtn" class="px-2.5 py-1 rounded bg-slate-50 text-slate-600 border border-slate-200 text-[11px] font-bold hover:bg-slate-100 transition-colors flex items-center justify-center"><svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>复制 JSON</button>
+                        <div class="flex items-center gap-1">
+                            <button id="copyReportMarkdownBtn" class="px-2 py-1 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-100/80 text-[10.5px] font-bold hover:bg-indigo-100 transition-all active:scale-[0.98] flex items-center justify-center shadow-2xs"><svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg>复制 MD</button>
+                            <button id="copyReportJsonBtn" class="px-2 py-1 rounded-md bg-slate-50 text-slate-600 border border-slate-200 text-[10.5px] font-bold hover:bg-slate-100 transition-all active:scale-[0.98] flex items-center justify-center shadow-2xs"><svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>JSON</button>
                         </div>
                     </div>
-                    <div id="reportPanel" class="p-4 text-sm text-slate-500 overflow-y-auto flex-1 bg-slate-50/30"><div class="report-empty"><svg viewBox="0 0 80 80" fill="none" aria-hidden="true"><rect x="16" y="14" width="40" height="50" rx="5" fill="#fff6eb" stroke="currentColor" stroke-width="2"></rect><path d="M27 29h18M27 39h18M27 49h12" stroke="currentColor" stroke-width="3" stroke-linecap="round"></path><circle cx="58" cy="56" r="11" fill="currentColor"></circle><path d="M58 50v12M52 56h12" stroke="#fffdfa" stroke-width="2" stroke-linecap="round"></path></svg><div class="report-empty__title">执行场景后将在这里生成整体报告。</div><div class="report-empty__hint">点击「执行全部」，开始进行</div></div></div>
+                    <div id="reportPanel" class="p-3 text-sm text-slate-500 overflow-y-auto flex-1 bg-slate-50/20"><div class="report-empty"><svg viewBox="0 0 80 80" fill="none" aria-hidden="true"><rect x="16" y="14" width="40" height="50" rx="5" fill="#fff6eb" stroke="currentColor" stroke-width="2"></rect><path d="M27 29h18M27 39h18M27 49h12" stroke="currentColor" stroke-width="3" stroke-linecap="round"></path><circle cx="58" cy="56" r="11" fill="currentColor"></circle><path d="M58 50v12M52 56h12" stroke="#fffdfa" stroke-width="2" stroke-linecap="round"></path></svg><div class="report-empty__title">执行场景后将在这里生成整体报告。</div><div class="report-empty__hint">点击「执行全部」，开始进行</div></div></div>
                 </div>
             </div>
         </main>
-        <div id="configModal" class="hidden fixed inset-0 z-40 bg-slate-950/20 p-4 flex items-center justify-center">
-            <div class="w-full max-w-3xl max-h-[85vh] overflow-y-auto rounded-lg bg-slate-800 shadow-xl border border-slate-700 text-slate-200">
-                <div class="flex items-center justify-between border-b border-slate-700 px-5 py-4">
+        <div id="configModal" class="hidden fixed inset-0 z-40 bg-slate-950/30 p-4 flex items-center justify-center">
+            <div class="w-full max-w-3xl max-h-[85vh] overflow-y-auto rounded-xl bg-slate-900 shadow-2xl border border-slate-700/80 text-slate-200">
+                <div class="flex items-center justify-between border-b border-slate-800 px-5 py-4">
                     <div>
-                        <div class="text-sm font-bold text-white">环境参数配置</div>
-                        <div class="mt-1 text-[11px] text-slate-400">测试环境、全局参数与场景变量，保存后按环境生效。</div>
+                        <div class="text-sm font-bold text-white tracking-tight">环境参数配置</div>
+                        <div class="mt-0.5 text-[11px] text-slate-400">测试环境、全局参数与场景变量，保存后按环境自动生效。</div>
                     </div>
-                    <button id="configCloseBtn" type="button" class="rounded px-2 py-1 text-slate-400 hover:bg-slate-700 hover:text-white">关闭</button>
+                    <button id="configCloseBtn" type="button" class="rounded-lg px-2.5 py-1 text-xs text-slate-400 hover:bg-slate-800 hover:text-white transition-colors">关闭</button>
                 </div>
                 <div class="space-y-4 p-5">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <label class="flex flex-col gap-1.5">
                             <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">测试环境</span>
-                            <select id="environmentInput" class="px-3 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"></select>
+                            <select id="environmentInput" class="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 transition-all"></select>
                         </label>
                         <label class="flex flex-col gap-1.5">
                             <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">接口基础地址</span>
-                            <input id="baseUrlInput" type="text" placeholder="留空默认使用当前页面服务地址" class="px-3 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">
+                            <input id="baseUrlInput" type="text" placeholder="留空默认使用当前页面服务地址" class="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 transition-all">
                         </label>
                     </div>
-                    <div class="border-t border-slate-700 pt-4">
+                    <div class="border-t border-slate-800 pt-4">
                         <div class="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">全局参数 <span class="normal-case font-normal text-slate-500">（追加到每个请求，支持 header / cookie / query）</span></div>
                         <div id="globalsInput" class="space-y-2"></div>
-                        <button type="button" id="addGlobalBtn" class="mt-2 px-3 py-1.5 rounded-md bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold hover:bg-slate-600 transition-colors">+ 添加全局参数</button>
+                        <button type="button" id="addGlobalBtn" class="mt-2 px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 text-xs font-bold hover:bg-slate-700 transition-all active:scale-[0.98]">+ 添加全局参数</button>
                     </div>
-                    <div class="border-t border-slate-700 pt-4">
+                    <div class="border-t border-slate-800 pt-4">
                         <div class="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">场景变量</div>
                         <div id="scenarioVarsInput" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
                     </div>
-                    <div class="flex flex-wrap items-center justify-between border-t border-slate-700 pt-4">
-                        <div class="text-[11px] text-slate-400 flex items-center gap-2"><span>当前生效接口地址:</span> <span id="baseUrlLabel" class="font-mono text-emerald-400"></span><span id="authLabel" class="font-mono text-amber-400 border-l border-slate-600 pl-2" style="display:none">全局参数: <span id="authValue"></span></span></div>
+                    <div class="flex flex-wrap items-center justify-between border-t border-slate-800 pt-4">
+                        <div class="text-[11px] text-slate-400 flex items-center gap-2"><span>当前生效接口地址:</span> <span id="baseUrlLabel" class="font-mono text-emerald-400 font-semibold"></span><span id="authLabel" class="font-mono text-amber-400 border-l border-slate-700 pl-2" style="display:none">全局参数: <span id="authValue"></span></span></div>
                         <div class="flex flex-wrap items-center justify-end gap-2 mt-2 sm:mt-0">
                             <span id="settingsNotice" role="status" aria-live="polite" class="hidden text-xs font-medium text-emerald-400"></span>
-                            <button id="saveSettingsBtn" class="px-4 py-1.5 rounded-md bg-emerald-500 text-white text-xs font-bold hover:bg-emerald-600 transition-colors shadow-sm">保存并生效</button>
-                            <button id="clearSettingsBtn" class="px-4 py-1.5 rounded-md bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold hover:bg-slate-600 transition-colors">清除当前环境覆盖</button>
+                            <button id="saveSettingsBtn" class="px-4 py-2 rounded-lg bg-emerald-500 text-white text-xs font-bold hover:bg-emerald-600 transition-all shadow-sm active:scale-[0.98]">保存并生效</button>
+                            <button id="clearSettingsBtn" class="px-4 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 text-xs font-bold hover:bg-slate-700 transition-all active:scale-[0.98]">清除当前环境覆盖</button>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
         <div id="adhocModal" class="hidden fixed inset-0 z-30 bg-slate-950/40 p-4 overflow-y-auto">
-            <div class="mx-auto my-8 max-w-3xl rounded-lg bg-white shadow-xl">
-                <div class="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+            <div class="mx-auto my-8 max-w-3xl rounded-xl bg-white shadow-2xl border border-slate-200">
+                <div class="flex items-center justify-between border-b border-slate-100 px-5 py-4">
                     <div>
                         <div class="text-sm font-bold text-slate-800">临时请求调试</div>
-                        <div class="mt-1 text-[11px] text-slate-400">仅执行当前编辑内容，不保存也不影响场景进度。</div>
+                        <div class="mt-0.5 text-[11px] text-slate-400">仅执行当前编辑内容，不保存也不影响场景进度。</div>
                     </div>
-                    <button id="adhocCloseBtn" type="button" class="rounded px-2 py-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700">关闭</button>
+                    <button id="adhocCloseBtn" type="button" class="rounded-lg px-2.5 py-1 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors">关闭</button>
                 </div>
                 <div class="space-y-4 p-5">
-                    <div id="adhocError" class="hidden rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700"></div>
-                    <label class="block"><span class="text-xs font-bold text-slate-600">请求名称</span><input id="adhocNameInput" class="mt-1 w-full rounded border border-slate-200 px-3 py-2 text-sm" type="text"></label>
+                    <div id="adhocError" class="hidden rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700"></div>
+                    <label class="block"><span class="text-xs font-bold text-slate-600">请求名称</span><input id="adhocNameInput" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all" type="text"></label>
                     <div class="grid grid-cols-1 gap-4 sm:grid-cols-[120px_1fr]">
-                        <label class="block"><span class="text-xs font-bold text-slate-600">方法</span><select id="adhocMethodInput" class="mt-1 w-full rounded border border-slate-200 px-3 py-2 text-sm"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select></label>
-                        <label class="block"><span class="text-xs font-bold text-slate-600">请求路径</span><input id="adhocPathInput" class="mt-1 w-full rounded border border-slate-200 px-3 py-2 font-mono text-sm" type="text"></label>
+                        <label class="block"><span class="text-xs font-bold text-slate-600">方法</span><select id="adhocMethodInput" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select></label>
+                        <label class="block"><span class="text-xs font-bold text-slate-600">请求路径</span><input id="adhocPathInput" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-sm outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all" type="text"></label>
                     </div>
                     <div class="block">
                         <div class="flex items-center justify-between">
                             <span class="text-xs font-bold text-slate-600">查询参数</span>
                             <button id="adhocAddParamBtn" type="button" class="text-xs font-bold text-emerald-600 hover:text-emerald-700">+ 添加参数</button>
                         </div>
-                        <div id="adhocParamsContainer" class="mt-2 space-y-2 max-h-48 overflow-y-auto rounded border border-slate-200 bg-slate-50/50 p-2"></div>
+                        <div id="adhocParamsContainer" class="mt-2 space-y-2 max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50/50 p-2"></div>
                     </div>
-                    <label class="block"><span class="text-xs font-bold text-slate-600">请求头 JSON</span><textarea id="adhocHeadersInput" class="mt-1 h-28 w-full rounded border border-slate-200 p-3 font-mono text-xs" spellcheck="false"></textarea></label>
-                    <label class="block"><span class="text-xs font-bold text-slate-600">请求体 JSON</span><textarea id="adhocBodyInput" class="mt-1 h-40 w-full rounded border border-slate-200 p-3 font-mono text-xs" spellcheck="false"></textarea></label>
-                    <div class="flex justify-end gap-2"><button id="adhocCancelBtn" type="button" class="rounded border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50">取消</button><button id="adhocExecuteBtn" type="button" class="rounded bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700">执行一次</button></div>
-                    <div id="adhocResult" class="hidden rounded border border-slate-200 bg-slate-50 p-4"></div>
+                    <label class="block"><span class="text-xs font-bold text-slate-600">请求头 JSON</span><textarea id="adhocHeadersInput" class="mt-1 h-28 w-full rounded-lg border border-slate-200 p-3 font-mono text-xs outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all" spellcheck="false"></textarea></label>
+                    <label class="block"><span class="text-xs font-bold text-slate-600">请求体 JSON</span><textarea id="adhocBodyInput" class="mt-1 h-40 w-full rounded-lg border border-slate-200 p-3 font-mono text-xs outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all" spellcheck="false"></textarea></label>
+                    <div class="flex justify-end gap-2"><button id="adhocCancelBtn" type="button" class="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all active:scale-[0.98]">取消</button><button id="adhocExecuteBtn" type="button" class="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 shadow-sm transition-all active:scale-[0.98]">执行一次</button></div>
+                    <div id="adhocResult" class="hidden rounded-lg border border-slate-200 bg-slate-50 p-4"></div>
                 </div>
             </div>
         </div>
@@ -212,6 +236,104 @@ const workbenchView = (function () {
                 </div>
             </div>
         </div>`;
+        setupCustomDropdowns();
+    }
+
+    function setupCustomDropdowns() {
+        var configs = [
+            {
+                dropdownId: 'envDropdown',
+                triggerId: 'envDropdownTrigger',
+                labelId: 'envDropdownLabel',
+                menuId: 'envDropdownMenu',
+                selectId: 'environmentSelect'
+            },
+            {
+                dropdownId: 'themeDropdown',
+                triggerId: 'themeDropdownTrigger',
+                labelId: 'themeDropdownLabel',
+                menuId: 'themeDropdownMenu',
+                selectId: 'themeSelect'
+            }
+        ];
+
+        configs.forEach(function (cfg) {
+            var dropdown = document.getElementById(cfg.dropdownId);
+            var trigger = document.getElementById(cfg.triggerId);
+            var label = document.getElementById(cfg.labelId);
+            var menu = document.getElementById(cfg.menuId);
+            var select = document.getElementById(cfg.selectId);
+            if (!dropdown || !trigger || !label || !menu || !select) return;
+
+            function syncFromSelect() {
+                var val = select.value;
+                var options = Array.from(select.options || []);
+                if (!options.length) {
+                    menu.innerHTML = '<div class="px-3 py-1.5 text-[11px] text-slate-400">暂无可用项</div>';
+                    label.textContent = '-';
+                    return;
+                }
+                var activeOpt = options.find(function (o) { return o.value === val; }) || options[0];
+                label.textContent = activeOpt ? activeOpt.textContent : '-';
+
+                menu.innerHTML = options.map(function (opt) {
+                    var isActive = opt.value === val;
+                    return '<button type="button" class="custom-dropdown__item' + (isActive ? ' active' : '') + '" data-value="' + esc(opt.value) + '">' +
+                        '<span>' + esc(opt.textContent) + '</span>' +
+                        '<svg class="custom-dropdown__check' + (isActive ? '' : ' hidden') + '" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg>' +
+                    '</button>';
+                }).join('');
+            }
+
+            trigger.addEventListener('click', function (e) {
+                if (trigger.disabled || trigger.getAttribute('aria-disabled') === 'true') return;
+                e.stopPropagation();
+                var isOpen = dropdown.classList.contains('open');
+                document.querySelectorAll('.custom-dropdown.open').forEach(function (d) { d.classList.remove('open'); });
+                if (!isOpen) {
+                    syncFromSelect();
+                    dropdown.classList.add('open');
+                    trigger.setAttribute('aria-expanded', 'true');
+                } else {
+                    trigger.setAttribute('aria-expanded', 'false');
+                }
+            });
+
+            menu.addEventListener('click', function (e) {
+                var item = e.target.closest('.custom-dropdown__item');
+                if (!item) return;
+                var val = item.dataset.value;
+                select.value = val;
+                select.dispatchEvent(new Event('change', { bubbles: true }));
+                dropdown.classList.remove('open');
+                trigger.setAttribute('aria-expanded', 'false');
+                syncFromSelect();
+            });
+
+            select.addEventListener('change', syncFromSelect);
+
+            if (typeof MutationObserver !== 'undefined') {
+                var observer = new MutationObserver(function () {
+                    syncFromSelect();
+                });
+                observer.observe(select, { childList: true, subtree: true, attributes: true });
+            }
+
+            syncFromSelect();
+        });
+
+        if (!window.__customDropdownGlobalInit) {
+            window.__customDropdownGlobalInit = true;
+            document.addEventListener('click', function (e) {
+                if (!e.target.closest('.custom-dropdown')) {
+                    document.querySelectorAll('.custom-dropdown.open').forEach(function (d) {
+                        d.classList.remove('open');
+                        var trg = d.querySelector('.custom-dropdown__trigger');
+                        if (trg) trg.setAttribute('aria-expanded', 'false');
+                    });
+                }
+            });
+        }
     }
 
     function renderScenarioSelect(discoveredFiles, scenarioFile, scenarioSearch, pins) {
@@ -231,22 +353,21 @@ const workbenchView = (function () {
             return leftOrder - rightOrder;
         });
         if (!items.length) {
-            list.innerHTML = '<div class="p-3 text-xs text-slate-400">' + (keyword ? '未找到匹配场景' : '暂无可用场景') + '</div>';
+            list.innerHTML = '<div class="p-3 text-xs text-slate-400 text-center">' + (keyword ? '未找到匹配场景' : '暂无可用场景') + '</div>';
             return;
         }
         list.innerHTML = items.map(function (item) {
             var name = item.name || item.file;
             var active = scenarioFile === item.file;
             var pinned = Object.prototype.hasOwnProperty.call(pinOrder, item.file);
-            // 默认浅色：选中项用冷灰底，贴近截图而非高饱和 emerald
             var classes = active
-                ? 'bg-slate-100 border-slate-200 text-slate-900 shadow-sm'
-                : 'bg-white border-transparent text-slate-700 hover:bg-slate-50 hover:border-slate-200';
+                ? 'bg-slate-100 border-slate-200/80 text-slate-900 shadow-2xs font-semibold'
+                : 'bg-white border-transparent text-slate-700 hover:bg-slate-50 hover:border-slate-200/60';
             var pinLabel = pinned ? '取消置顶' : '置顶';
-            return '<div class="flex items-start gap-1 rounded-lg border transition-colors ' + classes + '">' +
-                '<button type="button" data-scenario-file="' + esc(item.file) + '" title="' + esc(item.file) + '" class="min-w-0 flex-1 text-left px-3 py-2.5">' +
-                    '<div class="text-xs font-bold truncate">' + esc(name) + '</div>' +
-                    '<div class="mt-1 text-[10px] font-mono truncate ' + (active ? 'text-slate-500' : 'text-slate-400') + '">' + esc(item.file) + '</div>' +
+            return '<div class="flex items-start gap-1 rounded-lg border transition-all ' + classes + '">' +
+                '<button type="button" data-scenario-file="' + esc(item.file) + '" title="' + esc(item.file) + '" class="min-w-0 flex-1 text-left px-2.5 py-2">' +
+                    '<div class="text-xs font-semibold truncate leading-snug">' + esc(name) + '</div>' +
+                    '<div class="mt-0.5 text-[10px] font-mono truncate ' + (active ? 'text-slate-500' : 'text-slate-400') + '">' + esc(item.file) + '</div>' +
                 '</button>' +
                 '<button type="button" data-pin-file="' + esc(item.file) + '" title="' + pinLabel + '" aria-label="' + pinLabel + '" class="scenario-pin-control' + (pinned ? ' scenario-pin-control--active' : '') + '">' +
                     '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4V3z" fill="' + (pinned ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"></path></svg>' +
@@ -260,7 +381,7 @@ const workbenchView = (function () {
         var statsPanel = document.getElementById('statsPanel');
         if (!statsPanel) return;
         if (!steps.length) {
-            statsPanel.innerHTML = '<div class="text-sm text-slate-500 p-4">没有已执行的步骤</div>';
+            statsPanel.innerHTML = '<div class="text-xs text-slate-400 p-2">没有已执行的步骤</div>';
             return;
         }
         var total = steps.length;
@@ -268,8 +389,8 @@ const workbenchView = (function () {
         var executed = total - skipped;
         var passed = steps.filter(function (s) { return !s.skipped && s.passed; }).length;
         var failed = steps.filter(function (s) { return !s.skipped && !s.passed; }).length;
-        var passRate = executed ? ((passed / executed) * 100).toFixed(2) : 0;
-        var failRate = executed ? ((failed / executed) * 100).toFixed(2) : 0;
+        var passRate = executed ? ((passed / executed) * 100).toFixed(1) : 0;
+        var failRate = executed ? ((failed / executed) * 100).toFixed(1) : 0;
         var totalMs = steps.reduce(function (a, s) { return a + (s.duration || 0); }, 0);
         var avgMs = executed ? totalMs / executed : 0;
         var assertTotal = steps.reduce(function (a, s) { return a + (s.assertions ? s.assertions.length : 0); }, 0);
@@ -278,70 +399,84 @@ const workbenchView = (function () {
         }, 0);
         var iter = iterations || { run: 1, failed: 0 };
 
-        var chart = '<div class="flex items-center space-x-6 w-full md:w-auto">' +
+        var chart = '<div class="flex items-center gap-4 w-full md:w-auto">' +
             '<div class="circle-chart scale-90" style="background:conic-gradient(#10b981 0% ' + passRate + '%, #f43f5e ' + passRate + '% 100%)">' +
                 '<div class="circle-inner">' +
-                    '<span class="text-[10px] font-medium text-slate-400 uppercase tracking-wider">已完成</span>' +
-                    '<span class="text-xl font-bold text-slate-800 mt-0.5">' + total + '</span>' +
+                    '<span class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">已执行</span>' +
+                    '<span class="text-lg font-bold text-slate-800 tabular-nums leading-none mt-0.5">' + total + '</span>' +
                 '</div>' +
             '</div>' +
-            '<div class="flex space-x-3">' +
-                '<div class="flex items-center space-x-2 px-2 py-1 rounded bg-emerald-50 border border-emerald-100/50">' +
-                    '<span class="w-2 h-2 rounded-full bg-emerald-500 shadow-sm"></span>' +
-                    '<span class="text-xs font-bold text-emerald-700">' + passed + ' <span class="text-emerald-600/70 font-medium text-[10px] ml-0.5">(' + passRate + '%)</span></span>' +
+            '<div class="flex flex-wrap gap-2">' +
+                '<div class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/20">' +
+                    '<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>' +
+                    '<span class="text-xs font-bold text-emerald-700 tabular-nums">' + passed + ' <span class="text-emerald-600/70 font-medium text-[10px] ml-0.5">(' + passRate + '%)</span></span>' +
                 '</div>' +
-                '<div class="flex items-center space-x-2 px-2 py-1 rounded bg-rose-50 border border-rose-100/50">' +
-                    '<span class="w-2 h-2 rounded-full bg-rose-500 shadow-sm"></span>' +
-                    '<span class="text-xs font-bold text-rose-600">' + failed + ' <span class="text-rose-500/70 font-medium text-[10px] ml-0.5">(' + failRate + '%)</span></span>' +
+                '<div class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-rose-500/10 border border-rose-500/20">' +
+                    '<span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span>' +
+                    '<span class="text-xs font-bold text-rose-600 tabular-nums">' + failed + ' <span class="text-rose-500/70 font-medium text-[10px] ml-0.5">(' + failRate + '%)</span></span>' +
                 '</div>' +
                 (skipped
-                    ? '<div class="flex items-center space-x-2 px-2 py-1 rounded bg-slate-100 border border-slate-200/60">' +
-                        '<span class="w-2 h-2 rounded-full bg-slate-400 shadow-sm"></span>' +
-                        '<span class="text-xs font-bold text-slate-600">' + skipped + ' <span class="text-slate-400/80 font-medium text-[10px] ml-0.5">跳过</span></span>' +
+                    ? '<div class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-100 border border-slate-200/60">' +
+                        '<span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>' +
+                        '<span class="text-xs font-bold text-slate-600 tabular-nums">' + skipped + ' <span class="text-slate-400 font-medium text-[10px] ml-0.5">跳过</span></span>' +
                     '</div>'
                     : '') +
             '</div>' +
         '</div>';
-        var metrics = '<div class="flex space-x-8 mt-4 md:mt-0 pl-6 border-l border-slate-100">' +
+        var metrics = '<div class="flex items-center gap-6 mt-3 md:mt-0 pl-4 border-l border-slate-100">' +
             '<div class="space-y-0.5">' +
-                '<div class="text-[10px] font-medium text-slate-400 uppercase tracking-wider">耗时(总/均)</div>' +
-                '<div class="text-emerald-500 font-bold text-sm tracking-tight">' + fmt(totalMs) + ' / ' + fmt(avgMs) + '</div>' +
+                '<div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">耗时(总/均)</div>' +
+                '<div class="text-emerald-600 font-bold text-xs tracking-tight font-mono tabular-nums">' + fmt(totalMs) + ' / ' + fmt(avgMs) + '</div>' +
             '</div>' +
             '<div class="space-y-0.5">' +
-                '<div class="text-[10px] font-medium text-slate-400 uppercase tracking-wider">循环(执行/失败)</div>' +
-                '<div class="text-xs font-medium text-slate-700"><span class="font-bold text-slate-900">' + (iter.run || 1) + '</span> <span class="mx-1 text-slate-300">/</span> <span class="text-rose-500 font-bold">' + (iter.failed || 0) + '</span></div>' +
+                '<div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">循环(执行/失败)</div>' +
+                '<div class="text-xs font-semibold text-slate-700 font-mono tabular-nums"><span class="text-slate-900">' + (iter.run || 1) + '</span> <span class="text-slate-300">/</span> <span class="text-rose-500">' + (iter.failed || 0) + '</span></div>' +
             '</div>' +
             '<div class="space-y-0.5">' +
-                '<div class="text-[10px] font-medium text-slate-400 uppercase tracking-wider">断言(执行/失败)</div>' +
-                '<div class="text-xs font-medium text-slate-700"><span class="font-bold text-slate-900">' + assertTotal + '</span> <span class="mx-1 text-slate-300">/</span> <span class="text-rose-500 font-bold">' + assertFailed + '</span></div>' +
+                '<div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">断言(执行/失败)</div>' +
+                '<div class="text-xs font-semibold text-slate-700 font-mono tabular-nums"><span class="text-slate-900">' + assertTotal + '</span> <span class="text-slate-300">/</span> <span class="text-rose-500">' + assertFailed + '</span></div>' +
             '</div>' +
         '</div>';
         statsPanel.innerHTML = chart + metrics;
     }
 
-    function renderFilterAll(steps) {
+    function renderFilterAll(steps, scenarioSteps) {
         steps = steps || [];
+        scenarioSteps = scenarioSteps || [];
         var filterBar = document.getElementById('filterBar');
         if (!filterBar) return;
-        if (!steps.length) {
-            filterBar.innerHTML = '<div class="text-xs text-slate-400 py-1">等待加载...</div>';
+        if (!steps.length && !scenarioSteps.length) {
+            filterBar.innerHTML = '<div class="text-xs text-slate-400 py-1">未加载场景</div>';
             return;
         }
-        var total = steps.length;
+        var filterState = (window.__R && window.__R.getFilterState) ? window.__R.getFilterState() : { type: 'all', keyword: '' };
+        var total = scenarioSteps.length || steps.length;
         var skipped = steps.filter(function (s) { return s.skipped; }).length;
         var passed = steps.filter(function (s) { return !s.skipped && s.passed; }).length;
         var failed = steps.filter(function (s) { return !s.skipped && !s.passed; }).length;
+        var curType = filterState.type || 'all';
+        var curKw = filterState.keyword || '';
+
+        function btnCls(type) {
+            return curType === type
+                ? 'filter-btn px-2.5 py-1 text-xs font-bold text-slate-900 bg-white rounded-md shadow-2xs transition-all'
+                : 'filter-btn px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-white/60 rounded-md transition-all';
+        }
+
         filterBar.innerHTML = `
-            <div class="flex items-center space-x-1 bg-slate-200/60 p-1 rounded-md">
-                <button data-f="all" onclick="window.__R.filter('all')" class="filter-btn px-3 py-1 text-xs font-bold text-blue-700 bg-white border border-blue-200 rounded shadow-sm">全部 (${total})</button>
-                <button data-f="pass" onclick="window.__R.filter('pass')" class="filter-btn px-3 py-1 text-xs font-medium text-slate-600 hover:bg-white rounded">成功 (${passed})</button>
-                <button data-f="fail" onclick="window.__R.filter('fail')" class="filter-btn px-3 py-1 text-xs font-medium text-slate-600 hover:bg-white rounded">失败 (${failed})</button>
-                ${skipped ? `<button data-f="skip" onclick="window.__R.filter('skip')" class="filter-btn px-3 py-1 text-xs font-medium text-slate-600 hover:bg-white rounded">跳过 (${skipped})</button>` : ''}
+            <div class="flex items-center gap-1 bg-slate-200/50 p-0.5 rounded-lg border border-slate-200/60">
+                <button data-f="all" onclick="window.__R.filter('all')" class="${btnCls('all')}">全部 (${total})</button>
+                <button data-f="pass" onclick="window.__R.filter('pass')" class="${btnCls('pass')}">成功 (${passed})</button>
+                <button data-f="fail" onclick="window.__R.filter('fail')" class="${btnCls('fail')}">失败 (${failed})</button>
+                ${skipped ? `<button data-f="skip" onclick="window.__R.filter('skip')" class="${btnCls('skip')}">跳过 (${skipped})</button>` : ''}
             </div>
             <div class="flex items-center space-x-2">
-                <input type="search" placeholder="搜索步骤/地址..." oninput="window.__R.search(this.value)" class="px-2.5 py-1 rounded border border-slate-200 text-xs bg-white focus:outline-none focus:border-emerald-500 w-44">
+                <input type="search" value="${esc(curKw)}" placeholder="搜索步骤/路径..." oninput="window.__R.search(this.value)" class="px-2.5 py-1 rounded-md border border-slate-200 text-xs bg-white focus:outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all w-40">
             </div>
         `;
+        if (window.__R && window.__R.applyFilter) {
+            window.__R.applyFilter();
+        }
     }
 
     function renderPendingSteps(scenarioSteps, startIndex) {
@@ -351,43 +486,43 @@ const workbenchView = (function () {
             var seqNum = stepIndex + 1;
             var method = String(step.method || 'GET').toUpperCase();
             var stepPath = step.path || '';
-            var methodColor = { GET: 'text-emerald-600', POST: 'text-orange-500', PUT: 'text-amber-600', DELETE: 'text-rose-600', PATCH: 'text-purple-600' }[method] || 'text-slate-600';
+            var methodColor = { GET: 'text-emerald-600', POST: 'text-amber-600', PUT: 'text-yellow-600', DELETE: 'text-rose-600', PATCH: 'text-indigo-600' }[method] || 'text-slate-600';
             var assertCount = Array.isArray(step.assertions) ? step.assertions.length : 0;
             var extractCount = Array.isArray(step.extract) ? step.extract.length : 0;
             var tags = '';
-            if (assertCount) tags += '<span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-bold"> ' + assertCount + ' 断言</span>';
-            if (extractCount) tags += '<span class="px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-700 border border-zinc-200 text-[10px] font-bold ml-1">' + extractCount + ' 提取</span>';
+            if (assertCount) tags += '<span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200/80 text-[10px] font-semibold"> ' + assertCount + ' 断言</span>';
+            if (extractCount) tags += '<span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200/80 text-[10px] font-semibold ml-1">' + extractCount + ' 提取</span>';
             var reqBody = step.request && step.request.body ? esc(typeof step.request.body === 'string' ? step.request.body : JSON.stringify(step.request.body, null, 2)) : '';
 
-            return '<li class="hover:bg-slate-50/60 group transition-all duration-150 border-b border-slate-100" data-passed="pending" data-step-idx="' + stepIndex + '" data-search="' + esc(((step.name || '') + ' ' + method + ' ' + stepPath).toLowerCase()) + '">' +
-                '<div class="px-4 py-2.5 flex items-center justify-between cursor-pointer select-none" onclick="window.__R.toggle(this, event)">' +
-                    '<div class="flex items-center space-x-3 min-w-0 flex-1 pr-4">' +
-                        '<div class="flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 text-[11px] font-bold bg-slate-200 text-slate-600 shadow-inner">' + seqNum + '</div>' +
-                        '<span class="text-sm text-slate-800 font-semibold truncate group-hover:text-slate-950" title="' + esc(step.name || '') + '">' + esc(step.name || '未命名步骤') + '</span>' +
-                        '<div class="hidden sm:flex items-center space-x-1.5 bg-slate-100/70 px-2 py-0.5 rounded border border-slate-200/60 flex-shrink-0 max-w-[55%]">' +
+            return '<li class="hover:bg-slate-50/70 group transition-all duration-150 border-b border-slate-100" data-passed="pending" data-step-idx="' + stepIndex + '" data-search="' + esc(((step.name || '') + ' ' + method + ' ' + stepPath).toLowerCase()) + '">' +
+                '<div class="px-3.5 py-2 flex items-center justify-between cursor-pointer select-none" onclick="window.__R.toggle(this, event)">' +
+                    '<div class="flex items-center space-x-2.5 min-w-0 flex-1 pr-3">' +
+                        '<div class="flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 text-[10.5px] font-bold bg-slate-100 border border-slate-200 text-slate-500 tabular-nums">' + seqNum + '</div>' +
+                        '<span class="text-xs text-slate-700 font-medium truncate group-hover:text-slate-900" title="' + esc(step.name || '') + '">' + esc(step.name || '未命名步骤') + '</span>' +
+                        '<div class="hidden sm:flex items-center space-x-1.5 bg-slate-100/70 px-2 py-0.5 rounded-md border border-slate-200/60 flex-shrink-0 max-w-[55%]">' +
                             '<span class="text-[10px] font-extrabold ' + methodColor + ' uppercase tracking-wider font-mono">' + method + '</span>' +
                             '<span class="text-slate-300">|</span>' +
                             '<span class="text-[11px] text-slate-600 font-mono truncate" title="' + esc(stepPath) + '">' + esc(stepPath) + '</span>' +
                         '</div>' +
                     '</div>' +
-                    '<div class="flex items-center space-x-2 flex-shrink-0">' +
+                    '<div class="flex items-center space-x-1.5 flex-shrink-0">' +
                         tags +
-                        '<button type="button" data-copy-step="' + stepIndex + '" class="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900" title="复制步骤标题与接口路径">复制</button>' +
-                        '<button type="button" data-curl-step="' + stepIndex + '" class="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900" title="复制为 cURL 命令行">cURL</button>' +
-                        '<button type="button" data-adhoc-step="' + stepIndex + '" class="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900">调试</button>' +
-                        '<span class="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200/50">待执行</span>' +
-                        '<svg class="w-4 h-4 text-slate-400 group-hover:text-slate-600 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>' +
+                        '<button type="button" data-copy-step="' + stepIndex + '" class="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]" title="复制步骤标题与接口路径">复制</button>' +
+                        '<button type="button" data-curl-step="' + stepIndex + '" class="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]" title="复制为 cURL 命令行">cURL</button>' +
+                        '<button type="button" data-adhoc-step="' + stepIndex + '" class="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all active:scale-[0.96]">调试</button>' +
+                        '<span class="text-[10.5px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200/50">待执行</span>' +
+                        '<svg class="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>' +
                     '</div>' +
                 '</div>' +
                 '<div class="details-panel px-4 bg-slate-50/70 border-t border-slate-200/60 text-[13px]">' +
-                    '<div class="py-3 space-y-3">' +
+                    '<div class="py-2.5 space-y-2.5">' +
                         (reqBody
                             ? '<div>' +
-                                '<div class="flex items-center justify-between text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1.5">' +
+                                '<div class="flex items-center justify-between text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1.5">' +
                                     '<span class="flex items-center"><div class="w-1.5 h-1.5 bg-slate-400 mr-2 rounded-full"></div>请求体</span>' +
                                     '<div class="flex items-center gap-2"><span class="text-slate-400 font-mono font-normal">JSON</span><button type="button" class="code-copy-btn text-[10px] text-slate-400 hover:text-slate-200" data-code-copy="pending-req-body-' + stepIndex + '">复制</button></div>' +
                                 '</div>' +
-                                '<pre id="pending-req-body-' + stepIndex + '" class="bg-slate-800 p-2.5 rounded text-slate-200 overflow-x-auto font-mono text-[11px] leading-relaxed shadow-inner border border-slate-700/50">' + reqBody + '</pre>' +
+                                '<pre id="pending-req-body-' + stepIndex + '" class="bg-slate-900 p-2.5 rounded-lg text-slate-200 overflow-x-auto font-mono text-[11px] leading-relaxed shadow-inner border border-slate-800">' + reqBody + '</pre>' +
                             '</div>'
                             : '<div class="text-xs text-slate-400 py-1">无请求体参数</div>') +
                     '</div>' +
@@ -401,11 +536,11 @@ const workbenchView = (function () {
             var skipped = s.skipped;
             var seqNum = i + 1;
             var seqCls = skipped ? 'bg-slate-400 text-white' : (ok ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white');
-            var nameCls = ok ? 'text-slate-700 group-hover:text-slate-950' : 'text-rose-800 font-bold';
-            var statusCls = skipped ? 'text-slate-600 bg-slate-100 border-slate-200' : (ok ? 'text-emerald-600 bg-emerald-50 border-emerald-100' : 'text-rose-600 bg-rose-100 border-rose-200 shadow-sm');
-            var timeCls = ok ? 'text-slate-400' : 'text-rose-400';
-            var bgCls = ok ? 'hover:bg-slate-50/50' : 'bg-rose-50/20';
-            var methodColor = { GET: 'text-emerald-600', POST: 'text-orange-500', PUT: 'text-amber-600', DELETE: 'text-rose-600', PATCH: 'text-purple-600' }[s.method] || 'text-slate-600';
+            var nameCls = ok ? 'text-slate-800 group-hover:text-slate-950 font-medium' : 'text-rose-800 font-bold';
+            var statusCls = skipped ? 'text-slate-600 bg-slate-100 border-slate-200' : (ok ? 'text-emerald-700 bg-emerald-500/10 border-emerald-500/20' : 'text-rose-700 bg-rose-500/10 border-rose-500/20 shadow-2xs');
+            var timeCls = ok ? 'text-slate-400 font-mono' : 'text-rose-500 font-mono font-bold';
+            var bgCls = ok ? 'hover:bg-slate-50/60' : 'bg-rose-50/20 hover:bg-rose-50/40';
+            var methodColor = { GET: 'text-emerald-600', POST: 'text-amber-600', PUT: 'text-yellow-600', DELETE: 'text-rose-600', PATCH: 'text-indigo-600' }[s.method] || 'text-slate-600';
 
             var reqHeaders = s.request && s.request.headers ? esc(truncateForDisplay(typeof s.request.headers === 'string' ? s.request.headers : JSON.stringify(s.request.headers, null, 2))) : '';
             var reqBody = s.request && s.request.body ? esc(truncateForDisplay(typeof s.request.body === 'string' ? s.request.body : JSON.stringify(s.request.body, null, 2))) : '';
@@ -416,7 +551,7 @@ const workbenchView = (function () {
             if (!ok && s.error) {
                 var isNetworkErr = /Failed to fetch|NetworkError|ECONNREFUSED|ENOTFOUND/i.test(s.error);
                 if (isNetworkErr) {
-                    errorHtml = '<div class="my-2 p-2.5 bg-rose-50 rounded border border-rose-200 flex items-start space-x-2.5">' +
+                    errorHtml = '<div class="my-2 p-2.5 bg-rose-50 rounded-lg border border-rose-200 flex items-start space-x-2.5">' +
                         '<svg class="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>' +
                         '<div class="text-xs text-rose-800">' +
                             '<div class="font-bold">网络连接失败 (Failed to fetch)</div>' +
@@ -424,7 +559,7 @@ const workbenchView = (function () {
                         '</div>' +
                     '</div>';
                 } else {
-                    errorHtml = '<div class="my-2 p-2 bg-rose-50 rounded border border-rose-200 flex items-center space-x-2">' +
+                    errorHtml = '<div class="my-2 p-2 bg-rose-50 rounded-lg border border-rose-200 flex items-center space-x-2">' +
                         '<svg class="w-4 h-4 text-rose-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>' +
                         '<span class="text-rose-800 font-bold text-[12px]">失败:</span>' +
                         '<span class="text-rose-600 text-[12px] font-mono break-all">' + esc(s.error) + '</span></div>';
@@ -437,23 +572,23 @@ const workbenchView = (function () {
                 var diffHtml = '';
                 if (failedList.length > 0) {
                     diffHtml = '<div class="mt-2 space-y-1.5">' + failedList.map(function (a) {
-                        return '<div class="p-2 rounded bg-rose-50/70 border border-rose-200 text-xs">' +
+                        return '<div class="p-2 rounded-lg bg-rose-50/70 border border-rose-200 text-xs">' +
                             '<div class="font-bold text-rose-700">' + esc(a.name) + '</div>' +
                             '<div class="mt-1.5 grid grid-cols-1 sm:grid-cols-2 gap-2 font-mono text-[11px]">' +
-                                '<div class="p-1.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800"><span class="font-bold text-[10px] uppercase block mb-0.5">预期值 (Expected)</span>' + esc(stringify(a.expected)) + '</div>' +
-                                '<div class="p-1.5 rounded bg-rose-50 border border-rose-200 text-rose-800"><span class="font-bold text-[10px] uppercase block mb-0.5">实际值 (Actual)</span>' + esc(stringify(a.actual)) + '</div>' +
+                                '<div class="p-1.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800"><span class="font-bold text-[10px] uppercase block mb-0.5">预期值 (Expected)</span>' + esc(stringify(a.expected)) + '</div>' +
+                                '<div class="p-1.5 rounded-md bg-rose-50 border border-rose-200 text-rose-800"><span class="font-bold text-[10px] uppercase block mb-0.5">实际值 (Actual)</span>' + esc(stringify(a.actual)) + '</div>' +
                             '</div>' +
                         '</div>';
                     }).join('') + '</div>';
                 }
 
-                assertHtml = '<div class="py-3 border-t border-slate-200 mt-2">' +
-                    '<div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-2">断言结果 (' + (s.assertions.length - failedList.length) + '/' + s.assertions.length + ')</div>' +
-                    '<div class="flex flex-wrap gap-2">' + s.assertions.map(function (a) {
-                        var ac = a.passed ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-rose-50 text-rose-700 border-rose-100';
+                assertHtml = '<div class="py-2.5 border-t border-slate-200 mt-2">' +
+                    '<div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-2">断言结果 (' + (s.assertions.length - failedList.length) + '/' + s.assertions.length + ')</div>' +
+                    '<div class="flex flex-wrap gap-1.5">' + s.assertions.map(function (a) {
+                        var ac = a.passed ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20' : 'bg-rose-500/10 text-rose-700 border-rose-500/20';
                         var ap = a.passed ? 'M5 13l4 4L19 7' : 'M6 18L18 6M6 6l12 12';
-                        return '<div class="flex items-center px-2 py-1 ' + ac + ' rounded border text-[12px] font-medium" title="Expected: ' + esc(stringify(a.expected)) + ' \nActual: ' + esc(stringify(a.actual)) + '">' +
-                            '<svg class="w-3.5 h-3.5 mr-1.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="' + ap + '"></path></svg>' +
+                        return '<div class="flex items-center px-2 py-0.5 ' + ac + ' rounded-md border text-[11px] font-medium" title="Expected: ' + esc(stringify(a.expected)) + ' \nActual: ' + esc(stringify(a.actual)) + '">' +
+                            '<svg class="w-3 h-3 mr-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="' + ap + '"></path></svg>' +
                             esc(a.name) + '</div>';
                     }).join('') + '</div>' +
                     diffHtml +
@@ -462,47 +597,47 @@ const workbenchView = (function () {
 
             var bodyColor = ok ? 'text-emerald-400' : 'text-rose-400';
             var detailPanelCls = ok
-                ? 'details-panel px-4 bg-slate-50/30 border-t border-slate-100 text-[13px]'
+                ? 'details-panel px-4 bg-slate-50/40 border-t border-slate-100 text-[13px]'
                 : 'details-panel px-4 bg-white border-t border-rose-100 text-[13px] shadow-inner';
             var stepActions = executionMode === 'step'
                 ? '<span class="step-run-actions"><button type="button" data-step-action="rewind" data-step-index="' + i + '" title="仅回退测试运行时与报告，不撤销已发出的业务请求">回退</button><button type="button" data-step-action="rerun" data-step-index="' + i + '" title="从本步骤执行前的变量快照重新执行">重跑</button></span>'
                 : '';
 
-            return '<li class="' + bgCls + ' group transition-colors" data-passed="' + ok + '" data-skipped="' + skipped + '" data-step-idx="' + i + '" data-search="' + esc((s.name + ' ' + s.method + ' ' + s.path).toLowerCase()) + '">' +
-                '<div class="px-4 py-2.5 flex items-center justify-between cursor-pointer" onclick="window.__R.toggle(this, event)">' +
-                    '<div class="flex items-center space-x-3 w-[70%] lg:w-[80%]">' +
-                        '<div class="flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 text-[11px] font-bold shadow-sm ' + seqCls + '">' + seqNum + '</div>' +
-                        '<span class="select-text text-sm ' + nameCls + ' font-semibold truncate transition-colors" title="' + esc(s.name) + '">' + esc(s.name) + '</span>' +
-                        '<div class="hidden sm:flex items-center space-x-1.5 bg-slate-50 px-2 py-0.5 rounded border border-slate-100 flex-shrink-0 max-w-[50%]">' +
+            return '<li class="' + bgCls + ' group transition-colors border-b border-slate-100" data-passed="' + ok + '" data-skipped="' + skipped + '" data-step-idx="' + i + '" data-search="' + esc((s.name + ' ' + s.method + ' ' + s.path).toLowerCase()) + '">' +
+                '<div class="px-3.5 py-2 flex items-center justify-between cursor-pointer" onclick="window.__R.toggle(this, event)">' +
+                    '<div class="flex items-center space-x-2.5 w-[70%] lg:w-[80%]">' +
+                        '<div class="flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 text-[10.5px] font-bold shadow-2xs ' + seqCls + ' tabular-nums">' + seqNum + '</div>' +
+                        '<span class="select-text text-xs ' + nameCls + ' truncate transition-colors" title="' + esc(s.name) + '">' + esc(s.name) + '</span>' +
+                        '<div class="hidden sm:flex items-center space-x-1.5 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-100 flex-shrink-0 max-w-[50%]">' +
                             '<span class="text-[10px] font-bold ' + methodColor + ' uppercase tracking-wider font-mono">' + esc(String(s.method)) + '</span>' +
                             '<span class="text-slate-300">|</span>' +
-                            '<span class="select-text text-[12px] text-slate-500 font-mono truncate" title="' + esc(s.path) + '">' + esc(s.path) + '</span>' +
+                            '<span class="select-text text-[11px] text-slate-500 font-mono truncate" title="' + esc(s.path) + '">' + esc(s.path) + '</span>' +
                         '</div>' +
                     '</div>' +
-                    '<div class="flex items-center space-x-2 flex-shrink-0">' +
-                        '<button type="button" data-copy-step="' + i + '" class="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-bold text-slate-600 hover:border-slate-300 hover:text-slate-900" title="复制步骤标题与接口路径">复制</button>' +
-                        '<button type="button" data-curl-step="' + i + '" class="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-bold text-slate-600 hover:border-slate-300 hover:text-slate-900" title="复制为 cURL 命令行">cURL</button>' +
-                        '<button type="button" data-adhoc-step="' + i + '" class="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-bold text-slate-600 hover:border-slate-300 hover:text-slate-900">调试</button>' +
+                    '<div class="flex items-center space-x-1.5 flex-shrink-0">' +
+                        '<button type="button" data-copy-step="' + i + '" class="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]" title="复制步骤标题与接口路径">复制</button>' +
+                        '<button type="button" data-curl-step="' + i + '" class="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]" title="复制为 cURL 命令行">cURL</button>' +
+                        '<button type="button" data-adhoc-step="' + i + '" class="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]">调试</button>' +
                         stepActions +
-                        '<span class="text-[12px] font-bold font-mono ' + statusCls + ' px-1.5 py-0.5 rounded border">' + esc(String(s.status)) + '</span>' +
-                        '<span class="' + timeCls + ' text-[12px] font-mono w-16 text-right">' + fmt(s.duration) + '</span>' +
-                        '<svg class="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>' +
+                        '<span class="text-[11px] font-bold font-mono ' + statusCls + ' px-2 py-0.5 rounded-md border tabular-nums">' + esc(String(s.status)) + '</span>' +
+                        '<span class="' + timeCls + ' text-[11px] font-mono w-16 text-right tabular-nums">' + fmt(s.duration) + '</span>' +
+                        '<svg class="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-500 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>' +
                     '</div>' +
                 '</div>' +
                 '<div class="' + detailPanelCls + '">' +
                     '<div class="sm:hidden mb-3 pb-3 border-b border-slate-200">' +
-                         '<div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1">接口地址</div>' +
+                         '<div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1">接口地址</div>' +
                          '<div class="flex items-center space-x-2"><span class="text-xs font-bold ' + methodColor + '">' + esc(String(s.method)) + '</span><span class="text-xs font-mono break-all">' + esc(s.path) + '</span></div>' +
                     '</div>' +
                     errorHtml +
-                    '<div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-0 md:divide-x divide-slate-200 py-3">' +
-                        '<div class="md:pr-6 space-y-3">' +
-                            (reqHeaders ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center justify-between"><span class="flex items-center"><div class="w-1 h-3 bg-slate-300 mr-2 rounded-full"></div>请求头</span><button type="button" class="code-copy-btn text-[10px] text-slate-400 hover:text-slate-600" data-code-copy="step-' + i + '-req-headers">复制</button></div><pre id="step-' + i + '-req-headers" class="bg-slate-800 p-2.5 rounded text-slate-300 overflow-x-auto font-mono leading-tight shadow-inner text-[11px]">' + reqHeaders + '</pre></div>' : '') +
-                            (reqBody ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center justify-between"><span class="flex items-center"><div class="w-1 h-3 bg-emerald-400 mr-2 rounded-full"></div>请求体</span><button type="button" class="code-copy-btn text-[10px] text-slate-400 hover:text-slate-600" data-code-copy="step-' + i + '-req-body">复制</button></div><pre id="step-' + i + '-req-body" class="bg-slate-800 p-2.5 rounded ' + bodyColor + ' overflow-x-auto font-mono leading-tight shadow-inner text-[11px]">' + reqBody + '</pre></div>' : '') +
+                    '<div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-0 md:divide-x divide-slate-200 py-2.5">' +
+                        '<div class="md:pr-5 space-y-2.5">' +
+                            (reqHeaders ? '<div><div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1 flex items-center justify-between"><span class="flex items-center"><div class="w-1 h-3 bg-slate-300 mr-2 rounded-full"></div>请求头</span><button type="button" class="code-copy-btn text-[10px] text-slate-400 hover:text-slate-200" data-code-copy="step-' + i + '-req-headers">复制</button></div><pre id="step-' + i + '-req-headers" class="bg-slate-900 p-2.5 rounded-lg text-slate-300 overflow-x-auto font-mono leading-tight shadow-inner text-[11px] border border-slate-800">' + reqHeaders + '</pre></div>' : '') +
+                            (reqBody ? '<div><div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1 flex items-center justify-between"><span class="flex items-center"><div class="w-1 h-3 bg-emerald-400 mr-2 rounded-full"></div>请求体</span><button type="button" class="code-copy-btn text-[10px] text-slate-400 hover:text-slate-200" data-code-copy="step-' + i + '-req-body">复制</button></div><pre id="step-' + i + '-req-body" class="bg-slate-900 p-2.5 rounded-lg ' + bodyColor + ' overflow-x-auto font-mono leading-tight shadow-inner text-[11px] border border-slate-800">' + reqBody + '</pre></div>' : '') +
                         '</div>' +
-                        '<div class="md:pl-6 space-y-3">' +
-                            (resHeaders ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center justify-between"><span class="flex items-center"><div class="w-1 h-3 bg-slate-300 mr-2 rounded-full"></div>响应头</span><button type="button" class="code-copy-btn text-[10px] text-slate-400 hover:text-slate-600" data-code-copy="step-' + i + '-res-headers">复制</button></div><pre id="step-' + i + '-res-headers" class="bg-slate-800 p-2.5 rounded text-slate-300 overflow-x-auto font-mono leading-tight shadow-inner text-[11px]">' + resHeaders + '</pre></div>' : '') +
-                            (resBody ? '<div><div class="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center justify-between"><span class="flex items-center"><div class="w-1 h-3 ' + (ok ? 'bg-emerald-400' : 'bg-rose-400') + ' mr-2 rounded-full"></div>响应体</span><button type="button" class="code-copy-btn text-[10px] text-slate-400 hover:text-slate-600" data-code-copy="step-' + i + '-res-body">复制</button></div><pre id="step-' + i + '-res-body" class="bg-slate-800 p-2.5 rounded ' + bodyColor + ' overflow-x-auto font-mono leading-tight shadow-inner text-[11px]">' + resBody + '</pre></div>' : '') +
+                        '<div class="md:pl-5 space-y-2.5">' +
+                            (resHeaders ? '<div><div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1 flex items-center justify-between"><span class="flex items-center"><div class="w-1 h-3 bg-slate-300 mr-2 rounded-full"></div>响应头</span><button type="button" class="code-copy-btn text-[10px] text-slate-400 hover:text-slate-200" data-code-copy="step-' + i + '-res-headers">复制</button></div><pre id="step-' + i + '-res-headers" class="bg-slate-900 p-2.5 rounded-lg text-slate-300 overflow-x-auto font-mono leading-tight shadow-inner text-[11px] border border-slate-800">' + resHeaders + '</pre></div>' : '') +
+                            (resBody ? '<div><div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1 flex items-center justify-between"><span class="flex items-center"><div class="w-1 h-3 ' + (ok ? 'bg-emerald-400' : 'bg-rose-400') + ' mr-2 rounded-full"></div>响应体</span><button type="button" class="code-copy-btn text-[10px] text-slate-400 hover:text-slate-200" data-code-copy="step-' + i + '-res-body">复制</button></div><pre id="step-' + i + '-res-body" class="bg-slate-900 p-2.5 rounded-lg ' + bodyColor + ' overflow-x-auto font-mono leading-tight shadow-inner text-[11px] border border-slate-800">' + resBody + '</pre></div>' : '') +
                         '</div>' +
                     '</div>' +
                     assertHtml +
@@ -516,15 +651,16 @@ const workbenchView = (function () {
         steps = steps || [];
         scenarioSteps = scenarioSteps || [];
         if (!steps.length && !scenarioSteps.length) {
-            ul.innerHTML = '<li class="p-8 text-center text-slate-400 text-sm">点击执行场景开始请求</li>';
+            ul.innerHTML = '<li class="p-8 text-center text-slate-400 text-xs">点击「执行全部」开始发起请求</li>';
             return;
         }
         ul.innerHTML = steps.map(function (s, i) { return renderStepItem(s, i, executionMode); }).join('')
             + renderPendingSteps(scenarioSteps, steps.length);
+        if (window.__R && window.__R.applyFilter) {
+            window.__R.applyFilter();
+        }
     }
 
-    // 执行期增量追加：只解析新增步骤与更新后的待执行占位，避免每步全量重建（长场景 O(n²) 卡顿）；
-    // 已渲染步骤的展开/收起状态得以保留（全量重建会重置）。filter/search 与全量重建一样不自动恢复
     function appendStepResult(result, index, scenarioSteps, executionMode) {
         var ul = document.getElementById('stepsList');
         if (!ul) return;
@@ -532,6 +668,9 @@ const workbenchView = (function () {
         var template = document.createElement('template');
         template.innerHTML = renderStepItem(result, index, executionMode) + renderPendingSteps(scenarioSteps, index + 1);
         ul.appendChild(template.content);
+        if (window.__R && window.__R.applyFilter) {
+            window.__R.applyFilter();
+        }
     }
 
     function buildOverallReport(steps, scenario, scenarioFile, executionMode, environment) {
@@ -542,8 +681,6 @@ const workbenchView = (function () {
         var passed = steps.filter(function (item) { return !item.skipped && item.passed; }).length;
         var failed = steps.filter(function (item) { return !item.skipped && !item.passed; }).length;
         var duration = steps.reduce(function (sum, item) { return sum + (item.duration || 0); }, 0);
-        // 与 engine.runScenario 对齐：任一步骤被取消时整体状态为 CANCELLED，
-        // 不再把取消步骤计入 failed 而误报"存在失败"（头部 runState 与报告面板因此不再互相矛盾）
         var cancelled = steps.some(function (item) { return item.cancelled; });
         var status = cancelled ? 'CANCELLED' : failed > 0 ? 'FAILED' : (executed === 0 ? 'SKIPPED' : 'PASSED');
         return {
@@ -559,7 +696,7 @@ const workbenchView = (function () {
                 passedSteps: passed,
                 failedSteps: failed,
                 skippedSteps: skipped,
-                passRate: executed ? ((passed / executed) * 100).toFixed(2) + '%' : '0.00%',
+                passRate: executed ? ((passed / executed) * 100).toFixed(1) + '%' : '0.0%',
                 totalDurationMs: duration,
                 totalDurationFmt: fmt(duration)
             },
@@ -652,7 +789,6 @@ const workbenchView = (function () {
         var statusText = cancelled ? '已取消' : hasFailure ? '存在失败' : (allSkipped ? '全部跳过' : (completed ? '全部通过' : '执行中'));
         var modeText = report.executionMode === 'step' ? '单步执行' : '全量执行';
         var progressText = summary.executedSteps + ' / ' + summary.totalSteps;
-        // "失败步骤"区只列真实失败：取消步骤不再出现在失败标题下（其状态徽章在左侧步骤列表可见）
         var reportSteps = report.steps.filter(function (step) { return !step.passed && !step.cancelled; });
         var hasRealFailure = reportSteps.length > 0;
         var stepHtml = reportSteps.map(function (step) {

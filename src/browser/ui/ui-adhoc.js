@@ -223,7 +223,7 @@ const workbenchAdhoc = (function () {
         document.getElementById('adhocModal').classList.add('hidden');
     }
 
-    async function executeAdhocRequest(executeStepFn, getEnvFn, getBaseUrlFn, getAuthFn, getGlobalsFn) {
+    async function executeAdhocRequest(executeStepFn, getEnvFn, getBaseUrlFn, getAuthFn, getGlobalsFn, getVarsFn) {
         if (adhocState.running) return;
         try {
             var step = buildAdhocStep({
@@ -235,8 +235,9 @@ const workbenchAdhoc = (function () {
                 body: document.getElementById('adhocBodyInput').value
             });
             var environment = getEnvFn ? getEnvFn() : null;
+            var runtimeVars = getVarsFn ? getVarsFn() : {};
             var runtime = {
-                vars: {},
+                vars: clone(runtimeVars),
                 lastResponse: null,
                 lastResponseBody: null,
                 baseUrl: getBaseUrlFn ? getBaseUrlFn() : '',
@@ -261,7 +262,7 @@ const workbenchAdhoc = (function () {
         }
     }
 
-    function bindAdhocRequestEvents(getStepByIdxFn, getRuntimeByIdxFn, executeStepFn, getEnvFn, getBaseUrlFn, getAuthFn, getGlobalsFn) {
+    function bindAdhocRequestEvents(getStepByIdxFn, getRuntimeByIdxFn, executeStepFn, getEnvFn, getBaseUrlFn, getAuthFn, getGlobalsFn, getVarsFn) {
         document.getElementById('stepsList').addEventListener('click', function (event) {
             var button = event.target.closest('[data-adhoc-step]');
             if (!button) return;
@@ -274,8 +275,21 @@ const workbenchAdhoc = (function () {
         });
         document.getElementById('adhocCloseBtn').addEventListener('click', closeAdhocModal);
         document.getElementById('adhocCancelBtn').addEventListener('click', closeAdhocModal);
+
+        var modal = document.getElementById('adhocModal');
+        if (modal) {
+            modal.addEventListener('click', function (event) {
+                if (event.target === modal) closeAdhocModal();
+            });
+        }
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape' && modal && !modal.classList.contains('hidden')) {
+                closeAdhocModal();
+            }
+        });
+
         document.getElementById('adhocExecuteBtn').addEventListener('click', function () {
-            executeAdhocRequest(executeStepFn, getEnvFn, getBaseUrlFn, getAuthFn, getGlobalsFn);
+            executeAdhocRequest(executeStepFn, getEnvFn, getBaseUrlFn, getAuthFn, getGlobalsFn, getVarsFn);
         });
         var addBtn = document.getElementById('adhocAddParamBtn');
         if (addBtn) {
