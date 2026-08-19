@@ -44,9 +44,9 @@ const workbenchView = (function () {
 
     function buildSkeleton(mount) {
         (mount || document.body).innerHTML = `
-        <header class="bg-white border-b border-slate-200 px-4 py-2 flex flex-wrap gap-3 justify-between items-center sticky top-0 z-10 shadow-xs">
-            <div class="flex items-center gap-2 min-w-0">
-                <div class="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100/80 border border-slate-200/60">
+        <header class="scenario-toolbar bg-white border-b border-slate-200 px-4 py-2 flex gap-3 justify-between items-center sticky top-0 z-10 shadow-xs">
+            <div class="scenario-header-context flex items-center gap-2 min-w-0">
+                <div class="scenario-environment-badge flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100/80 border border-slate-200/60">
                     <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                     <span id="envNameLabel" class="text-[11px] font-semibold text-slate-500 whitespace-nowrap"></span>
                 </div>
@@ -54,42 +54,39 @@ const workbenchView = (function () {
                 <h1 id="scenarioTitle" class="text-xs font-bold text-slate-800 tracking-tight truncate max-w-[280px] sm:max-w-xl">未加载场景</h1>
             </div>
             <div class="scenario-header-actions flex items-center">
-                <div class="custom-dropdown" id="envDropdown" title="快速切换运行环境">
+                <div class="custom-dropdown scenario-header-environment" id="envDropdown" title="快速切换运行环境">
                     <button type="button" class="custom-dropdown__trigger" id="envDropdownTrigger" aria-haspopup="listbox" aria-expanded="false">
                         <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 ring-2 ring-emerald-500/20"></span>
-                        <span class="text-slate-400 text-[10.5px] font-semibold">环境</span>
+                        <span class="custom-dropdown__prefix text-slate-400 text-[10.5px] font-semibold">环境</span>
                         <span class="custom-dropdown__label font-bold text-slate-800" id="envDropdownLabel">-</span>
                         <svg class="custom-dropdown__arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
                     </button>
-                    <div class="custom-dropdown__menu" id="envDropdownMenu" role="listbox"></div>
+                    <div class="custom-dropdown__menu" id="envDropdownMenu" role="listbox" aria-label="运行环境"></div>
                     <select id="environmentSelect" class="sr-only" aria-label="快速切换环境" tabindex="-1"></select>
                 </div>
-                <div class="custom-dropdown" id="themeDropdown" title="切换界面视觉风格">
+                <div class="custom-dropdown scenario-header-theme" id="themeDropdown" title="切换界面视觉风格">
                     <button type="button" class="custom-dropdown__trigger" id="themeDropdownTrigger" aria-haspopup="listbox" aria-expanded="false">
                         <svg class="w-3 h-3 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4 5 5 0 015-5h4l4-4a2.828 2.828 0 114 4l-4 4v4a5 5 0 01-5 5H7z"></path></svg>
-                        <span class="text-slate-400 text-[10.5px] font-semibold">风格</span>
+                        <span class="custom-dropdown__prefix text-slate-400 text-[10.5px] font-semibold">风格</span>
                         <span class="custom-dropdown__label font-bold text-slate-800" id="themeDropdownLabel">现代简约</span>
                         <svg class="custom-dropdown__arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
                     </button>
-                    <div class="custom-dropdown__menu" id="themeDropdownMenu" role="listbox"></div>
+                    <div class="custom-dropdown__menu" id="themeDropdownMenu" role="listbox" aria-label="界面风格"></div>
                     <select id="themeSelect" class="sr-only" aria-label="切换界面风格" tabindex="-1">
                         <option value="default" selected>现代简约</option>
                         <option value="claude-code">温暖纸韵</option>
                     </select>
                 </div>
-                <div class="scenario-header-step relative">
-                    <button id="stepBtn" class="scenario-header-button scenario-header-button--secondary" title="单步执行下一条用例">执行下一步</button>
-                    <span class="scenario-header-step__arrow" aria-hidden="true"><svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></span>
-                </div>
+                <button id="stepBtn" class="scenario-header-button scenario-header-button--secondary" title="单步执行下一条用例">下一步</button>
                 <button id="runBtn" class="scenario-header-button scenario-header-button--primary">
                     <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                    <span>执行全部</span>
+                    <span id="runBtnLabel">执行全部</span>
                 </button>
                 <button id="cancelBtn" disabled class="scenario-header-text-action scenario-header-text-action--danger">停止</button>
-                <button id="resetBtn" class="scenario-header-text-action">清除行</button>
-                <button id="configToggleBtn" class="scenario-header-button scenario-header-button--config" title="配置环境参数与全局变量">
+                <button id="resetBtn" class="scenario-header-text-action scenario-header-reset">清除结果</button>
+                <button id="configToggleBtn" class="scenario-header-button scenario-header-button--config" title="配置环境参数与全局变量" aria-haspopup="dialog" aria-controls="configModal">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                    <span>配置参数</span>
+                    <span class="scenario-header-config-label">配置</span>
                 </button>
                 <span id="runState" aria-live="polite" class="sr-only">待执行</span>
             </div>
@@ -143,25 +140,23 @@ const workbenchView = (function () {
                     <ul id="stepsList" class="divide-y divide-slate-100 bg-white flex-1 overflow-y-auto"></ul>
                 </div>
                 <div class="scenario-pane scenario-pane--report bg-white rounded-lg shadow-xs border border-slate-200 flex flex-col overflow-hidden xl:max-h-[calc(100vh-52px)]">
-                    <div class="px-3.5 py-2.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 flex-shrink-0">
-                        <div>
-                            <div class="text-xs font-bold text-slate-800 flex items-center space-x-1.5"><svg class="w-3.5 h-3.5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg><span>AI 测试报告</span></div>
-                            <div class="text-[10px] text-slate-400 mt-0.5">结构化总结，支持快速导出</div>
-                        </div>
+                    <div class="report-header px-3.5 py-2.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 flex-shrink-0">
+                        <div class="text-xs font-bold text-slate-800 flex items-center space-x-1.5"><svg class="w-3.5 h-3.5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg><span>AI 测试报告</span></div>
                         <div class="flex items-center gap-1">
-                            <button id="copyReportMarkdownBtn" class="px-2 py-1 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-100/80 text-[10.5px] font-bold hover:bg-indigo-100 transition-all active:scale-[0.98] flex items-center justify-center shadow-2xs"><svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg>复制 MD</button>
-                            <button id="copyReportJsonBtn" class="px-2 py-1 rounded-md bg-slate-50 text-slate-600 border border-slate-200 text-[10.5px] font-bold hover:bg-slate-100 transition-all active:scale-[0.98] flex items-center justify-center shadow-2xs"><svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>JSON</button>
+                            <button id="reportToggleBtn" type="button" aria-expanded="true" class="report-header-action">收起</button>
+                            <button id="copyReportMarkdownBtn" class="report-header-action report-header-action--primary">复制 MD</button>
+                            <button id="copyReportJsonBtn" class="report-header-action">JSON</button>
                         </div>
                     </div>
-                    <div id="reportPanel" class="p-3 text-sm text-slate-500 overflow-y-auto flex-1 bg-slate-50/20"><div class="report-empty"><svg viewBox="0 0 80 80" fill="none" aria-hidden="true"><rect x="16" y="14" width="40" height="50" rx="5" fill="#fff6eb" stroke="currentColor" stroke-width="2"></rect><path d="M27 29h18M27 39h18M27 49h12" stroke="currentColor" stroke-width="3" stroke-linecap="round"></path><circle cx="58" cy="56" r="11" fill="currentColor"></circle><path d="M58 50v12M52 56h12" stroke="#fffdfa" stroke-width="2" stroke-linecap="round"></path></svg><div class="report-empty__title">执行场景后将在这里生成整体报告。</div><div class="report-empty__hint">点击「执行全部」，开始进行</div></div></div>
+                    <div id="reportPanel" class="p-3 text-sm text-slate-500 overflow-y-auto bg-slate-50/20"><div class="report-empty"><div class="report-empty__title">执行后生成报告</div><div class="report-empty__hint">结果摘要与失败诊断将在这里展示</div></div></div>
                 </div>
             </div>
         </main>
-        <div id="configModal" class="hidden fixed inset-0 z-40 bg-slate-950/30 p-4 flex items-center justify-center">
+        <div id="configModal" class="hidden fixed inset-0 z-40 bg-slate-950/30 p-4 flex items-center justify-center" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="configModalTitle">
             <div class="w-full max-w-3xl max-h-[85vh] overflow-y-auto rounded-xl bg-slate-900 shadow-2xl border border-slate-700/80 text-slate-200">
                 <div class="flex items-center justify-between border-b border-slate-800 px-5 py-4">
                     <div>
-                        <div class="text-sm font-bold text-white tracking-tight">环境参数配置</div>
+                        <div id="configModalTitle" class="text-sm font-bold text-white tracking-tight">环境参数配置</div>
                         <div class="mt-0.5 text-[11px] text-slate-400">测试环境、全局参数与场景变量，保存后按环境自动生效。</div>
                     </div>
                     <button id="configCloseBtn" type="button" class="rounded-lg px-2.5 py-1 text-xs text-slate-400 hover:bg-slate-800 hover:text-white transition-colors">关闭</button>
@@ -197,11 +192,11 @@ const workbenchView = (function () {
                 </div>
             </div>
         </div>
-        <div id="adhocModal" class="hidden fixed inset-0 z-30 bg-slate-950/40 p-4 overflow-y-auto">
+        <div id="adhocModal" class="hidden fixed inset-0 z-30 bg-slate-950/40 p-4 overflow-y-auto" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="adhocModalTitle">
             <div class="mx-auto my-8 max-w-3xl rounded-xl bg-white shadow-2xl border border-slate-200">
                 <div class="flex items-center justify-between border-b border-slate-100 px-5 py-4">
                     <div>
-                        <div class="text-sm font-bold text-slate-800">临时请求调试</div>
+                        <div id="adhocModalTitle" class="text-sm font-bold text-slate-800">临时请求调试</div>
                         <div class="mt-0.5 text-[11px] text-slate-400">仅执行当前编辑内容，不保存也不影响场景进度。</div>
                     </div>
                     <button id="adhocCloseBtn" type="button" class="rounded-lg px-2.5 py-1 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors">关闭</button>
@@ -278,24 +273,45 @@ const workbenchView = (function () {
 
                 menu.innerHTML = options.map(function (opt) {
                     var isActive = opt.value === val;
-                    return '<button type="button" class="custom-dropdown__item' + (isActive ? ' active' : '') + '" data-value="' + esc(opt.value) + '">' +
+                    return '<button type="button" role="option" aria-selected="' + (isActive ? 'true' : 'false') + '" tabindex="-1" class="custom-dropdown__item' + (isActive ? ' active' : '') + '" data-value="' + esc(opt.value) + '">' +
                         '<span>' + esc(opt.textContent) + '</span>' +
                         '<svg class="custom-dropdown__check' + (isActive ? '' : ' hidden') + '" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg>' +
                     '</button>';
                 }).join('');
             }
 
-            trigger.addEventListener('click', function (e) {
+            function closeDropdown(restoreFocus) {
+                dropdown.classList.remove('open');
+                trigger.setAttribute('aria-expanded', 'false');
+                if (restoreFocus) trigger.focus();
+            }
+
+            function openDropdown(focusItem) {
                 if (trigger.disabled || trigger.getAttribute('aria-disabled') === 'true') return;
+                document.querySelectorAll('.custom-dropdown.open').forEach(function (node) {
+                    node.classList.remove('open');
+                    var otherTrigger = node.querySelector('.custom-dropdown__trigger');
+                    if (otherTrigger) otherTrigger.setAttribute('aria-expanded', 'false');
+                });
+                syncFromSelect();
+                dropdown.classList.add('open');
+                trigger.setAttribute('aria-expanded', 'true');
+                if (focusItem) {
+                    var activeItem = menu.querySelector('[aria-selected="true"]') || menu.querySelector('.custom-dropdown__item');
+                    if (activeItem) activeItem.focus();
+                }
+            }
+
+            trigger.addEventListener('click', function (e) {
                 e.stopPropagation();
-                var isOpen = dropdown.classList.contains('open');
-                document.querySelectorAll('.custom-dropdown.open').forEach(function (d) { d.classList.remove('open'); });
-                if (!isOpen) {
-                    syncFromSelect();
-                    dropdown.classList.add('open');
-                    trigger.setAttribute('aria-expanded', 'true');
-                } else {
-                    trigger.setAttribute('aria-expanded', 'false');
+                if (dropdown.classList.contains('open')) closeDropdown(false);
+                else openDropdown(false);
+            });
+
+            trigger.addEventListener('keydown', function (e) {
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    openDropdown(true);
                 }
             });
 
@@ -305,9 +321,36 @@ const workbenchView = (function () {
                 var val = item.dataset.value;
                 select.value = val;
                 select.dispatchEvent(new Event('change', { bubbles: true }));
-                dropdown.classList.remove('open');
-                trigger.setAttribute('aria-expanded', 'false');
+                closeDropdown(true);
                 syncFromSelect();
+            });
+
+            menu.addEventListener('keydown', function (e) {
+                var items = Array.from(menu.querySelectorAll('.custom-dropdown__item'));
+                var index = items.indexOf(document.activeElement);
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    closeDropdown(true);
+                    return;
+                }
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    if (document.activeElement && document.activeElement.click) document.activeElement.click();
+                    return;
+                }
+                if (e.key === 'Tab') {
+                    closeDropdown(false);
+                    return;
+                }
+                if (e.key === 'Home' || e.key === 'End' || e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    if (!items.length) return;
+                    if (e.key === 'Home') index = 0;
+                    else if (e.key === 'End') index = items.length - 1;
+                    else if (e.key === 'ArrowDown') index = (index + 1 + items.length) % items.length;
+                    else index = (index - 1 + items.length) % items.length;
+                    items[index].focus();
+                }
             });
 
             select.addEventListener('change', syncFromSelect);
@@ -332,6 +375,17 @@ const workbenchView = (function () {
                         if (trg) trg.setAttribute('aria-expanded', 'false');
                     });
                 }
+            });
+            document.addEventListener('keydown', function (e) {
+                if (e.key !== 'Escape') return;
+                document.querySelectorAll('.custom-dropdown.open').forEach(function (d) {
+                    d.classList.remove('open');
+                    var trg = d.querySelector('.custom-dropdown__trigger');
+                    if (trg) {
+                        trg.setAttribute('aria-expanded', 'false');
+                        trg.focus();
+                    }
+                });
             });
         }
     }
@@ -495,7 +549,7 @@ const workbenchView = (function () {
             var reqBody = step.request && step.request.body ? esc(typeof step.request.body === 'string' ? step.request.body : JSON.stringify(step.request.body, null, 2)) : '';
 
             return '<li class="hover:bg-slate-50/70 group transition-all duration-150 border-b border-slate-100" data-passed="pending" data-step-idx="' + stepIndex + '" data-search="' + esc(((step.name || '') + ' ' + method + ' ' + stepPath).toLowerCase()) + '">' +
-                '<div class="px-3.5 py-2 flex items-center justify-between cursor-pointer select-none" onclick="window.__R.toggle(this, event)">' +
+                '<div class="px-3.5 py-2 flex items-center justify-between cursor-pointer select-none" role="button" tabindex="0" aria-expanded="false" onclick="window.__R.toggle(this, event)" onkeydown="window.__R.toggleKey(this, event)">' +
                     '<div class="flex items-center space-x-2.5 min-w-0 flex-1 pr-3">' +
                         '<div class="flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 text-[10.5px] font-bold bg-slate-100 border border-slate-200 text-slate-500 tabular-nums">' + seqNum + '</div>' +
                         '<span class="text-xs text-slate-700 font-medium truncate group-hover:text-slate-900" title="' + esc(step.name || '') + '">' + esc(step.name || '未命名步骤') + '</span>' +
@@ -598,13 +652,14 @@ const workbenchView = (function () {
             var bodyColor = ok ? 'text-emerald-400' : 'text-rose-400';
             var detailPanelCls = ok
                 ? 'details-panel px-4 bg-slate-50/40 border-t border-slate-100 text-[13px]'
-                : 'details-panel px-4 bg-white border-t border-rose-100 text-[13px] shadow-inner';
+                : 'details-panel open px-4 bg-white border-t border-rose-100 text-[13px] shadow-inner';
+            var chevronCls = ok ? '' : ' rotate-180';
             var stepActions = executionMode === 'step'
                 ? '<span class="step-run-actions"><button type="button" data-step-action="rewind" data-step-index="' + i + '" title="仅回退测试运行时与报告，不撤销已发出的业务请求">回退</button><button type="button" data-step-action="rerun" data-step-index="' + i + '" title="从本步骤执行前的变量快照重新执行">重跑</button></span>'
                 : '';
 
             return '<li class="' + bgCls + ' group transition-colors border-b border-slate-100" data-passed="' + ok + '" data-skipped="' + skipped + '" data-step-idx="' + i + '" data-search="' + esc((s.name + ' ' + s.method + ' ' + s.path).toLowerCase()) + '">' +
-                '<div class="px-3.5 py-2 flex items-center justify-between cursor-pointer" onclick="window.__R.toggle(this, event)">' +
+                '<div class="px-3.5 py-2 flex items-center justify-between cursor-pointer" role="button" tabindex="0" aria-expanded="' + (!ok ? 'true' : 'false') + '" onclick="window.__R.toggle(this, event)" onkeydown="window.__R.toggleKey(this, event)">' +
                     '<div class="flex items-center space-x-2.5 w-[70%] lg:w-[80%]">' +
                         '<div class="flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 text-[10.5px] font-bold shadow-2xs ' + seqCls + ' tabular-nums">' + seqNum + '</div>' +
                         '<span class="select-text text-xs ' + nameCls + ' truncate transition-colors" title="' + esc(s.name) + '">' + esc(s.name) + '</span>' +
@@ -621,7 +676,7 @@ const workbenchView = (function () {
                         stepActions +
                         '<span class="text-[11px] font-bold font-mono ' + statusCls + ' px-2 py-0.5 rounded-md border tabular-nums">' + esc(String(s.status)) + '</span>' +
                         '<span class="' + timeCls + ' text-[11px] font-mono w-16 text-right tabular-nums">' + fmt(s.duration) + '</span>' +
-                        '<svg class="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-500 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>' +
+                        '<svg class="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-500 transition-transform duration-200 chevron' + chevronCls + '" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>' +
                     '</div>' +
                 '</div>' +
                 '<div class="' + detailPanelCls + '">' +
@@ -775,7 +830,7 @@ const workbenchView = (function () {
         if (!node) return null;
         steps = steps || [];
         if (!steps.length) {
-            node.innerHTML = '<div class="report-empty"><svg viewBox="0 0 80 80" fill="none" aria-hidden="true"><rect x="16" y="14" width="40" height="50" rx="5" fill="#fff6eb" stroke="currentColor" stroke-width="2"></rect><path d="M27 29h18M27 39h18M27 49h12" stroke="currentColor" stroke-width="3" stroke-linecap="round"></path><circle cx="58" cy="56" r="11" fill="currentColor"></circle><path d="M58 50v12M52 56h12" stroke="#fffdfa" stroke-width="2" stroke-linecap="round"></path></svg><div class="report-empty__title">执行场景后将在这里生成整体报告。</div><div class="report-empty__hint">点击「执行全部」，开始进行</div></div>';
+            node.innerHTML = '<div class="report-empty"><div class="report-empty__title">执行后生成报告</div><div class="report-empty__hint">结果摘要与失败诊断将在这里展示</div></div>';
             return null;
         }
         var report = buildOverallReport(steps, scenario, scenarioFile, executionMode, environment);
@@ -825,19 +880,16 @@ const workbenchView = (function () {
                 ? '<div class="report-healthy"><div class="report-healthy__title">所有步骤均因条件不满足而跳过</div><div class="report-healthy__hint">本次执行未发起任何请求，详细跳过原因请在左侧步骤列表查看。</div></div>'
                 : '<div class="report-healthy"><div class="report-healthy__title">' + (completed ? '所有步骤均已通过' : '当前已执行步骤均通过') + '</div><div class="report-healthy__hint">详细请求与响应请在左侧步骤列表查看；完整报告可通过顶部按钮复制。</div></div>'));
 
+        var diagnosisTitle = hasRealFailure ? '失败诊断 · ' + reportSteps.length : '执行结论';
         node.innerHTML = '<div class="report-content">' +
             '<div class="report-overview">' +
-                '<div class="report-overview__top"><div><div class="report-overview__eyebrow">当前执行概览</div><div class="report-overview__title">' + esc(report.title || '测试报告') + '</div></div><span class="report-status ' + statusClass + '">' + statusText + '</span></div>' +
-                '<div class="report-overview__meta"><span>' + esc(report.environment || '默认环境') + '</span><span>' + modeText + '</span><span>已执行 ' + progressText + '</span></div>' +
+                '<div class="report-overview__top"><div class="report-overview__title">' + esc(report.title || '测试报告') + '</div><span class="report-status ' + statusClass + '">' + statusText + '</span></div>' +
+                '<div class="report-overview__meta"><span>' + esc(report.environment || '默认环境') + '</span><span>' + modeText + '</span><span>通过 ' + summary.passedSteps + '</span><span>失败 ' + summary.failedSteps + '</span>' +
+                    (summary.skippedSteps > 0 ? '<span>跳过 ' + summary.skippedSteps + '</span>' : '') +
+                    '<span>' + esc(summary.totalDurationFmt) + '</span></div>' +
+                '<div class="report-progress"><div class="report-progress__labels"><span>进度 ' + progressText + '</span><strong>' + esc(summary.passRate) + '</strong></div><div class="report-progress__track' + (hasFailure ? ' report-progress__track--failed' : '') + '"><span style="width:' + (summary.totalSteps ? (summary.executedSteps / summary.totalSteps) * 100 : 0) + '%"></span></div></div>' +
             '</div>' +
-            '<div class="report-metrics">' +
-                '<div class="report-metric"><span class="report-metric__label">通过</span><strong class="report-metric__value report-metric__value--passed">' + summary.passedSteps + '</strong></div>' +
-                '<div class="report-metric"><span class="report-metric__label">失败</span><strong class="report-metric__value ' + (hasFailure ? 'report-metric__value--failed' : '') + '">' + summary.failedSteps + '</strong></div>' +
-                (summary.skippedSteps > 0 ? '<div class="report-metric"><span class="report-metric__label">跳过</span><strong class="report-metric__value">' + summary.skippedSteps + '</strong></div>' : '') +
-                '<div class="report-metric"><span class="report-metric__label">总耗时</span><strong class="report-metric__value report-metric__duration">' + esc(summary.totalDurationFmt) + '</strong></div>' +
-            '</div>' +
-            '<div class="report-progress"><div class="report-progress__labels"><span>执行进度</span><strong>' + progressText + ' · ' + esc(summary.passRate) + '</strong></div><div class="report-progress__track' + (hasFailure ? ' report-progress__track--failed' : '') + '"><span style="width:' + (summary.totalSteps ? (summary.executedSteps / summary.totalSteps) * 100 : 0) + '%"></span></div></div>' +
-            diagnosisHtml +
+            '<details class="report-diagnosis"' + (hasRealFailure ? ' open' : '') + '><summary>' + diagnosisTitle + '</summary><div class="report-diagnosis__body">' + diagnosisHtml + '</div></details>' +
         '</div>';
         return report;
     }

@@ -92,11 +92,18 @@ export function createWorkbenchRuntime(options) {
             var chevron = el.querySelector('.chevron');
             if (panel.classList.contains('open')) {
                 panel.classList.remove('open');
+                el.setAttribute('aria-expanded', 'false');
                 if (chevron) chevron.classList.remove('rotate-180');
             } else {
                 panel.classList.add('open');
+                el.setAttribute('aria-expanded', 'true');
                 if (chevron) chevron.classList.add('rotate-180');
             }
+        },
+        toggleKey: function (el, event) {
+            if (event.target !== el || (event.key !== 'Enter' && event.key !== ' ')) return;
+            event.preventDefault();
+            window.__R.toggle(el);
         },
         filter: function (type) {
             stepsFilterState.type = type;
@@ -530,9 +537,10 @@ export function createWorkbenchRuntime(options) {
 
     function setExecutionButtonsDisabled(disabled) {
         var runBtn = document.getElementById('runBtn');
+        var runBtnLabel = document.getElementById('runBtnLabel');
         var fullRunActive = disabled && state.executionMode === 'full';
         runBtn.disabled = disabled;
-        runBtn.textContent = fullRunActive ? '执行中…' : '执行全部';
+        if (runBtnLabel) runBtnLabel.textContent = fullRunActive ? '执行中…' : '执行全部';
         runBtn.classList.toggle('scenario-header-button--running', fullRunActive);
         runBtn.setAttribute('aria-busy', fullRunActive ? 'true' : 'false');
         document.getElementById('stepBtn').disabled = disabled;
@@ -969,6 +977,7 @@ export function createWorkbenchRuntime(options) {
         var configCloseBtn = document.getElementById('configCloseBtn');
         var keys = getStorageKeys();
         var noticeTimer = null;
+        var configReturnFocus = null;
 
         function showSettingsNotice(message) {
             var notice = document.getElementById('settingsNotice');
@@ -985,13 +994,23 @@ export function createWorkbenchRuntime(options) {
         function openConfigModal() {
             var modal = document.getElementById('configModal');
             if (!modal) return;
+            configReturnFocus = document.activeElement;
             syncSettingsInputs();
             modal.classList.remove('hidden');
+            modal.setAttribute('aria-hidden', 'false');
+            window.requestAnimationFrame(function () {
+                var firstInput = document.getElementById('environmentInput');
+                if (firstInput) firstInput.focus();
+            });
         }
 
         function closeConfigModal() {
             var modal = document.getElementById('configModal');
-            if (modal) modal.classList.add('hidden');
+            if (!modal || modal.classList.contains('hidden')) return;
+            modal.classList.add('hidden');
+            modal.setAttribute('aria-hidden', 'true');
+            if (configReturnFocus && configReturnFocus.focus) configReturnFocus.focus();
+            configReturnFocus = null;
         }
 
         if (configToggleBtn) {
@@ -1000,11 +1019,27 @@ export function createWorkbenchRuntime(options) {
         if (configCloseBtn) {
             configCloseBtn.addEventListener('click', closeConfigModal);
         }
+        var configModal = document.getElementById('configModal');
+        configModal.addEventListener('keydown', function (event) {
+            if (event.key !== 'Tab') return;
+            var focusable = Array.from(configModal.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+                .filter(function (element) { return element.offsetParent !== null; });
+            if (!focusable.length) return;
+            var first = focusable[0];
+            var last = focusable[focusable.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        });
         document.addEventListener('keydown', function (event) {
             if (event.key === 'Escape') closeConfigModal();
         });
-        document.getElementById('configModal').addEventListener('click', function (event) {
-            if (event.target === document.getElementById('configModal')) closeConfigModal();
+        configModal.addEventListener('click', function (event) {
+            if (event.target === configModal) closeConfigModal();
         });
 
         function selectEnvironment(envKey) {
@@ -1051,8 +1086,20 @@ export function createWorkbenchRuntime(options) {
     }
 
     function bindReportActions() {
+        var reportToggleBtn = document.getElementById('reportToggleBtn');
+        var reportPanel = document.getElementById('reportPanel');
+        var reportPane = reportPanel && reportPanel.closest('.scenario-pane--report');
         var copyMdBtn = document.getElementById('copyReportMarkdownBtn');
         var copyJsonBtn = document.getElementById('copyReportJsonBtn');
+        if (reportToggleBtn && reportPanel) {
+            reportToggleBtn.addEventListener('click', function () {
+                var collapsed = !reportPanel.hidden;
+                reportPanel.hidden = collapsed;
+                reportToggleBtn.textContent = collapsed ? '展开' : '收起';
+                reportToggleBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+                if (reportPane) reportPane.classList.toggle('report-collapsed', collapsed);
+            });
+        }
         function flashCopyFeedback(btn, ok) {
             if (!btn) return;
             if (btn.__copyFeedbackTimer) window.clearTimeout(btn.__copyFeedbackTimer);

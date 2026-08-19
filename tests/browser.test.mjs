@@ -59,15 +59,21 @@ try {
             if (!url.startsWith(`http://127.0.0.1:${port}`) && !url.startsWith("https://mock.local")) externalRequests.push(url);
         });
         await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "networkidle" });
-        await page.waitForFunction(() => document.querySelectorAll("[data-scenario-file]").length === 4);
+        await page.waitForFunction(() => document.querySelectorAll("[data-scenario-file]").length === 5);
         assert.equal(await page.locator("#stepsList li").count(), 1);
+        assert.equal(await page.locator("#reportToggleBtn").getAttribute("aria-expanded"), "true");
+        await page.locator("#reportToggleBtn").click();
+        assert.equal(await page.locator("#reportPanel").isHidden(), true, "报告正文应支持收起以释放步骤空间");
+        assert.equal(await page.locator("#reportToggleBtn").getAttribute("aria-expanded"), "false");
+        await page.locator("#reportToggleBtn").click();
+        assert.equal(await page.locator("#reportPanel").isVisible(), true, "报告正文应支持重新展开");
         assert.equal(await page.locator("[data-copy-step]").count(), 1, "待执行步骤应提供复制按钮");
         assert.equal(await page.locator("#scenarioVar_exampleToken").getAttribute("type"), "password", "token 命名的凭据变量应掩码显示");
         assert.equal(await page.locator("#scenarioVar_expectedStatus").getAttribute("type"), "text", "非凭据变量保持明文输入");
         assert.equal(await page.locator("#scenarioVar_expectedStatus").inputValue(), "UP");
         await page.locator("#themeSelect").selectOption("claude-code");
         assert.equal(await page.locator("#scenario-test-root").evaluate((node) => node.classList.contains("theme-claude-code")), true);
-        assert.equal(await page.locator("#scenario-test-root").evaluate((node) => getComputedStyle(node).getPropertyValue("--workspace-bg").trim()), "#f1ebe3");
+        assert.equal(await page.locator("#scenario-test-root").evaluate((node) => getComputedStyle(node).getPropertyValue("--workspace-bg").trim()), "#f5f0ea");
         assert.match(await page.locator(".scenario-header-actions").textContent(), /风格/);
 
         if (!await page.locator("#scenarioVar_expectedStatus").isVisible()) {
@@ -85,6 +91,8 @@ try {
         await page.locator("#runBtn").click();
         await page.waitForFunction(() => !document.querySelector("#runBtn").disabled && document.querySelector('#stepsList li[data-passed="false"]'));
         assert.equal(await page.locator('#stepsList li[data-passed="false"]').count(), 1);
+        assert.match(await page.locator("#reportPanel").textContent(), /失败诊断/);
+        assert.equal(await page.locator("#reportPanel .report-diagnosis").getAttribute("open"), "", "失败诊断应默认展开");
 
         await page.locator("#configToggleBtn").click();
         await page.locator("#clearSettingsBtn").click();

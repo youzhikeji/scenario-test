@@ -6,6 +6,8 @@ const workbenchAdhoc = (function () {
 
     var appConfig = {};
 
+    var adhocReturnFocus = null;
+
     var adhocState = {
         request: null,
         result: null,
@@ -214,13 +216,24 @@ const workbenchAdhoc = (function () {
         showAdhocError('');
         renderAdhocResult(null);
         syncAdhocFormDisabled(false);
-        document.getElementById('adhocModal').classList.remove('hidden');
+        var modal = document.getElementById('adhocModal');
+        adhocReturnFocus = document.activeElement;
+        modal.classList.remove('hidden');
+        modal.setAttribute('aria-hidden', 'false');
+        window.requestAnimationFrame(function () {
+            document.getElementById('adhocNameInput').focus();
+        });
     }
 
     function closeAdhocModal() {
         if (adhocState.running) return;
         adhocState.request = null;
-        document.getElementById('adhocModal').classList.add('hidden');
+        var modal = document.getElementById('adhocModal');
+        if (!modal || modal.classList.contains('hidden')) return;
+        modal.classList.add('hidden');
+        modal.setAttribute('aria-hidden', 'true');
+        if (adhocReturnFocus && adhocReturnFocus.focus) adhocReturnFocus.focus();
+        adhocReturnFocus = null;
     }
 
     async function executeAdhocRequest(executeStepFn, getEnvFn, getBaseUrlFn, getAuthFn, getGlobalsFn, getVarsFn) {
@@ -280,6 +293,21 @@ const workbenchAdhoc = (function () {
         if (modal) {
             modal.addEventListener('click', function (event) {
                 if (event.target === modal) closeAdhocModal();
+            });
+            modal.addEventListener('keydown', function (event) {
+                if (event.key !== 'Tab') return;
+                var focusable = Array.from(modal.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+                    .filter(function (element) { return element.offsetParent !== null; });
+                if (!focusable.length) return;
+                var first = focusable[0];
+                var last = focusable[focusable.length - 1];
+                if (event.shiftKey && document.activeElement === first) {
+                    event.preventDefault();
+                    last.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                    event.preventDefault();
+                    first.focus();
+                }
             });
         }
         document.addEventListener('keydown', function (event) {

@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.20] - 2026-08-19
+
+### ✨ Browser Workbench
+
+- 重构工作台视觉层级与响应式布局，补充键盘操作、焦点管理、运行状态反馈和可访问性语义。
+- 优化步骤筛选、请求与响应复制、cURL 生成及临时请求调试，支持场景变量和全局 header、cookie、query 参数。
+- 压缩 AI 测试报告占用空间：概览指标合并、失败诊断按需展开，并支持整体报告收起与恢复。
+- 新增 `failurePolicy: "continue"` 示例场景，便于验证失败后继续执行。
+
+### ✅ Tests
+
+- 浏览器测试同步覆盖 5 个示例场景、报告收起/展开以及失败诊断默认展开行为。
+
 ## [0.5.19] - 2026-08-18
 
 > 本版由整体代码审查驱动（4 个专项审查 + 2 轮修复后独立评审），共修复 1 项 HIGH、10 项 MEDIUM 与若干 LOW。
