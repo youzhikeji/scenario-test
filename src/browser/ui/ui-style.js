@@ -333,8 +333,7 @@ const workbenchStyle = (function () {
             .scenario-pane--scenarios > div:first-child > div:first-child { font-size: 14px !important; font-weight: 700; }
             .scenario-pane--scenarios > div:first-child > div:nth-child(2) { font-size: 11px !important; color: var(--workspace-muted); }
             #scenarioSearchInput {
-                margin-top: 8px !important;
-                padding: 6px 10px !important;
+                padding: 6px 10px 6px 32px !important;
                 border: 1px solid var(--workspace-line) !important;
                 border-radius: 6px !important;
                 font-size: 12px !important;

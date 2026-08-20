@@ -71,11 +71,132 @@ function contentType(filePath) {
     })[path.extname(filePath).toLowerCase()] || "application/octet-stream";
 }
 
+function renderIndexHtml(serverPort) {
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>scenario-test 示例索引</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #f8fafc;
+            color: #1e293b;
+            padding: 40px 20px;
+            line-height: 1.5;
+        }
+        .container { max-width: 900px; margin: 0 auto; }
+        header { margin-bottom: 32px; border-bottom: 1px solid #e2e8f0; padding-bottom: 20px; }
+        h1 { font-size: 24px; font-weight: 700; color: #0f172a; margin-bottom: 8px; }
+        p.desc { font-size: 14px; color: #64748b; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; margin-top: 24px; }
+        .card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            transition: all 0.2s ease;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+        .card:hover {
+            border-color: #3b82f6;
+            box-shadow: 0 8px 20px rgba(59, 130, 246, 0.12);
+            transform: translateY(-2px);
+        }
+        .badge {
+            display: inline-block;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            margin-bottom: 12px;
+            width: fit-content;
+        }
+        .badge-blue { background: #eff6ff; color: #2563eb; }
+        .badge-emerald { background: #ecfdf5; color: #059669; }
+        .badge-amber { background: #fffbeb; color: #d97706; }
+        h2 { font-size: 18px; font-weight: 600; color: #1e293b; margin-bottom: 8px; }
+        .summary { font-size: 13px; color: #475569; margin-bottom: 16px; min-height: 48px; }
+        .notes { font-size: 12px; color: #94a3b8; background: #f1f5f9; padding: 8px 12px; border-radius: 6px; margin-bottom: 16px; }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #2563eb;
+            color: #ffffff;
+            text-decoration: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            transition: background-color 0.15s ease;
+        }
+        .btn:hover { background: #1d4ed8; }
+        footer { margin-top: 40px; text-align: center; font-size: 12px; color: #94a3b8; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>场景测试工作台（开发调试）</h1>
+            <p class="desc">当前服务运行于 http://127.0.0.1:${serverPort}，请选择要调试或体验的场景示例：</p>
+        </header>
+
+        <div class="grid">
+            <div class="card">
+                <div>
+                    <span class="badge badge-blue">入门推荐</span>
+                    <h2>1. Basic 基础示例</h2>
+                    <p class="summary">包含最小配置、健康检查、基础断言与清理步骤。适合快速验证 UI 工作台与核心 DSL 功能。</p>
+                    <div class="notes">无需依赖第三方服务</div>
+                </div>
+                <a class="btn" href="/examples/basic/">进入 Basic 工作台 →</a>
+            </div>
+
+            <div class="card">
+                <div>
+                    <span class="badge badge-emerald">完整流程</span>
+                    <h2>2. Complete 完整流程</h2>
+                    <p class="summary">包含用户登录、Token 提取注入、重试机制、条件跳过等完整生命周期。</p>
+                    <div class="notes">需先运行: <code>node .\\examples\\complete\\mock-server.cjs</code></div>
+                </div>
+                <a class="btn" href="/examples/complete/">进入 Complete 工作台 →</a>
+            </div>
+
+            <div class="card">
+                <div>
+                    <span class="badge badge-amber">安全进阶</span>
+                    <h2>3. Security Best Practices</h2>
+                    <p class="summary">展示环境变量安全映射、路径穿越安全防护、插件安全校验与错误遮蔽规范。</p>
+                    <div class="notes">安全规则与最佳配置参考</div>
+                </div>
+                <a class="btn" href="/examples/security-best-practices/">进入 Security 工作台 →</a>
+            </div>
+        </div>
+
+        <footer>
+            <span>@yc_yzkj/scenario-test 开发预览</span>
+        </footer>
+    </div>
+</body>
+</html>`;
+}
+
 function startServer() {
     const server = http.createServer((request, response) => {
         try {
             const pathname = decodeURIComponent(new URL(request.url, "http://127.0.0.1").pathname);
-            const relativePath = pathname === "/" ? "examples/EXAMPLES_INDEX.md" : pathname.replace(/^\/+/, "");
+            if (pathname === "/" || pathname === "/examples" || pathname === "/examples/") {
+                response.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "text/html; charset=utf-8" });
+                response.end(renderIndexHtml(port));
+                return;
+            }
+            const relativePath = pathname.replace(/^\/+/, "");
             let filePath = safeFile(relativePath);
             if (filePath) {
                 const stat = fs.existsSync(filePath) ? fs.statSync(filePath) : null;

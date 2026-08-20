@@ -41,7 +41,32 @@
    ```
 
    GitLab Release 同步提供 `start-scenario-test.ps1` 下载资产，脚本与该版本的 CLI、UMD 保持一致。
-6. （可选）创建 GitHub Release 作为源码归档。免 npm 默认下载源是 npm Registry 固定版本 tarball（`https://registry.npmjs.org/@yc_yzkj/scenario-test/-/scenario-test-vX.Y.Z.tgz`），不依赖 GitHub Release 上传资产；内网可把 `Source` / `SCENARIO_TEST_SOURCE` 指向 GitLab Raw 或制品目录（需包含全部运行时文件）。
+
+6. 创建正式 GitHub Release。此步骤是发版必选项，不得只推送 Tag 或只发布 npm。先根据对应版本的 `CHANGELOG.md` 准备临时 `RELEASE_NOTES.md`，发布完成后删除该临时文件，不提交到仓库：
+
+   ```powershell
+   gh release create vX.Y.Z `
+     --verify-tag `
+     --latest `
+     --title "vX.Y.Z" `
+     --notes-file RELEASE_NOTES.md
+   ```
+
+   Release 说明应基于对应版本的 `CHANGELOG.md`，至少包含主要变更、固定版本安装命令、npm 包版本和验证结果。Release 必须满足：
+
+   - Tag 与版本号一致，格式为 `vX.Y.Z`；
+   - 非 Draft、非 Prerelease；
+   - 正式版本标记为 Latest Release；
+   - 不覆盖或重建已发布 Tag；修复必须发布新的 patch 版本。
+
+   创建后必须验证：
+
+   ```powershell
+   gh release view vX.Y.Z --json url,isDraft,isPrerelease,tagName,name
+   npm view @yc_yzkj/scenario-test@X.Y.Z version dist-tags.latest dist.shasum
+   ```
+
+   只有 GitHub Release、npm Registry 与 Git Tag 三处版本一致，发版才算完成。免 npm 默认下载源仍是 npm Registry 固定版本 tarball（`https://registry.npmjs.org/@yc_yzkj/scenario-test/-/scenario-test-vX.Y.Z.tgz`），GitHub Release 用于提供正式发布记录和源码归档，无需重复上传 npm tarball。内网可把 `Source` / `SCENARIO_TEST_SOURCE` 指向 GitLab Raw 或制品目录（需包含全部运行时文件）。
 
 业务项目由 `init` 生成 `index.html`，引用项目内运行时副本：
 

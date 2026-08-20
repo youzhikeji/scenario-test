@@ -1,5 +1,8 @@
 ScenarioTest.registerConfig(ScenarioTest.defineConfig({
-    baseUrl: "https://api.example.com",
+    envs: [
+        { key: "prod", name: "示例 API", baseUrl: "https://api.example.com" }
+    ],
+    defaultEnvKey: "prod",
 
     // ✅ 推荐：使用环境变量映射
     // 从环境变量 SCENARIO_AUTH 读取授权令牌
