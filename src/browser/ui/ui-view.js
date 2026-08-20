@@ -113,43 +113,60 @@ const workbenchView = (function () {
                 <option value="X-Request-Id"></option>
                 <option value="X-Token"></option>
             </datalist>
-            <div class="scenario-grid grid grid-cols-1 xl:grid-cols-[minmax(164px,1fr)_minmax(500px,3.18fr)_minmax(280px,1.75fr)] gap-2 mb-2">
-                <aside class="scenario-pane scenario-pane--scenarios bg-white rounded-lg shadow-xs border border-slate-200 overflow-hidden xl:max-h-[calc(100vh-52px)] flex flex-col">
+            <div class="scenario-grid grid grid-cols-1 xl:grid-cols-[minmax(200px,260px)_1fr_minmax(250px,290px)] gap-2 h-full min-h-0">
+                <aside class="scenario-pane scenario-pane--scenarios bg-white rounded-lg shadow-xs border border-slate-200 overflow-hidden flex flex-col h-full min-h-0">
                     <div class="px-3.5 py-3 border-b border-slate-100 bg-slate-50/50 flex-shrink-0">
                         <div class="flex items-center justify-between">
                             <div class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                                 <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
                                 <span>场景列表</span>
                             </div>
-                            <span class="text-[10px] text-slate-400">点击即加载</span>
+                            <button id="quickAdhocBtn" type="button" class="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-slate-200 bg-white text-[10.5px] font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all active:scale-95 shadow-2xs">
+                                <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                <span>新建场景</span>
+                            </button>
                         </div>
                         <div class="relative mt-2">
                             <svg class="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-slate-400" style="top:50%;transform:translateY(-50%)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                            <input id="scenarioSearchInput" type="text" placeholder="搜索用例名称或路径..." class="w-full pl-8 pr-2.5 py-1.5 rounded-md border border-slate-200 bg-white text-xs text-slate-700 placeholder-slate-400 outline-none transition-all focus:border-slate-800 focus:ring-1 focus:ring-slate-800">
+                            <input id="scenarioSearchInput" type="text" placeholder="搜索场景名称或路径..." class="w-full pl-8 pr-2.5 py-1.5 rounded-md border border-slate-200 bg-white text-xs text-slate-700 placeholder-slate-400 outline-none transition-all focus:border-slate-800 focus:ring-1 focus:ring-slate-800">
                         </div>
                     </div>
-                    <div id="scenarioList" class="p-2 space-y-1 overflow-y-auto flex-1"></div>
+                    <div id="scenarioList" class="p-2 space-y-1 overflow-y-auto flex-1 min-h-0"></div>
                 </aside>
-                <div class="scenario-pane scenario-pane--steps bg-white rounded-lg shadow-xs border border-slate-200 flex flex-col overflow-hidden xl:max-h-[calc(100vh-52px)]">
-                    <div id="statsPanel" class="p-3 flex flex-wrap justify-between items-center border-b border-slate-100 bg-white flex-shrink-0">
-                        <div class="text-xs text-slate-400">场景未加载或未执行</div>
+                <div class="scenario-pane scenario-pane--steps bg-white rounded-lg shadow-xs border border-slate-200 flex flex-col overflow-hidden h-full min-h-0">
+                    <div id="scenarioHeaderBar" class="px-4 py-2.5 border-b border-slate-100 bg-white flex items-center justify-between flex-shrink-0">
+                        <div class="min-w-0">
+                            <div class="flex items-center gap-2">
+                                <h2 id="scenarioMainTitle" class="text-sm font-bold text-slate-900 tracking-tight truncate">未加载场景</h2>
+                                <span id="scenarioStatusBadge"><span class="px-2 py-0.5 rounded text-[11px] font-bold bg-slate-100 text-slate-500 border border-slate-200/60">待执行</span></span>
+                            </div>
+                            <div id="scenarioFilePath" class="mt-0.5 text-xs text-slate-400 font-mono truncate"></div>
+                        </div>
                     </div>
                     <div id="filterBar" class="flex items-center justify-between bg-slate-50/50 px-3 py-1.5 border-b border-slate-100 flex-shrink-0">
                         <div class="text-xs text-slate-400 py-1">未加载场景</div>
                     </div>
-                    <ul id="stepsList" class="divide-y divide-slate-100 bg-white flex-1 overflow-y-auto"></ul>
+                    <ul id="stepsList" class="divide-y divide-slate-100 bg-white flex-1 overflow-y-auto min-h-0"></ul>
+                    <div id="executionFooter" class="px-4 py-2 bg-slate-50/70 border-t border-slate-100 text-xs text-slate-500 flex flex-wrap items-center gap-4 sm:gap-6 font-mono text-[11px] flex-shrink-0">
+                        <div class="flex items-center gap-1.5">
+                            <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            <span>开始时间: <span id="execStartTime" class="text-slate-700 font-semibold">-</span></span>
+                        </div>
+                        <div>结束时间: <span id="execEndTime" class="text-slate-700 font-semibold">-</span></div>
+                        <div>总耗时: <span id="execTotalDuration" class="text-emerald-600 font-bold">0.00 ms</span></div>
+                    </div>
                 </div>
-                <div class="scenario-pane scenario-pane--report bg-white rounded-lg shadow-xs border border-slate-200 flex flex-col overflow-hidden xl:max-h-[calc(100vh-52px)]">
-                    <div class="report-header px-3.5 py-2.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 flex-shrink-0">
-                        <div class="text-xs font-bold text-slate-800 flex items-center space-x-1.5"><svg class="w-3.5 h-3.5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg><span>AI 测试报告</span></div>
-                        <div class="flex items-center gap-1">
-                            <button id="reportToggleBtn" type="button" aria-expanded="true" class="report-header-action">收起</button>
-                            <button id="copyReportMarkdownBtn" class="report-header-action report-header-action--primary">复制 MD</button>
-                            <button id="copyReportJsonBtn" class="report-header-action">JSON</button>
+                <aside class="scenario-pane scenario-pane--stats bg-white rounded-lg shadow-xs border border-slate-200 overflow-hidden flex flex-col h-full min-h-0">
+                    <div class="px-3.5 py-3 border-b border-slate-100 bg-slate-50/50 flex-shrink-0 flex items-center justify-between">
+                        <div class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                            <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                            <span>统计看板</span>
                         </div>
                     </div>
-                    <div id="reportPanel" class="p-3 text-sm text-slate-500 overflow-y-auto bg-slate-50/20"><div class="report-empty"><div class="report-empty__title">执行后生成报告</div><div class="report-empty__hint">结果摘要与失败诊断将在这里展示</div></div></div>
-                </div>
+                    <div id="statsPanel" class="p-3 overflow-y-auto flex-1 min-h-0">
+                        <div class="text-xs text-slate-400 text-center py-4">场景未加载或未执行</div>
+                    </div>
+                </aside>
             </div>
         </main>
         <div id="configModal" class="hidden fixed inset-0 z-40 bg-slate-950/30 p-4 flex items-center justify-center" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="configModalTitle">
@@ -390,14 +407,41 @@ const workbenchView = (function () {
         }
     }
 
-    function renderScenarioSelect(discoveredFiles, scenarioFile, scenarioSearch, pins) {
+    function renderCodeBlockWithLines(id, codeStr, customColorClass) {
+        if (!codeStr) return '';
+        var lines = String(codeStr).split('\n');
+        var gutterHtml = lines.map(function (_, i) {
+            return '<span class="code-line-number">' + (i + 1) + '</span>';
+        }).join('\n');
+        return '<div class="code-editor-block relative bg-slate-950 rounded-lg border border-slate-800 overflow-hidden flex font-mono text-[11px] leading-relaxed shadow-inner">' +
+            '<div class="code-gutter py-2 pl-3 pr-2 select-none text-slate-600 bg-slate-950/90 border-r border-slate-800/80 text-right leading-relaxed font-mono">' + gutterHtml + '</div>' +
+            '<pre id="' + id + '" class="code-content py-2 px-3 text-slate-300 overflow-x-auto flex-1 font-mono leading-relaxed ' + (customColorClass || '') + '">' + esc(codeStr) + '</pre>' +
+        '</div>';
+    }
+
+    function extractQueryParams(pathStr, queryObj) {
+        var params = [];
+        if (queryObj && typeof queryObj === 'object') {
+            Object.keys(queryObj).forEach(function (k) {
+                params.push({ name: k, value: stringify(queryObj[k]) });
+            });
+        } else if (pathStr && pathStr.indexOf('?') >= 0) {
+            var queryPart = pathStr.split('?')[1] || '';
+            queryPart.split('&').forEach(function (pair) {
+                if (!pair) return;
+                var parts = pair.split('=');
+                var key = decodeURIComponent(parts[0] || '');
+                var val = decodeURIComponent(parts.slice(1).join('=') || '');
+                params.push({ name: key, value: val });
+            });
+        }
+        return params;
+    }
+
+    function renderScenarioSelect(discoveredFiles, scenarioFile, keyword, pinOrder) {
         var list = document.getElementById('scenarioList');
         if (!list) return;
-        var keyword = String(scenarioSearch || '').trim().toLowerCase();
-        var pinOrder = (pins || []).reduce(function (result, file, index) {
-            result[file] = index;
-            return result;
-        }, {});
+        pinOrder = pinOrder || {};
         var items = (discoveredFiles || []).filter(function (item) {
             var text = ((item.name || '') + ' ' + (item.file || '')).toLowerCase();
             return !keyword || text.indexOf(keyword) >= 0;
@@ -415,13 +459,17 @@ const workbenchView = (function () {
             var active = scenarioFile === item.file;
             var pinned = Object.prototype.hasOwnProperty.call(pinOrder, item.file);
             var classes = active
-                ? 'bg-slate-100 border-slate-200/80 text-slate-900 shadow-2xs font-semibold'
+                ? 'bg-blue-50/80 border-blue-200/90 text-blue-900 shadow-2xs font-semibold'
                 : 'bg-white border-transparent text-slate-700 hover:bg-slate-50 hover:border-slate-200/60';
             var pinLabel = pinned ? '取消置顶' : '置顶';
-            return '<div class="flex items-start gap-1 rounded-lg border transition-all ' + classes + '">' +
-                '<button type="button" data-scenario-file="' + esc(item.file) + '" title="' + esc(item.file) + '" class="min-w-0 flex-1 text-left px-2.5 py-2">' +
-                    '<div class="text-xs font-semibold truncate leading-snug">' + esc(name) + '</div>' +
-                    '<div class="mt-0.5 text-[10px] font-mono truncate ' + (active ? 'text-slate-500' : 'text-slate-400') + '">' + esc(item.file) + '</div>' +
+            return '<div class="flex items-center gap-1 rounded-lg border transition-all ' + classes + '">' +
+                '<button type="button" data-scenario-file="' + esc(item.file) + '" title="' + esc(item.file) + '" class="min-w-0 flex-1 text-left px-2.5 py-2 flex items-center gap-2">' +
+                    '<svg class="w-3.5 h-3.5 ' + (active ? 'text-blue-500' : 'text-slate-400') + ' flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>' +
+                    '<div class="min-w-0 flex-1">' +
+                        '<div class="text-xs font-semibold truncate leading-snug">' + esc(name) + '</div>' +
+                        '<div class="mt-0.5 text-[10px] font-mono truncate ' + (active ? 'text-blue-500/80' : 'text-slate-400') + '">' + esc(item.file) + '</div>' +
+                    '</div>' +
+                    (active ? '<svg class="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg>' : '') +
                 '</button>' +
                 '<button type="button" data-pin-file="' + esc(item.file) + '" title="' + pinLabel + '" aria-label="' + pinLabel + '" class="scenario-pin-control' + (pinned ? ' scenario-pin-control--active' : '') + '">' +
                     '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4V3z" fill="' + (pinned ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"></path></svg>' +
@@ -430,68 +478,125 @@ const workbenchView = (function () {
         }).join('');
     }
 
-    function renderStatsAll(steps, iterations) {
+    function renderStatsAll(steps, iterations, scenario, scenarioFile) {
         steps = steps || [];
         var statsPanel = document.getElementById('statsPanel');
         if (!statsPanel) return;
-        if (!steps.length) {
-            statsPanel.innerHTML = '<div class="text-xs text-slate-400 p-2">没有已执行的步骤</div>';
-            return;
-        }
-        var total = steps.length;
+
+        var scenarioStepsList = (scenario && Array.isArray(scenario.steps)) ? scenario.steps : [];
+        var scenarioTotal = scenarioStepsList.length || steps.length || 0;
+        var executedCount = steps.length;
         var skipped = steps.filter(function (s) { return s.skipped; }).length;
-        var executed = total - skipped;
+        var executed = executedCount - skipped;
         var passed = steps.filter(function (s) { return !s.skipped && s.passed; }).length;
         var failed = steps.filter(function (s) { return !s.skipped && !s.passed; }).length;
-        var passRate = executed ? ((passed / executed) * 100).toFixed(1) : 0;
-        var failRate = executed ? ((failed / executed) * 100).toFixed(1) : 0;
+        var passRate = executed ? ((passed / executed) * 100).toFixed(1) : '0.0';
+        var failRate = executed ? ((failed / executed) * 100).toFixed(1) : '0.0';
+        var progressPct = scenarioTotal ? ((executedCount / scenarioTotal) * 100).toFixed(1) : '0.0';
         var totalMs = steps.reduce(function (a, s) { return a + (s.duration || 0); }, 0);
         var avgMs = executed ? totalMs / executed : 0;
         var assertTotal = steps.reduce(function (a, s) { return a + (s.assertions ? s.assertions.length : 0); }, 0);
-        var assertFailed = steps.reduce(function (a, s) {
-            return a + (s.assertions ? s.assertions.filter(function (x) { return !x.passed; }).length : 0);
+        var assertPassed = steps.reduce(function (a, s) {
+            return a + (s.assertions ? s.assertions.filter(function (x) { return x.passed; }).length : 0);
         }, 0);
-        var iter = iterations || { run: 1, failed: 0 };
 
-        var chart = '<div class="flex items-center gap-4 w-full md:w-auto">' +
-            '<div class="circle-chart scale-90" style="background:conic-gradient(#10b981 0% ' + passRate + '%, #f43f5e ' + passRate + '% 100%)">' +
-                '<div class="circle-inner">' +
-                    '<span class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">已执行</span>' +
-                    '<span class="text-lg font-bold text-slate-800 tabular-nums leading-none mt-0.5">' + total + '</span>' +
+        var title = (scenario && (scenario.name || scenario.id)) || (scenarioFile ? scenarioFile.split('/').pop().replace(/\.js$/, '') : '未加载场景');
+        var filePath = scenarioFile || '';
+        
+        var isDone = scenarioTotal > 0 && executedCount >= scenarioTotal;
+        var statusBadge = '';
+        if (executedCount === 0) {
+            statusBadge = '<span class="px-2 py-0.5 rounded text-[11px] font-bold bg-slate-100 text-slate-500 border border-slate-200/60">待执行</span>';
+        } else if (failed > 0) {
+            statusBadge = '<span class="px-2 py-0.5 rounded text-[11px] font-bold bg-rose-50 text-rose-600 border border-rose-200">' + (isDone ? '存在失败' : '执行中 (' + executedCount + '/' + scenarioTotal + ')') + '</span>';
+        } else if (isDone) {
+            statusBadge = '<span class="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200">已完成</span>';
+        } else {
+            statusBadge = '<span class="px-2 py-0.5 rounded text-[11px] font-bold bg-blue-50 text-blue-600 border border-blue-200">执行中 (' + executedCount + '/' + scenarioTotal + ')</span>';
+        }
+
+        // 同步中栏顶部的场景标题和状态
+        var midTitle = document.getElementById('scenarioMainTitle');
+        var midBadge = document.getElementById('scenarioStatusBadge');
+        var midPath = document.getElementById('scenarioFilePath');
+        if (midTitle) midTitle.textContent = title;
+        if (midBadge) midBadge.innerHTML = statusBadge;
+        if (midPath) midPath.textContent = filePath;
+
+        // 分段式进度条
+        var segmentsHtml = '';
+        if (scenarioTotal > 0 && scenarioTotal <= 24) {
+            for (var idx = 0; idx < scenarioTotal; idx++) {
+                var stepResult = steps && steps[idx];
+                var isPassed = stepResult && !stepResult.skipped && stepResult.passed;
+                var isFailed = stepResult && !stepResult.skipped && !stepResult.passed;
+                var isSkipped = stepResult && stepResult.skipped;
+
+                var segClass = isPassed
+                    ? 'bg-emerald-500 shadow-2xs'
+                    : (isFailed
+                        ? 'bg-rose-500 shadow-2xs'
+                        : (isSkipped
+                            ? 'bg-slate-300'
+                            : 'bg-slate-200/80 border border-slate-300/60'));
+
+                segmentsHtml += '<div class="flex-1 h-2 rounded-full ' + segClass + ' transition-all duration-300" title="步骤 ' + (idx + 1) + (isPassed ? ': 成功' : (isFailed ? ': 失败' : (isSkipped ? ': 跳过' : ': 待执行'))) + '"></div>';
+            }
+        }
+
+        statsPanel.innerHTML =
+            '<div class="space-y-3">' +
+                '<!-- 进度卡片 -->' +
+                '<div class="p-3 rounded-lg border border-slate-200/80 bg-slate-50/60 space-y-2">' +
+                    '<div class="flex items-center justify-between">' +
+                        '<span class="text-xs font-bold text-slate-700">总步骤进度</span>' +
+                        '<span class="text-xs font-mono font-bold text-slate-900">' + executedCount + ' / ' + scenarioTotal + ' <span class="text-emerald-600 font-semibold font-sans">(' + progressPct + '%)</span></span>' +
+                    '</div>' +
+                    '<div class="flex items-center gap-1 w-full">' +
+                        segmentsHtml +
+                    '</div>' +
                 '</div>' +
-            '</div>' +
-            '<div class="flex flex-wrap gap-2">' +
-                '<div class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/20">' +
-                    '<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>' +
-                    '<span class="text-xs font-bold text-emerald-700 tabular-nums">' + passed + ' <span class="text-emerald-600/70 font-medium text-[10px] ml-0.5">(' + passRate + '%)</span></span>' +
+
+                '<!-- 核心指标网格 -->' +
+                '<div class="grid grid-cols-2 gap-2">' +
+                    '<div class="p-2.5 rounded-lg border border-slate-200/70 bg-white">' +
+                        '<div class="text-[10px] font-semibold text-slate-400">成功步骤</div>' +
+                        '<div class="text-base font-bold text-emerald-600 font-mono mt-0.5">' + passed + (executed ? ' <span class="text-[10px] text-emerald-600/70 font-normal">(' + passRate + '%)</span>' : '') + '</div>' +
+                    '</div>' +
+                    '<div class="p-2.5 rounded-lg border border-slate-200/70 bg-white">' +
+                        '<div class="text-[10px] font-semibold text-slate-400">失败步骤</div>' +
+                        '<div class="text-base font-bold ' + (failed ? 'text-rose-600' : 'text-slate-700') + ' font-mono mt-0.5">' + failed + (executed && failed ? ' <span class="text-[10px] text-rose-600/70 font-normal">(' + failRate + '%)</span>' : '') + '</div>' +
+                    '</div>' +
+                    '<div class="p-2.5 rounded-lg border border-slate-200/70 bg-white">' +
+                        '<div class="text-[10px] font-semibold text-slate-400">断言通过</div>' +
+                        '<div class="text-base font-bold text-slate-800 font-mono mt-0.5">' + assertPassed + ' <span class="text-xs font-normal text-slate-400">/ ' + assertTotal + '</span></div>' +
+                    '</div>' +
+                    '<div class="p-2.5 rounded-lg border border-slate-200/70 bg-white">' +
+                        '<div class="text-[10px] font-semibold text-slate-400">跳过步骤</div>' +
+                        '<div class="text-base font-bold text-slate-600 font-mono mt-0.5">' + skipped + '</div>' +
+                    '</div>' +
+                    '<div class="p-2.5 rounded-lg border border-slate-200/70 bg-white">' +
+                        '<div class="text-[10px] font-semibold text-slate-400">总耗时</div>' +
+                        '<div class="text-sm font-bold text-slate-900 font-mono mt-0.5">' + totalMs.toFixed(2) + ' <span class="text-[10px] font-normal text-slate-400">ms</span></div>' +
+                    '</div>' +
+                    '<div class="p-2.5 rounded-lg border border-slate-200/70 bg-white">' +
+                        '<div class="text-[10px] font-semibold text-slate-400">平均耗时</div>' +
+                        '<div class="text-sm font-bold text-slate-900 font-mono mt-0.5">' + avgMs.toFixed(2) + ' <span class="text-[10px] font-normal text-slate-400">ms</span></div>' +
+                    '</div>' +
                 '</div>' +
-                '<div class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-rose-500/10 border border-rose-500/20">' +
-                    '<span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span>' +
-                    '<span class="text-xs font-bold text-rose-600 tabular-nums">' + failed + ' <span class="text-rose-500/70 font-medium text-[10px] ml-0.5">(' + failRate + '%)</span></span>' +
+
+                '<!-- 操作按钮卡片 -->' +
+                '<div class="space-y-2 pt-1">' +
+                    '<button id="copyReportMarkdownBtn" type="button" class="w-full stats-action-btn stats-action-btn--primary justify-center py-2 text-xs" ' + (executedCount ? '' : 'disabled') + ' title="复制格式化 Markdown 报告 (可直接投喂给 AI 提问/排查)">' +
+                        '<svg class="w-3.5 h-3.5 text-indigo-500 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>' +
+                        '<span>复制为 Markdown</span>' +
+                    '</button>' +
+                    '<button id="copyReportJsonBtn" type="button" class="w-full stats-action-btn justify-center py-2 text-xs" ' + (executedCount ? '' : 'disabled') + ' title="导出执行结果 JSON">' +
+                        '<svg class="w-3.5 h-3.5 text-slate-500 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>' +
+                        '<span>导出 JSON</span>' +
+                    '</button>' +
                 '</div>' +
-                (skipped
-                    ? '<div class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-100 border border-slate-200/60">' +
-                        '<span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>' +
-                        '<span class="text-xs font-bold text-slate-600 tabular-nums">' + skipped + ' <span class="text-slate-400 font-medium text-[10px] ml-0.5">跳过</span></span>' +
-                    '</div>'
-                    : '') +
-            '</div>' +
-        '</div>';
-        var metrics = '<div class="flex items-center gap-6 mt-3 md:mt-0 pl-4 border-l border-slate-100">' +
-            '<div class="space-y-0.5">' +
-                '<div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">耗时(总/均)</div>' +
-                '<div class="text-emerald-600 font-bold text-xs tracking-tight font-mono tabular-nums">' + fmt(totalMs) + ' / ' + fmt(avgMs) + '</div>' +
-            '</div>' +
-            '<div class="space-y-0.5">' +
-                '<div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">循环(执行/失败)</div>' +
-                '<div class="text-xs font-semibold text-slate-700 font-mono tabular-nums"><span class="text-slate-900">' + (iter.run || 1) + '</span> <span class="text-slate-300">/</span> <span class="text-rose-500">' + (iter.failed || 0) + '</span></div>' +
-            '</div>' +
-            '<div class="space-y-0.5">' +
-                '<div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">断言(执行/失败)</div>' +
-                '<div class="text-xs font-semibold text-slate-700 font-mono tabular-nums"><span class="text-slate-900">' + assertTotal + '</span> <span class="text-slate-300">/</span> <span class="text-rose-500">' + assertFailed + '</span></div>' +
-            '</div>' +
-        '</div>';
-        statsPanel.innerHTML = chart + metrics;
+            '</div>';
     }
 
     function renderFilterAll(steps, scenarioSteps) {
@@ -540,24 +645,23 @@ const workbenchView = (function () {
             var seqNum = stepIndex + 1;
             var method = String(step.method || 'GET').toUpperCase();
             var stepPath = step.path || '';
-            var methodColor = { GET: 'text-emerald-600', POST: 'text-amber-600', PUT: 'text-yellow-600', DELETE: 'text-rose-600', PATCH: 'text-indigo-600' }[method] || 'text-slate-600';
+            var methodColor = { GET: 'text-emerald-600 bg-emerald-50 border-emerald-200/80', POST: 'text-amber-600 bg-amber-50 border-amber-200/80', PUT: 'text-yellow-600 bg-yellow-50 border-yellow-200/80', DELETE: 'text-rose-600 bg-rose-50 border-rose-200/80', PATCH: 'text-indigo-600 bg-indigo-50 border-indigo-200/80' }[method] || 'text-slate-600 bg-slate-50 border-slate-200';
             var assertCount = Array.isArray(step.assertions) ? step.assertions.length : 0;
             var extractCount = Array.isArray(step.extract) ? step.extract.length : 0;
             var tags = '';
             if (assertCount) tags += '<span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200/80 text-[10px] font-semibold"> ' + assertCount + ' 断言</span>';
             if (extractCount) tags += '<span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200/80 text-[10px] font-semibold ml-1">' + extractCount + ' 提取</span>';
-            var reqBody = step.request && step.request.body ? esc(typeof step.request.body === 'string' ? step.request.body : JSON.stringify(step.request.body, null, 2)) : '';
+            var reqHeaders = step.headers ? truncateForDisplay(typeof step.headers === 'string' ? step.headers : JSON.stringify(step.headers, null, 2)) : '';
+            var reqBody = step.request && step.request.body ? truncateForDisplay(typeof step.request.body === 'string' ? step.request.body : JSON.stringify(step.request.body, null, 2)) : (step.body ? truncateForDisplay(typeof step.body === 'string' ? step.body : JSON.stringify(step.body, null, 2)) : '');
+            var queryParams = extractQueryParams(stepPath, step.query);
 
-            return '<li class="hover:bg-slate-50/70 group transition-all duration-150 border-b border-slate-100" data-passed="pending" data-step-idx="' + stepIndex + '" data-search="' + esc(((step.name || '') + ' ' + method + ' ' + stepPath).toLowerCase()) + '">' +
-                '<div class="px-3.5 py-2 flex items-center justify-between cursor-pointer select-none" role="button" tabindex="0" aria-expanded="false" onclick="window.__R.toggle(this, event)" onkeydown="window.__R.toggleKey(this, event)">' +
+            return '<li class="hover:bg-slate-50/70 group transition-all duration-150 border-b border-slate-100 bg-white" data-passed="pending" data-step-idx="' + stepIndex + '" data-search="' + esc(((step.name || '') + ' ' + method + ' ' + stepPath).toLowerCase()) + '">' +
+                '<div class="px-4 py-2.5 flex items-center justify-between cursor-pointer select-none" role="button" tabindex="0" aria-expanded="false" onclick="window.__R.toggle(this, event)" onkeydown="window.__R.toggleKey(this, event)">' +
                     '<div class="flex items-center space-x-2.5 min-w-0 flex-1 pr-3">' +
-                        '<div class="flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 text-[10.5px] font-bold bg-slate-100 border border-slate-200 text-slate-500 tabular-nums">' + seqNum + '</div>' +
+                        '<div class="flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 text-[10.5px] font-bold bg-slate-100 border border-slate-200 text-slate-500 font-mono">' + seqNum + '</div>' +
                         '<span class="text-xs text-slate-700 font-medium truncate group-hover:text-slate-900" title="' + esc(step.name || '') + '">' + esc(step.name || '未命名步骤') + '</span>' +
-                        '<div class="hidden sm:flex items-center space-x-1.5 bg-slate-100/70 px-2 py-0.5 rounded-md border border-slate-200/60 flex-shrink-0 max-w-[55%]">' +
-                            '<span class="text-[10px] font-extrabold ' + methodColor + ' uppercase tracking-wider font-mono">' + method + '</span>' +
-                            '<span class="text-slate-300">|</span>' +
-                            '<span class="text-[11px] text-slate-600 font-mono truncate" title="' + esc(stepPath) + '">' + esc(stepPath) + '</span>' +
-                        '</div>' +
+                        '<span class="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded border uppercase ' + methodColor + '">' + method + '</span>' +
+                        '<span class="text-xs text-slate-400 font-mono truncate max-w-[40%]" title="' + esc(stepPath) + '">' + esc(stepPath) + '</span>' +
                     '</div>' +
                     '<div class="flex items-center space-x-1.5 flex-shrink-0">' +
                         tags +
@@ -568,17 +672,10 @@ const workbenchView = (function () {
                         '<svg class="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>' +
                     '</div>' +
                 '</div>' +
-                '<div class="details-panel px-4 bg-slate-50/70 border-t border-slate-200/60 text-[13px]">' +
-                    '<div class="py-2.5 space-y-2.5">' +
-                        (reqBody
-                            ? '<div>' +
-                                '<div class="flex items-center justify-between text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1.5">' +
-                                    '<span class="flex items-center"><div class="w-1.5 h-1.5 bg-slate-400 mr-2 rounded-full"></div>请求体</span>' +
-                                    '<div class="flex items-center gap-2"><span class="text-slate-400 font-mono font-normal">JSON</span><button type="button" class="code-copy-btn text-[10px] text-slate-400 hover:text-slate-200" data-code-copy="pending-req-body-' + stepIndex + '">复制</button></div>' +
-                                '</div>' +
-                                '<pre id="pending-req-body-' + stepIndex + '" class="bg-slate-900 p-2.5 rounded-lg text-slate-200 overflow-x-auto font-mono text-[11px] leading-relaxed shadow-inner border border-slate-800">' + reqBody + '</pre>' +
-                            '</div>'
-                            : '<div class="text-xs text-slate-400 py-1">无请求体参数</div>') +
+                '<div class="details-panel px-4 py-3 bg-slate-50/70 border-t border-slate-200/60 text-[13px]">' +
+                    '<div class="space-y-3">' +
+                        (reqHeaders ? '<div><div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1">请求头 (Headers)</div>' + renderCodeBlockWithLines('pending-req-headers-' + stepIndex, reqHeaders) + '</div>' : '') +
+                        (reqBody ? '<div><div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1">请求体 (Body)</div>' + renderCodeBlockWithLines('pending-req-body-' + stepIndex, reqBody) + '</div>' : '<div class="text-xs text-slate-400 py-1">无请求体参数</div>') +
                     '</div>' +
                 '</div>' +
             '</li>';
@@ -586,118 +683,187 @@ const workbenchView = (function () {
     }
 
     function renderStepItem(s, i, executionMode) {
-            var ok = s.passed;
-            var skipped = s.skipped;
-            var seqNum = i + 1;
-            var seqCls = skipped ? 'bg-slate-400 text-white' : (ok ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white');
-            var nameCls = ok ? 'text-slate-800 group-hover:text-slate-950 font-medium' : 'text-rose-800 font-bold';
-            var statusCls = skipped ? 'text-slate-600 bg-slate-100 border-slate-200' : (ok ? 'text-emerald-700 bg-emerald-500/10 border-emerald-500/20' : 'text-rose-700 bg-rose-500/10 border-rose-500/20 shadow-2xs');
-            var timeCls = ok ? 'text-slate-400 font-mono' : 'text-rose-500 font-mono font-bold';
-            var bgCls = ok ? 'hover:bg-slate-50/60' : 'bg-rose-50/20 hover:bg-rose-50/40';
-            var methodColor = { GET: 'text-emerald-600', POST: 'text-amber-600', PUT: 'text-yellow-600', DELETE: 'text-rose-600', PATCH: 'text-indigo-600' }[s.method] || 'text-slate-600';
+        var ok = s.passed;
+        var skipped = s.skipped;
+        var seqNum = i + 1;
+        var seqIcon = skipped
+            ? '<div class="flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 text-[10.5px] font-bold bg-slate-400 text-white font-mono">' + seqNum + '</div>'
+            : (ok
+                ? '<div class="flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 bg-emerald-500 text-white shadow-2xs"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg></div>'
+                : '<div class="flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 bg-rose-500 text-white shadow-2xs"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"></path></svg></div>'
+            );
 
-            var reqHeaders = s.request && s.request.headers ? esc(truncateForDisplay(typeof s.request.headers === 'string' ? s.request.headers : JSON.stringify(s.request.headers, null, 2))) : '';
-            var reqBody = s.request && s.request.body ? esc(truncateForDisplay(typeof s.request.body === 'string' ? s.request.body : JSON.stringify(s.request.body, null, 2))) : '';
-            var resHeaders = s.response && s.response.headers ? esc(truncateForDisplay(typeof s.response.headers === 'string' ? s.response.headers : JSON.stringify(s.response.headers, null, 2))) : '';
-            var resBody = s.response && s.response.body ? esc(truncateForDisplay(typeof s.response.body === 'string' ? s.response.body : JSON.stringify(s.response.body, null, 2))) : '';
+        var nameCls = ok ? 'text-slate-800 font-medium' : 'text-slate-900 font-bold';
+        var statusBadgeCls = ok
+            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+            : (skipped ? 'bg-slate-100 text-slate-600 border border-slate-200' : 'bg-rose-50 text-rose-700 border border-rose-200');
+        var method = String(s.method || 'GET').toUpperCase();
+        var methodColor = { GET: 'text-emerald-600 bg-emerald-50 border-emerald-200/80', POST: 'text-amber-600 bg-amber-50 border-amber-200/80', PUT: 'text-yellow-600 bg-yellow-50 border-yellow-200/80', DELETE: 'text-rose-600 bg-rose-50 border-rose-200/80', PATCH: 'text-indigo-600 bg-indigo-50 border-indigo-200/80' }[method] || 'text-slate-600 bg-slate-50 border-slate-200';
 
-            var errorHtml = '';
-            if (!ok && s.error) {
-                var isNetworkErr = /Failed to fetch|NetworkError|ECONNREFUSED|ENOTFOUND/i.test(s.error);
-                if (isNetworkErr) {
-                    errorHtml = '<div class="my-2 p-2.5 bg-rose-50 rounded-lg border border-rose-200 flex items-start space-x-2.5">' +
-                        '<svg class="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>' +
-                        '<div class="text-xs text-rose-800">' +
-                            '<div class="font-bold">网络连接失败 (Failed to fetch)</div>' +
-                            '<div class="text-rose-600 mt-0.5">目标服务未响应。请检查本地接口服务（如 ' + esc(s.path) + '）是否已启动，或点击右上角「配置参数」调整地址。</div>' +
-                        '</div>' +
-                    '</div>';
-                } else {
-                    errorHtml = '<div class="my-2 p-2 bg-rose-50 rounded-lg border border-rose-200 flex items-center space-x-2">' +
-                        '<svg class="w-4 h-4 text-rose-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>' +
-                        '<span class="text-rose-800 font-bold text-[12px]">失败:</span>' +
-                        '<span class="text-rose-600 text-[12px] font-mono break-all">' + esc(s.error) + '</span></div>';
-                }
-            }
+        var reqHeaders = s.request && s.request.headers ? truncateForDisplay(typeof s.request.headers === 'string' ? s.request.headers : JSON.stringify(s.request.headers, null, 2)) : '';
+        var reqBody = s.request && s.request.body ? truncateForDisplay(typeof s.request.body === 'string' ? s.request.body : JSON.stringify(s.request.body, null, 2)) : '';
+        var resHeaders = s.response && s.response.headers ? truncateForDisplay(typeof s.response.headers === 'string' ? s.response.headers : JSON.stringify(s.response.headers, null, 2)) : '';
+        var resBody = s.response && s.response.body ? truncateForDisplay(typeof s.response.body === 'string' ? s.response.body : JSON.stringify(s.response.body, null, 2)) : '';
+        var queryParams = extractQueryParams(s.path, s.request && s.request.query);
 
-            var assertHtml = '';
-            if (s.assertions && s.assertions.length) {
-                var failedList = s.assertions.filter(function (a) { return !a.passed; });
-                var diffHtml = '';
-                if (failedList.length > 0) {
-                    diffHtml = '<div class="mt-2 space-y-1.5">' + failedList.map(function (a) {
-                        return '<div class="p-2 rounded-lg bg-rose-50/70 border border-rose-200 text-xs">' +
-                            '<div class="font-bold text-rose-700">' + esc(a.name) + '</div>' +
-                            '<div class="mt-1.5 grid grid-cols-1 sm:grid-cols-2 gap-2 font-mono text-[11px]">' +
-                                '<div class="p-1.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800"><span class="font-bold text-[10px] uppercase block mb-0.5">预期值 (Expected)</span>' + esc(stringify(a.expected)) + '</div>' +
-                                '<div class="p-1.5 rounded-md bg-rose-50 border border-rose-200 text-rose-800"><span class="font-bold text-[10px] uppercase block mb-0.5">实际值 (Actual)</span>' + esc(stringify(a.actual)) + '</div>' +
-                            '</div>' +
-                        '</div>';
-                    }).join('') + '</div>';
-                }
-
-                assertHtml = '<div class="py-2.5 border-t border-slate-200 mt-2">' +
-                    '<div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-2">断言结果 (' + (s.assertions.length - failedList.length) + '/' + s.assertions.length + ')</div>' +
-                    '<div class="flex flex-wrap gap-1.5">' + s.assertions.map(function (a) {
-                        var ac = a.passed ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20' : 'bg-rose-500/10 text-rose-700 border-rose-500/20';
-                        var ap = a.passed ? 'M5 13l4 4L19 7' : 'M6 18L18 6M6 6l12 12';
-                        return '<div class="flex items-center px-2 py-0.5 ' + ac + ' rounded-md border text-[11px] font-medium" title="Expected: ' + esc(stringify(a.expected)) + ' \nActual: ' + esc(stringify(a.actual)) + '">' +
-                            '<svg class="w-3 h-3 mr-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="' + ap + '"></path></svg>' +
-                            esc(a.name) + '</div>';
-                    }).join('') + '</div>' +
-                    diffHtml +
-                    '</div>';
-            }
-
-            var bodyColor = ok ? 'text-emerald-400' : 'text-rose-400';
-            var detailPanelCls = ok
-                ? 'details-panel px-4 bg-slate-50/40 border-t border-slate-100 text-[13px]'
-                : 'details-panel open px-4 bg-white border-t border-rose-100 text-[13px] shadow-inner';
-            var chevronCls = ok ? '' : ' rotate-180';
-            var stepActions = executionMode === 'step'
-                ? '<span class="step-run-actions"><button type="button" data-step-action="rewind" data-step-index="' + i + '" title="仅回退测试运行时与报告，不撤销已发出的业务请求">回退</button><button type="button" data-step-action="rerun" data-step-index="' + i + '" title="从本步骤执行前的变量快照重新执行">重跑</button></span>'
-                : '';
-
-            return '<li class="' + bgCls + ' group transition-colors border-b border-slate-100" data-passed="' + ok + '" data-skipped="' + skipped + '" data-step-idx="' + i + '" data-search="' + esc((s.name + ' ' + s.method + ' ' + s.path).toLowerCase()) + '">' +
-                '<div class="px-3.5 py-2 flex items-center justify-between cursor-pointer" role="button" tabindex="0" aria-expanded="' + (!ok ? 'true' : 'false') + '" onclick="window.__R.toggle(this, event)" onkeydown="window.__R.toggleKey(this, event)">' +
-                    '<div class="flex items-center space-x-2.5 w-[70%] lg:w-[80%]">' +
-                        '<div class="flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 text-[10.5px] font-bold shadow-2xs ' + seqCls + ' tabular-nums">' + seqNum + '</div>' +
-                        '<span class="select-text text-xs ' + nameCls + ' truncate transition-colors" title="' + esc(s.name) + '">' + esc(s.name) + '</span>' +
-                        '<div class="hidden sm:flex items-center space-x-1.5 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-100 flex-shrink-0 max-w-[50%]">' +
-                            '<span class="text-[10px] font-bold ' + methodColor + ' uppercase tracking-wider font-mono">' + esc(String(s.method)) + '</span>' +
-                            '<span class="text-slate-300">|</span>' +
-                            '<span class="select-text text-[11px] text-slate-500 font-mono truncate" title="' + esc(s.path) + '">' + esc(s.path) + '</span>' +
-                        '</div>' +
+        var errorHtml = '';
+        if (!ok && s.error) {
+            var isNetworkErr = /Failed to fetch|NetworkError|ECONNREFUSED|ENOTFOUND/i.test(s.error);
+            if (isNetworkErr) {
+                errorHtml = '<div class="mb-3 p-2.5 bg-rose-50 rounded-lg border border-rose-200 flex items-start space-x-2.5">' +
+                    '<svg class="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>' +
+                    '<div class="text-xs text-rose-800">' +
+                        '<div class="font-bold">网络连接失败 (Failed to fetch)</div>' +
+                        '<div class="text-rose-600 mt-0.5">目标服务未响应。请检查本地接口服务（如 ' + esc(s.path) + '）是否已启动，或点击右上角「配置」调整地址。</div>' +
                     '</div>' +
-                    '<div class="flex items-center space-x-1.5 flex-shrink-0">' +
-                        '<button type="button" data-copy-step="' + i + '" class="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]" title="复制步骤标题与接口路径">复制</button>' +
-                        '<button type="button" data-curl-step="' + i + '" class="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]" title="复制为 cURL 命令行">cURL</button>' +
-                        '<button type="button" data-adhoc-step="' + i + '" class="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]">调试</button>' +
-                        stepActions +
-                        '<span class="text-[11px] font-bold font-mono ' + statusCls + ' px-2 py-0.5 rounded-md border tabular-nums">' + esc(String(s.status)) + '</span>' +
-                        '<span class="' + timeCls + ' text-[11px] font-mono w-16 text-right tabular-nums">' + fmt(s.duration) + '</span>' +
-                        '<svg class="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-500 transition-transform duration-200 chevron' + chevronCls + '" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>' +
+                '</div>';
+            } else {
+                errorHtml = '<div class="mb-3 p-2.5 bg-rose-50 rounded-lg border border-rose-200 flex items-center space-x-2">' +
+                    '<svg class="w-4 h-4 text-rose-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>' +
+                    '<span class="text-rose-800 font-bold text-xs">执行错误:</span>' +
+                    '<span class="text-rose-600 text-xs font-mono break-all">' + esc(s.error) + '</span></div>';
+            }
+        }
+
+        // 断言表格
+        var assertHtml = '';
+        if (s.assertions && s.assertions.length) {
+            var failedCount = s.assertions.filter(function (a) { return !a.passed; }).length;
+            var passedCount = s.assertions.length - failedCount;
+            var assertRows = s.assertions.map(function (a) {
+                var rowOk = a.passed;
+                var rowCls = rowOk ? 'hover:bg-slate-50/60' : 'bg-rose-50/80 border-rose-100 text-rose-900';
+                var resLabel = rowOk
+                    ? '<span class="text-emerald-600 font-bold flex items-center gap-1"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg> 通过</span>'
+                    : '<span class="text-rose-600 font-bold flex items-center gap-1"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"></path></svg> 失败</span>';
+                return '<tr class="' + rowCls + ' transition-colors">' +
+                    '<td class="px-3.5 py-2 font-medium ' + (rowOk ? 'text-slate-700' : 'text-rose-800 font-bold') + '">' + esc(a.name) + '</td>' +
+                    '<td class="px-3.5 py-2 font-mono text-[11px] ' + (rowOk ? 'text-slate-600' : 'text-rose-700') + '">' + esc(stringify(a.expected)) + '</td>' +
+                    '<td class="px-3.5 py-2 font-mono text-[11px] ' + (rowOk ? 'text-slate-600' : 'text-rose-900 font-bold') + '">' + esc(stringify(a.actual)) + '</td>' +
+                    '<td class="px-3.5 py-2 text-xs">' + resLabel + '</td>' +
+                '</tr>';
+            }).join('');
+
+            assertHtml =
+                '<div class="mt-4 pt-3.5 border-t border-slate-200/80">' +
+                    '<div class="flex items-center gap-2 mb-2">' +
+                        '<span class="text-xs font-bold text-slate-800">断言 (Assertions)</span>' +
+                        '<span class="text-xs font-mono font-bold ' + (failedCount ? 'text-rose-600' : 'text-emerald-600') + '">' + passedCount + ' / ' + s.assertions.length + '</span>' +
+                    '</div>' +
+                    '<div class="border border-slate-200/80 rounded-lg overflow-hidden bg-white shadow-2xs">' +
+                        '<table class="w-full text-left text-xs">' +
+                            '<thead class="bg-slate-50 text-[10.5px] text-slate-500 font-semibold border-b border-slate-200/70 uppercase tracking-wider">' +
+                                '<tr>' +
+                                    '<th class="px-3.5 py-2">断言项</th>' +
+                                    '<th class="px-3.5 py-2">预期值 (EXPECTED)</th>' +
+                                    '<th class="px-3.5 py-2">实际值 (ACTUAL)</th>' +
+                                    '<th class="px-3.5 py-2 w-24">结果</th>' +
+                                '</tr>' +
+                            '</thead>' +
+                            '<tbody class="divide-y divide-slate-100">' +
+                                assertRows +
+                            '</tbody>' +
+                        '</table>' +
+                    '</div>' +
+                '</div>';
+        }
+
+        // Query 参数表格
+        var queryHtml = '';
+        if (queryParams && queryParams.length) {
+            var qRows = queryParams.map(function (p) {
+                return '<tr><td class="px-3 py-1.5 text-slate-600 font-mono">' + esc(p.name) + '</td><td class="px-3 py-1.5 text-slate-900 font-mono font-medium">' + esc(p.value) + '</td></tr>';
+            }).join('');
+            queryHtml =
+                '<div class="mt-3">' +
+                    '<div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1.5">查询参数 (Query)</div>' +
+                    '<div class="border border-slate-200/80 rounded-md overflow-hidden bg-white shadow-2xs">' +
+                        '<table class="w-full text-left text-xs">' +
+                            '<thead class="bg-slate-50 text-[10px] text-slate-500 font-semibold border-b border-slate-200/60 uppercase tracking-wider">' +
+                                '<tr><th class="px-3 py-1.5">参数名</th><th class="px-3 py-1.5">参数值</th></tr>' +
+                            '</thead>' +
+                            '<tbody class="divide-y divide-slate-100 font-mono text-[11px]">' +
+                                qRows +
+                            '</tbody>' +
+                        '</table>' +
+                    '</div>' +
+                '</div>';
+        }
+
+        var leftColumn =
+            '<div class="space-y-3">' +
+                '<div class="flex items-center justify-between">' +
+                    '<div class="text-xs font-bold text-slate-800">请求 (Request)</div>' +
+                    '<button type="button" class="code-copy-btn inline-flex items-center gap-1 px-2 py-0.5 rounded border border-slate-200 bg-white text-[10.5px] text-slate-600 hover:bg-slate-50 hover:text-slate-900 active:scale-95 transition-all" data-code-copy="step-' + i + '-req-all" title="复制完整请求参数">' +
+                        '<svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>' +
+                        '<span>复制</span>' +
+                    '</button>' +
+                '</div>' +
+                '<div class="font-mono text-xs text-slate-800 break-all bg-white p-2.5 rounded-lg border border-slate-200/80 flex items-center gap-2">' +
+                    '<span class="font-bold ' + methodColor + ' px-1.5 py-0.5 rounded text-[10px] uppercase">' + method + '</span>' +
+                    '<span class="text-slate-700 font-medium">' + esc(s.path) + '</span>' +
+                '</div>' +
+                (reqHeaders ? '<div><div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1 flex items-center justify-between"><span>请求头 (Headers)</span><button type="button" class="code-copy-btn text-[10px] text-slate-400 hover:text-slate-600" data-code-copy="step-' + i + '-req-headers">复制</button></div>' + renderCodeBlockWithLines('step-' + i + '-req-headers', reqHeaders) + '</div>' : '') +
+                queryHtml +
+                (reqBody ? '<div><div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1 flex items-center justify-between"><span>请求体 (Body)</span><button type="button" class="code-copy-btn text-[10px] text-slate-400 hover:text-slate-600" data-code-copy="step-' + i + '-req-body">复制</button></div>' + renderCodeBlockWithLines('step-' + i + '-req-body', reqBody) + '</div>' : '') +
+                '<pre id="step-' + i + '-req-all" class="sr-only">' + esc(method + ' ' + s.path + (reqHeaders ? '\n\nHeaders:\n' + reqHeaders : '') + (reqBody ? '\n\nBody:\n' + reqBody : '')) + '</pre>' +
+            '</div>';
+
+        var rightColumn =
+            '<div class="space-y-3">' +
+                '<div class="flex items-center justify-between">' +
+                    '<div class="text-xs font-bold text-slate-800">响应 (Response)</div>' +
+                    '<button type="button" class="code-copy-btn inline-flex items-center gap-1 px-2 py-0.5 rounded border border-slate-200 bg-white text-[10.5px] text-slate-600 hover:bg-slate-50 hover:text-slate-900 active:scale-95 transition-all" data-code-copy="step-' + i + '-res-all" title="复制完整响应参数">' +
+                        '<svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>' +
+                        '<span>复制</span>' +
+                    '</button>' +
+                '</div>' +
+                '<div class="font-mono text-xs flex items-center justify-between bg-white p-2.5 rounded-lg border border-slate-200/80">' +
+                    '<div class="flex items-center gap-2">' +
+                        '<span class="font-bold text-emerald-600">' + esc(String(s.status || 200)) + ' OK</span>' +
+                        '<span class="text-slate-400 text-[11px]">' + fmt(s.duration) + '</span>' +
                     '</div>' +
                 '</div>' +
-                '<div class="' + detailPanelCls + '">' +
-                    '<div class="sm:hidden mb-3 pb-3 border-b border-slate-200">' +
-                         '<div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1">接口地址</div>' +
-                         '<div class="flex items-center space-x-2"><span class="text-xs font-bold ' + methodColor + '">' + esc(String(s.method)) + '</span><span class="text-xs font-mono break-all">' + esc(s.path) + '</span></div>' +
-                    '</div>' +
-                    errorHtml +
-                    '<div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-0 md:divide-x divide-slate-200 py-2.5">' +
-                        '<div class="md:pr-5 space-y-2.5">' +
-                            (reqHeaders ? '<div><div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1 flex items-center justify-between"><span class="flex items-center"><div class="w-1 h-3 bg-slate-300 mr-2 rounded-full"></div>请求头</span><button type="button" class="code-copy-btn text-[10px] text-slate-400 hover:text-slate-200" data-code-copy="step-' + i + '-req-headers">复制</button></div><pre id="step-' + i + '-req-headers" class="bg-slate-900 p-2.5 rounded-lg text-slate-300 overflow-x-auto font-mono leading-tight shadow-inner text-[11px] border border-slate-800">' + reqHeaders + '</pre></div>' : '') +
-                            (reqBody ? '<div><div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1 flex items-center justify-between"><span class="flex items-center"><div class="w-1 h-3 bg-emerald-400 mr-2 rounded-full"></div>请求体</span><button type="button" class="code-copy-btn text-[10px] text-slate-400 hover:text-slate-200" data-code-copy="step-' + i + '-req-body">复制</button></div><pre id="step-' + i + '-req-body" class="bg-slate-900 p-2.5 rounded-lg ' + bodyColor + ' overflow-x-auto font-mono leading-tight shadow-inner text-[11px] border border-slate-800">' + reqBody + '</pre></div>' : '') +
-                        '</div>' +
-                        '<div class="md:pl-5 space-y-2.5">' +
-                            (resHeaders ? '<div><div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1 flex items-center justify-between"><span class="flex items-center"><div class="w-1 h-3 bg-slate-300 mr-2 rounded-full"></div>响应头</span><button type="button" class="code-copy-btn text-[10px] text-slate-400 hover:text-slate-200" data-code-copy="step-' + i + '-res-headers">复制</button></div><pre id="step-' + i + '-res-headers" class="bg-slate-900 p-2.5 rounded-lg text-slate-300 overflow-x-auto font-mono leading-tight shadow-inner text-[11px] border border-slate-800">' + resHeaders + '</pre></div>' : '') +
-                            (resBody ? '<div><div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1 flex items-center justify-between"><span class="flex items-center"><div class="w-1 h-3 ' + (ok ? 'bg-emerald-400' : 'bg-rose-400') + ' mr-2 rounded-full"></div>响应体</span><button type="button" class="code-copy-btn text-[10px] text-slate-400 hover:text-slate-200" data-code-copy="step-' + i + '-res-body">复制</button></div><pre id="step-' + i + '-res-body" class="bg-slate-900 p-2.5 rounded-lg ' + bodyColor + ' overflow-x-auto font-mono leading-tight shadow-inner text-[11px] border border-slate-800">' + resBody + '</pre></div>' : '') +
-                        '</div>' +
-                    '</div>' +
-                    assertHtml +
+                (resHeaders ? '<div><div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1 flex items-center justify-between"><span>响应头 (Headers)</span><button type="button" class="code-copy-btn text-[10px] text-slate-400 hover:text-slate-600" data-code-copy="step-' + i + '-res-headers">复制</button></div>' + renderCodeBlockWithLines('step-' + i + '-res-headers', resHeaders) + '</div>' : '') +
+                (resBody ? '<div><div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1 flex items-center justify-between"><span>响应体 (Body)</span><button type="button" class="code-copy-btn text-[10px] text-slate-400 hover:text-slate-600" data-code-copy="step-' + i + '-res-body">复制</button></div>' + renderCodeBlockWithLines('step-' + i + '-res-body', resBody) + '</div>' : '') +
+                '<pre id="' + 'step-' + i + '-res-all" class="sr-only">' + esc('Status: ' + (s.status || 200) + ' (' + fmt(s.duration) + ')' + (resHeaders ? '\n\nHeaders:\n' + resHeaders : '') + (resBody ? '\n\nBody:\n' + resBody : '')) + '</pre>' +
+            '</div>';
+
+        var detailPanelCls = ok
+            ? 'details-panel px-4 py-3 bg-slate-50/50 border-t border-slate-100 text-[13px]'
+            : 'details-panel open px-4 py-3 bg-slate-50/50 border-t border-rose-100 text-[13px]';
+        var chevronCls = ok ? '' : ' rotate-180';
+        var stepActions = executionMode === 'step'
+            ? '<span class="step-run-actions"><button type="button" data-step-action="rewind" data-step-index="' + i + '" title="仅回退测试运行时与报告，不撤销已发出的业务请求">回退</button><button type="button" data-step-action="rerun" data-step-index="' + i + '" title="从本步骤执行前的变量快照重新执行">重跑</button></span>'
+            : '';
+
+        return '<li class="group transition-colors border-b border-slate-100 bg-white" data-passed="' + ok + '" data-skipped="' + skipped + '" data-step-idx="' + i + '" data-search="' + esc((s.name + ' ' + s.method + ' ' + s.path).toLowerCase()) + '">' +
+            '<div class="px-4 py-2.5 flex items-center justify-between cursor-pointer select-none hover:bg-slate-50/80 transition-colors" role="button" tabindex="0" aria-expanded="' + (!ok ? 'true' : 'false') + '" onclick="window.__R.toggle(this, event)" onkeydown="window.__R.toggleKey(this, event)">' +
+                '<div class="flex items-center space-x-2.5 min-w-0 flex-1 pr-3">' +
+                    seqIcon +
+                    '<span class="text-xs font-bold ' + nameCls + ' truncate" title="' + esc(s.name) + '">' + esc(s.name) + '</span>' +
+                    '<span class="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded border uppercase ' + methodColor + '">' + method + '</span>' +
+                    '<span class="text-xs text-slate-500 font-mono truncate max-w-[40%]" title="' + esc(s.path) + '">' + esc(s.path) + '</span>' +
                 '</div>' +
-            '</li>';
+                '<div class="flex items-center space-x-2 flex-shrink-0">' +
+                    '<button type="button" data-copy-step="' + i + '" class="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]" title="复制步骤标题与接口路径">复制</button>' +
+                    '<button type="button" data-curl-step="' + i + '" class="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]" title="复制为 cURL 命令行">cURL</button>' +
+                    '<button type="button" data-adhoc-step="' + i + '" class="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]">调试</button>' +
+                    stepActions +
+                    '<span class="text-[10.5px] font-bold font-mono px-2 py-0.5 rounded-md ' + statusBadgeCls + '">' + esc(String(s.status || '-')) + '</span>' +
+                    '<span class="text-slate-400 text-xs font-mono w-16 text-right">' + fmt(s.duration) + '</span>' +
+                    '<svg class="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 transition-transform duration-200 chevron' + chevronCls + '" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>' +
+                '</div>' +
+            '</div>' +
+            '<div class="' + detailPanelCls + '">' +
+                errorHtml +
+                '<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">' +
+                    leftColumn +
+                    rightColumn +
+                '</div>' +
+                assertHtml +
+            '</div>' +
+        '</li>';
     }
 
     function renderStepsAll(steps, scenarioSteps, executionMode) {
@@ -826,14 +992,14 @@ const workbenchView = (function () {
     }
 
     function renderReportPanel(steps, scenario, scenarioFile, executionMode, environment) {
-        var node = document.getElementById('reportPanel');
-        if (!node) return null;
         steps = steps || [];
+        var report = buildOverallReport(steps, scenario, scenarioFile, executionMode, environment);
+        var node = document.getElementById('reportPanel');
+        if (!node) return report;
         if (!steps.length) {
             node.innerHTML = '<div class="report-empty"><div class="report-empty__title">执行后生成报告</div><div class="report-empty__hint">结果摘要与失败诊断将在这里展示</div></div>';
-            return null;
+            return report;
         }
-        var report = buildOverallReport(steps, scenario, scenarioFile, executionMode, environment);
         var summary = report.summary;
         var pending = summary.totalSteps - summary.executedSteps;
         var cancelled = report.status === 'CANCELLED';

@@ -420,12 +420,32 @@ export function createWorkbenchRuntime(options) {
         uiView.renderScenarioSelect(state.discoveredFiles, state.scenarioFile, state.scenarioSearch, getPinnedScenarioFiles());
     }
 
+    function formatTime(date) {
+        if (!date) return '-';
+        var d = new Date(date);
+        var pad = function (n) { return n < 10 ? '0' + n : n; };
+        return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+    }
+
+    function updateExecutionFooter() {
+        var startEl = document.getElementById('execStartTime');
+        var endEl = document.getElementById('execEndTime');
+        var durEl = document.getElementById('execTotalDuration');
+        if (!startEl) return;
+        var totalMs = (state.steps || []).reduce(function (sum, s) { return sum + (s.duration || 0); }, 0);
+        if (state.startTime && startEl) startEl.textContent = formatTime(state.startTime);
+        if (state.endTime && endEl) endEl.textContent = formatTime(state.endTime);
+        if (durEl) durEl.textContent = totalMs.toFixed(2) + ' ms';
+    }
+
     function renderStepsAll() {
         uiView.renderStepsAll(state.steps, state.scenario && state.scenario.steps ? state.scenario.steps : [], state.executionMode);
+        updateExecutionFooter();
     }
 
     function renderStatsAll(iterations) {
-        uiView.renderStatsAll(state.steps, iterations);
+        uiView.renderStatsAll(state.steps, iterations, state.scenario, state.scenarioFile);
+        updateExecutionFooter();
     }
 
     function renderFilterAll() {
@@ -1086,20 +1106,6 @@ export function createWorkbenchRuntime(options) {
     }
 
     function bindReportActions() {
-        var reportToggleBtn = document.getElementById('reportToggleBtn');
-        var reportPanel = document.getElementById('reportPanel');
-        var reportPane = reportPanel && reportPanel.closest('.scenario-pane--report');
-        var copyMdBtn = document.getElementById('copyReportMarkdownBtn');
-        var copyJsonBtn = document.getElementById('copyReportJsonBtn');
-        if (reportToggleBtn && reportPanel) {
-            reportToggleBtn.addEventListener('click', function () {
-                var collapsed = !reportPanel.hidden;
-                reportPanel.hidden = collapsed;
-                reportToggleBtn.textContent = collapsed ? '展开' : '收起';
-                reportToggleBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-                if (reportPane) reportPane.classList.toggle('report-collapsed', collapsed);
-            });
-        }
         function flashCopyFeedback(btn, ok) {
             if (!btn) return;
             if (btn.__copyFeedbackTimer) window.clearTimeout(btn.__copyFeedbackTimer);
@@ -1112,23 +1118,31 @@ export function createWorkbenchRuntime(options) {
             }, 1500);
         }
         function handleCopy(btn, getText) {
-            if (!state.lastReport) return;
+            var report = state.lastReport || uiView.buildOverallReport(state.steps, state.scenario, state.scenarioFile, state.executionMode, getSelectedEnvironment());
+            if (!report) return;
             Promise.resolve()
-                .then(getText)
+                .then(function () { return getText(report); })
                 .then(copyText)
                 .then(function (ok) { flashCopyFeedback(btn, ok); })
                 .catch(function () { flashCopyFeedback(btn, false); });
         }
-        if (copyMdBtn) {
-            copyMdBtn.addEventListener('click', function () {
-                handleCopy(copyMdBtn, function () { return uiView.buildMarkdownReport(state.lastReport); });
-            });
-        }
-        if (copyJsonBtn) {
-            copyJsonBtn.addEventListener('click', function () {
-                handleCopy(copyJsonBtn, function () { return safeJson(state.lastReport); });
-            });
-        }
+
+        document.addEventListener('click', function (event) {
+            var target = event.target;
+            if (!target || !target.closest) return;
+            var mdBtn = target.closest('#copyReportMarkdownBtn');
+            if (mdBtn) {
+                event.preventDefault();
+                handleCopy(mdBtn, function (report) { return uiView.buildMarkdownReport(report); });
+                return;
+            }
+            var jsonBtn = target.closest('#copyReportJsonBtn');
+            if (jsonBtn) {
+                event.preventDefault();
+                handleCopy(jsonBtn, function (report) { return safeJson(report); });
+                return;
+            }
+        });
     }
 
     // 步骤级复制：标题 + METHOD path（复制按钮在步骤项上，事件委托）

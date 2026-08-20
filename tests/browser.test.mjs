@@ -61,12 +61,6 @@ try {
         await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "networkidle" });
         await page.waitForFunction(() => document.querySelectorAll("[data-scenario-file]").length === 5);
         assert.equal(await page.locator("#stepsList li").count(), 1);
-        assert.equal(await page.locator("#reportToggleBtn").getAttribute("aria-expanded"), "true");
-        await page.locator("#reportToggleBtn").click();
-        assert.equal(await page.locator("#reportPanel").isHidden(), true, "报告正文应支持收起以释放步骤空间");
-        assert.equal(await page.locator("#reportToggleBtn").getAttribute("aria-expanded"), "false");
-        await page.locator("#reportToggleBtn").click();
-        assert.equal(await page.locator("#reportPanel").isVisible(), true, "报告正文应支持重新展开");
         assert.equal(await page.locator("[data-copy-step]").count(), 1, "待执行步骤应提供复制按钮");
         assert.equal(await page.locator("#scenarioVar_exampleToken").getAttribute("type"), "password", "token 命名的凭据变量应掩码显示");
         assert.equal(await page.locator("#scenarioVar_expectedStatus").getAttribute("type"), "text", "非凭据变量保持明文输入");
@@ -91,8 +85,6 @@ try {
         await page.locator("#runBtn").click();
         await page.waitForFunction(() => !document.querySelector("#runBtn").disabled && document.querySelector('#stepsList li[data-passed="false"]'));
         assert.equal(await page.locator('#stepsList li[data-passed="false"]').count(), 1);
-        assert.match(await page.locator("#reportPanel").textContent(), /失败诊断/);
-        assert.equal(await page.locator("#reportPanel .report-diagnosis").getAttribute("open"), "", "失败诊断应默认展开");
 
         await page.locator("#configToggleBtn").click();
         await page.locator("#clearSettingsBtn").click();
@@ -103,9 +95,9 @@ try {
         await page.locator("#runBtn").click();
         await page.waitForFunction(() => !document.querySelector("#runBtn").disabled && document.querySelector('#stepsList li[data-passed="true"]'));
         assert.equal(await page.locator('#stepsList li[data-passed="true"]').count(), 1);
-        assert.match(await page.locator("#reportPanel").textContent(), /全部通过/);
+        assert.match(await page.locator("#statsPanel").textContent(), /总步骤/);
 
-        // 复制功能：mock 剪贴板后验证报告 MD/JSON 与步骤复制的反馈
+        // 复制功能：直接点击统计栏右侧复制按钮，mock 剪贴板验证报告 MD/JSON 与步骤复制的反馈
         await page.evaluate(() => {
             Object.defineProperty(navigator, "clipboard", {
                 value: { writeText: async (text) => { window.__lastCopiedText = text; } },
@@ -127,7 +119,7 @@ try {
         await page.waitForFunction(() => document.querySelector("[data-copy-step='0']").textContent.includes("已复制"));
         await page.locator("[data-copy-step='0']").click();
         await page.waitForFunction(() => document.querySelector("[data-copy-step='0']").textContent === "复制");
-        assert.match(await page.locator("#copyReportMarkdownBtn").textContent(), /复制 MD/, "连续复制后报告按钮应恢复原文案");
+        assert.match(await page.locator("#copyReportMarkdownBtn").textContent(), /复制为 Markdown/, "连续复制后报告按钮应恢复原文案");
         assert.equal(await page.locator("[data-copy-step='0']").textContent(), "复制", "连续复制后步骤按钮应恢复原文案");
 
         // Clipboard API 同步抛错时应执行 execCommand 回退
@@ -187,9 +179,6 @@ try {
         // 取消文案：结构化映射为中文提示，而非原始英文 DOMException
         assert.match(await page.locator("#stepsList").textContent(), /用户已取消执行/);
         assert.match(await page.locator("#stepsList").textContent(), /CANCELLED/);
-        // 整体报告与 engine 的 CANCELLED 语义对齐：不再把取消误报为"存在失败"
-        assert.match(await page.locator("#reportPanel").textContent(), /已取消/);
-        assert.doesNotMatch(await page.locator("#reportPanel").textContent(), /存在失败/);
 
         await page.locator('[data-scenario-file="scenarios/cleanup.js"]').click();
         await page.waitForFunction(() => document.querySelector("#scenarioTitle").textContent.includes("条件清理"));
@@ -203,7 +192,6 @@ try {
         assert.equal(await page.locator("#stepsList li").count(), await page.locator("[data-copy-step]").count(), "跳过步骤也应提供复制按钮");
         await page.locator('#stepsList li[data-skipped="true"] [data-copy-step]').click();
         await page.waitForFunction(() => document.querySelector('#stepsList li[data-skipped="true"] [data-copy-step]').textContent.includes("失败"));
-        assert.match(await page.locator("#reportPanel").textContent(), /全部跳过/);
         assert.match(await page.locator("#statsPanel").textContent(), /跳过/);
 
         // 请求超时：engine 超时经适配层映射为 TIMEOUT，失败步骤保留请求详情供诊断

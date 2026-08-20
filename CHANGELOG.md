@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.21] - 2026-08-20
+
+### ✨ Browser Workbench
+
+- 升级为现代 3 栏工作台架构：左侧场景列表、中栏步骤与报文流水线、右侧执行统计与进度看板。
+- 新增分段胶囊进度条（Segmented Step Progress Bar），精准呈现步骤执行进度与完成比例。
+- 步骤详情全面支持左右双栏对照（请求 Request vs 响应 Response）、暗色代码编辑器风格报文查看（带独立行号 Gutter）与断言明细表格。
+- 支持一键 `复制为 Markdown` 报告（可直接投喂给 AI 提问/排查）与 `导出 JSON` 结果。
+- 底部常驻展示场景执行时间统计（开始时间、结束时间、总耗时）。
+- 修复步骤详情高度溢出与双重滚动条问题，全面优化多分辨率弹性适配。
+
+### ✅ Tests
+
+- 更新 Playwright 浏览器自动化测试以适配最新 3 栏工作台与分段进度条。
+
 ## [0.5.20] - 2026-08-19
 
 ### ✨ Browser Workbench
