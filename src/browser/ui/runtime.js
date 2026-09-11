@@ -456,6 +456,33 @@ export function createWorkbenchRuntime(options) {
         state.lastReport = uiView.renderReportPanel(state.steps, state.scenario, state.scenarioFile, state.executionMode, getSelectedEnvironment());
     }
 
+    function setSidePanelTab(tabName) {
+        var showReport = tabName === 'report';
+        var statsTab = document.getElementById('statsTab');
+        var reportTab = document.getElementById('reportTab');
+        var statsPanel = document.getElementById('statsPanel');
+        var reportPanel = document.getElementById('reportPanel');
+        if (showReport && reportTab && reportTab.disabled) showReport = false;
+        if (statsPanel) statsPanel.classList.toggle('hidden', showReport);
+        if (reportPanel) reportPanel.classList.toggle('hidden', !showReport);
+        if (statsTab) {
+            statsTab.classList.toggle('is-active', !showReport);
+            statsTab.setAttribute('aria-selected', showReport ? 'false' : 'true');
+        }
+        if (reportTab) {
+            reportTab.classList.toggle('is-active', showReport);
+            reportTab.setAttribute('aria-selected', showReport ? 'true' : 'false');
+        }
+    }
+
+    function bindSidePanelTabs() {
+        var statsTab = document.getElementById('statsTab');
+        var reportTab = document.getElementById('reportTab');
+        if (statsTab) statsTab.addEventListener('click', function () { setSidePanelTab('stats'); });
+        if (reportTab) reportTab.addEventListener('click', function () { setSidePanelTab('report'); });
+        setSidePanelTab('stats');
+    }
+
     function expandStepDetails(stepIndex) {
         var items = document.querySelectorAll('#stepsList li');
         var item = items[stepIndex];
@@ -606,27 +633,59 @@ export function createWorkbenchRuntime(options) {
         renderFilterAll();
         renderStepsAll();
         renderReportPanel();
+        setSidePanelTab('stats');
         uiView.setRunState('idle', '待执行');
     }
 
-    function showExecutionConfigError(error) {
-        var message = error && error.message ? String(error.message) : '执行前检查失败';
-        var runState = /缺少场景凭据|配置/.test(message) ? '配置缺失' : '执行前失败';
+    function showDiagnosticError(error, customState) {
+        var message = error && error.message ? String(error.message) : (error ? String(error) : '执行异常');
+        var runState = customState || (/缺少场景凭据|配置/.test(message) ? '配置缺失' : '执行前失败');
         uiView.setRunState('failed', runState);
-        document.getElementById('reportPanel').innerHTML = '<div class="rounded border border-rose-200 bg-rose-50 p-3 text-rose-700">' + esc(message) + '</div>';
+        var reportTab = document.getElementById('reportTab');
+        var reportTabBadge = document.getElementById('reportTabBadge');
+        if (reportTab) reportTab.disabled = false;
+        if (reportTabBadge) {
+            reportTabBadge.textContent = '!';
+            reportTabBadge.classList.add('is-alert');
+        }
+        var reportPanel = document.getElementById('reportPanel');
+        if (reportPanel) {
+            reportPanel.innerHTML =
+                '<div class="report-content">' +
+                    '<div class="rounded-lg border border-rose-200 bg-rose-50 p-4 text-rose-800 space-y-2">' +
+                        '<div class="font-bold text-xs flex items-center gap-1.5 text-rose-700">' +
+                            '<svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>' +
+                            '<span>' + esc(runState) + '</span>' +
+                        '</div>' +
+                        '<div class="text-xs text-rose-700 leading-relaxed font-mono whitespace-pre-wrap break-all">' + esc(message) + '</div>' +
+                        '<div class="text-[11px] text-rose-600/80 pt-1 border-t border-rose-200/60">可点击右上角「配置」按钮检查环境参数，或查看控制台日志。</div>' +
+                    '</div>' +
+                '</div>';
+        }
+        setSidePanelTab('report');
+    }
+
+    function showExecutionConfigError(error) {
+        showDiagnosticError(error, /缺少场景凭据|配置/.test(error && error.message ? error.message : '') ? '配置缺失' : '执行前失败');
     }
 
     function finishExecutionState(runtime) {
-        if (runtime && runtime.cancelled) {
+        var cancelled = Boolean(runtime && runtime.cancelled) || state.steps.some(function (item) { return item.cancelled; });
+        if (cancelled) {
             uiView.setRunState('cancelled', '已取消');
             renderReportPanel();
             return;
         }
         var skipped = state.steps.filter(function (item) { return item.skipped; }).length;
-        var failed = state.steps.filter(function (item) { return !item.skipped && !item.passed; }).length;
+        var failed = state.steps.filter(function (item) { return !item.skipped && !item.passed && !item.cancelled; }).length;
         var executed = state.steps.length - skipped;
         uiView.setRunState(failed ? 'failed' : (executed === 0 ? 'skipped' : 'success'), failed ? '存在失败' : (executed === 0 ? '全部跳过' : '执行成功'));
         renderReportPanel();
+        if (failed > 0) {
+            setSidePanelTab('report');
+        } else {
+            setSidePanelTab('stats');
+        }
     }
     function highlightActiveStep(stepIndex) {
         var ul = document.getElementById('stepsList');
@@ -689,6 +748,7 @@ export function createWorkbenchRuntime(options) {
         // 新一轮开始先全量渲染一次待执行占位（同时清掉上一轮遗留的已渲染步骤）；
         // 循环内改用 appendStepResult 增量追加，避免长场景每步全量重建
         renderStepsAll();
+        setSidePanelTab('stats');
 
         try {
             for (var i = 0; i < list.length; i += 1) {
@@ -707,8 +767,7 @@ export function createWorkbenchRuntime(options) {
             finishExecutionState(runtime);
         } catch (error) {
             clearActiveStepHighlight();
-            uiView.setRunState('failed', '执行异常');
-            document.getElementById('reportPanel').innerHTML = '<div class="rounded border border-rose-200 bg-rose-50 p-3 text-rose-700">' + esc(error.message || error) + '</div>';
+            showDiagnosticError(error, '执行异常');
         } finally {
             clearActiveStepHighlight();
             state.running = false;
@@ -736,6 +795,7 @@ export function createWorkbenchRuntime(options) {
             state.lastReport = null;
             // 从头开始单步执行：全量渲染待执行占位，清掉上一轮遗留（循环内为增量追加）
             renderStepsAll();
+            setSidePanelTab('stats');
         }
 
         var runtime = state.stepRuntime;
@@ -771,8 +831,7 @@ export function createWorkbenchRuntime(options) {
             }
         } catch (error) {
             state.stepRuntime = null;
-            uiView.setRunState('failed', '执行异常');
-            document.getElementById('reportPanel').innerHTML = '<div class="rounded border border-rose-200 bg-rose-50 p-3 text-rose-700">' + esc(error.message || error) + '</div>';
+            showDiagnosticError(error, '执行异常');
         } finally {
             clearActiveStepHighlight();
             uiView.setStepLoading(false);
@@ -1130,13 +1189,13 @@ export function createWorkbenchRuntime(options) {
         document.addEventListener('click', function (event) {
             var target = event.target;
             if (!target || !target.closest) return;
-            var mdBtn = target.closest('#copyReportMarkdownBtn');
+            var mdBtn = target.closest('#copyReportMarkdownBtn') || target.closest('#copyDiagnosisMarkdownBtn');
             if (mdBtn) {
                 event.preventDefault();
                 handleCopy(mdBtn, function (report) { return uiView.buildMarkdownReport(report); });
                 return;
             }
-            var jsonBtn = target.closest('#copyReportJsonBtn');
+            var jsonBtn = target.closest('#copyReportJsonBtn') || target.closest('#copyDiagnosisJsonBtn');
             if (jsonBtn) {
                 event.preventDefault();
                 handleCopy(jsonBtn, function (report) { return safeJson(report); });
@@ -1486,6 +1545,8 @@ export function createWorkbenchRuntime(options) {
                 renderStatsAll(state.scenario.iterations || { run: 1, failed: 0 });
                 renderFilterAll();
                 renderStepsAll();
+                renderReportPanel();
+                setSidePanelTab('stats');
                 uiView.setRunState('idle', '待执行');
                 setScenarioQuery(file);
                 resolveLoad(state.scenario);
@@ -1506,6 +1567,7 @@ export function createWorkbenchRuntime(options) {
         bindSettingsEvents();
         bindGlobalsEvents();
         bindReportActions();
+        bindSidePanelTabs();
         bindStepCopyActions();
         bindStepCurlActions();
         bindCodeCopyActions();
@@ -1627,4 +1689,3 @@ export function createWorkbenchRuntime(options) {
         getState: function () { return state; }
     };
 }
-

@@ -88,6 +88,20 @@ const workbenchStyle = (function () {
             #reportPanel { background: var(--workspace-surface) !important; }
 
             .scenario-header-actions { display: flex; align-items: center; gap: 6px !important; flex-wrap: nowrap !important; }
+            .scenario-header-context-actions,
+            .scenario-header-run-actions,
+            .scenario-header-secondary-actions {
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+            }
+            .scenario-header-run-actions {
+                padding-left: 4px;
+                border-left: 1px solid var(--workspace-line);
+            }
+            .scenario-header-secondary-actions {
+                padding-left: 2px;
+            }
             .scenario-header-select,
             .scenario-header-step,
             .scenario-header-button {
@@ -428,10 +442,70 @@ const workbenchStyle = (function () {
                 color: #245244;
             }
 
-            .scenario-pane--steps #statsPanel {
-                min-height: 56px;
-                padding: 10px 14px !important;
-                border-bottom: 1px solid var(--workspace-line) !important;
+            .scenario-side-tabs {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                padding: 4px 10px;
+                border-bottom: 1px solid var(--workspace-line);
+                background: color-mix(in srgb, var(--workspace-hover) 58%, transparent);
+            }
+            .scenario-side-tab {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 5px;
+                min-height: 28px;
+                flex: 1;
+                padding: 0 8px;
+                border: 1px solid transparent;
+                border-radius: 6px;
+                background: transparent;
+                color: var(--workspace-muted);
+                font-size: 11.5px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+            }
+            .scenario-side-tab:hover:not(:disabled) {
+                color: var(--workspace-text);
+                background: var(--workspace-surface);
+                border-color: var(--workspace-line);
+            }
+            .scenario-side-tab.is-active {
+                color: var(--workspace-text);
+                background: var(--workspace-surface);
+                border-color: var(--workspace-line);
+                box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+            }
+            .scenario-side-tab:disabled {
+                opacity: 0.48;
+                cursor: not-allowed;
+            }
+            .scenario-side-tab__badge {
+                display: inline-flex;
+                min-width: 17px;
+                height: 17px;
+                align-items: center;
+                justify-content: center;
+                padding: 0 4px;
+                border-radius: 999px;
+                background: var(--workspace-selected);
+                color: var(--workspace-muted);
+                font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+                font-size: 10px;
+                font-variant-numeric: tabular-nums;
+                line-height: 1;
+            }
+            .scenario-side-tab__badge.is-alert {
+                background: #fff1f2;
+                color: #e11d48;
+            }
+            .scenario-side-panel.hidden,
+            .scenario-side-panel[hidden] { display: none !important; }
+            #scenario-test-root.theme-claude-code .scenario-side-tab__badge.is-alert {
+                background: #f8e2df;
+                color: #a9403d;
             }
             .scenario-pane--steps #filterBar {
                 min-height: 36px;
@@ -444,6 +518,22 @@ const workbenchStyle = (function () {
                 transition: background-color 0.15s ease;
             }
             #stepsList > li:hover { background: var(--workspace-hover) !important; }
+            #stepsList > li[data-passed="false"][data-skipped="false"] {
+                box-shadow: inset 3px 0 0 var(--workspace-danger);
+                background: rgba(225, 29, 72, 0.025) !important;
+            }
+            #stepsList > li[data-passed="false"][data-skipped="false"]:hover {
+                background: rgba(225, 29, 72, 0.055) !important;
+            }
+            .step-row-action {
+                opacity: 0.72;
+                transition: opacity 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+            }
+            #stepsList > li:hover .step-row-action,
+            #stepsList > li:focus-within .step-row-action,
+            .step-row-action:focus-visible {
+                opacity: 1;
+            }
             #stepsList > li > div:first-child { min-height: 40px; padding: 7px 14px !important; }
             #stepsList .w-5.h-5 { width: 20px !important; height: 20px !important; font-size: 11px !important; }
             #stepsList .text-sm { font-size: 13px !important; }
@@ -552,6 +642,40 @@ const workbenchStyle = (function () {
                 color: var(--workspace-text) !important;
             }
             
+            .report-content { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
+            .report-overview {
+                padding: 12px;
+                border: 1px solid var(--workspace-line);
+                border-radius: 8px;
+                background: linear-gradient(145deg, var(--workspace-surface), var(--workspace-hover));
+            }
+            .report-overview__top { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 8px; }
+            .report-overview__title { min-width: 0; overflow: hidden; color: var(--workspace-text); font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+            .report-status { display: inline-flex; flex: 0 0 auto; align-items: center; min-height: 22px; padding: 0 7px; border: 1px solid transparent; border-radius: 999px; font-size: 10px; font-weight: 700; }
+            .report-status--passed { background: #ecfdf5; border-color: #bbf7d0; color: #047857; }
+            .report-status--failed { background: #fff1f2; border-color: #fecdd3; color: #be123c; }
+            .report-status--cancelled { background: #fff7ed; border-color: #fed7aa; color: #c2410c; }
+            .report-status--skipped,
+            .report-status--running { background: var(--workspace-selected); border-color: var(--workspace-selected-line); color: var(--workspace-muted); }
+            .report-overview__meta { display: flex; flex-wrap: wrap; gap: 5px 10px; margin-top: 8px; color: var(--workspace-muted); font-size: 10px; line-height: 1.4; }
+            .report-overview__meta span { position: relative; }
+            .report-overview__meta span + span::before { content: '·'; position: absolute; left: -7px; color: var(--workspace-selected-line); }
+            .report-progress { margin-top: 11px; }
+            .report-progress__labels { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--workspace-muted); font-size: 10px; }
+            .report-progress__labels strong { color: var(--workspace-text); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-variant-numeric: tabular-nums; }
+            .report-progress__track { height: 6px; margin-top: 5px; overflow: hidden; border-radius: 999px; background: var(--workspace-selected); }
+            .report-progress__track span { display: block; height: 100%; border-radius: inherit; background: var(--workspace-success); transition: width 0.25s ease; }
+            .report-progress__track--failed span { background: var(--workspace-danger); }
+            .report-diagnosis { overflow: hidden; border: 1px solid var(--workspace-line); border-radius: 8px; background: var(--workspace-surface); }
+            .report-diagnosis > summary { display: flex; align-items: center; justify-content: space-between; min-height: 34px; padding: 0 10px; cursor: pointer; color: var(--workspace-text); font-size: 11px; font-weight: 700; list-style: none; }
+            .report-diagnosis > summary::-webkit-details-marker { display: none; }
+            .report-diagnosis > summary::after { content: '⌄'; color: var(--workspace-muted); font-size: 14px; transition: transform 0.15s ease; }
+            .report-diagnosis[open] > summary::after { transform: rotate(180deg); }
+            .report-diagnosis__body { padding: 0 10px 10px; border-top: 1px solid var(--workspace-line); }
+            .report-steps__title { padding: 9px 0 2px; color: var(--workspace-muted); font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+            .report-healthy { margin-top: 8px; padding: 10px; border: 1px solid #bbf7d0; border-radius: 7px; background: #f0fdf4; }
+            .report-healthy__title { color: #047857; font-size: 11px; font-weight: 700; }
+            .report-healthy__hint { margin-top: 3px; color: #4b7a68; font-size: 10px; line-height: 1.45; }
             .report-step { position: relative; display: flex; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--workspace-line); }
             .report-step:last-child { border-bottom: 0; }
             .report-step__marker { display: flex; flex: 0 0 16px; align-items: center; justify-content: center; width: 16px; height: 16px; margin-top: 1px; border-radius: 999px; font-size: 10px; font-weight: 800; }
@@ -712,17 +836,35 @@ const workbenchStyle = (function () {
             }
 
             @media (max-width: 820px) {
+                #scenario-test-root > header {
+                    min-height: auto;
+                    align-items: stretch;
+                    flex-direction: column;
+                    gap: 6px;
+                    padding: 8px 12px !important;
+                }
+                .scenario-header-context { width: 100%; }
                 .scenario-header-theme .custom-dropdown__prefix,
                 .scenario-header-environment .custom-dropdown__prefix,
                 .scenario-header-config-label,
-                .scenario-header-report-label,
                 .scenario-environment-badge { display: none; }
-                .scenario-header-actions { gap: 4px !important; }
+                .scenario-header-actions { width: 100%; max-width: none; align-items: center; justify-content: flex-end; gap: 4px !important; overflow: visible; padding-bottom: 1px; }
+                .scenario-header-context-actions { margin-right: auto; }
+                .scenario-header-run-actions { margin-left: 0; }
+                .scenario-header-secondary-actions { margin-left: 0; }
+                .scenario-header-reset { padding: 0 6px !important; font-size: 11px !important; }
+                .scenario-header-environment .custom-dropdown__trigger { max-width: 132px; }
+                .scenario-header-environment .custom-dropdown__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+                .scenario-header-theme .custom-dropdown__trigger { max-width: 108px; }
+                .scenario-header-theme .custom-dropdown__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
                 .custom-dropdown__trigger,
                 .scenario-header-button,
                 .scenario-header-text-action { height: 36px; }
                 #filterBar { gap: 8px; overflow-x: auto; }
                 #filterBar > div:last-child { min-width: 150px; }
+                #stepsList > li > div:first-child { padding-left: 12px !important; padding-right: 12px !important; }
+                #stepsList > li > div:first-child > div:last-child { gap: 4px !important; }
+                .step-row-action { padding: 1px 5px !important; font-size: 10px !important; }
             }
 
             @media (pointer: coarse) {
@@ -731,6 +873,7 @@ const workbenchStyle = (function () {
                 .scenario-header-text-action,
                 .custom-dropdown__trigger { min-height: 40px; }
                 #stepsList > li > div:first-child { min-height: 48px; }
+                .step-row-action { opacity: .85; pointer-events: auto; transform: none; }
             }
 
             @media (prefers-reduced-motion: reduce) {

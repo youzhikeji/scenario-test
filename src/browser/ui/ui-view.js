@@ -54,6 +54,7 @@ const workbenchView = (function () {
                 <h1 id="scenarioTitle" class="text-xs font-bold text-slate-800 tracking-tight truncate max-w-[280px] sm:max-w-xl">未加载场景</h1>
             </div>
             <div class="scenario-header-actions flex items-center">
+                <div class="scenario-header-context-actions">
                 <div class="custom-dropdown scenario-header-environment" id="envDropdown" title="快速切换运行环境">
                     <button type="button" class="custom-dropdown__trigger" id="envDropdownTrigger" aria-haspopup="listbox" aria-expanded="false">
                         <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 ring-2 ring-emerald-500/20"></span>
@@ -77,17 +78,22 @@ const workbenchView = (function () {
                         <option value="claude-code">温暖纸韵</option>
                     </select>
                 </div>
+                </div>
+                <div class="scenario-header-run-actions">
                 <button id="stepBtn" class="scenario-header-button scenario-header-button--secondary" title="单步执行下一条用例">下一步</button>
-                <button id="runBtn" class="scenario-header-button scenario-header-button--primary">
+                <button id="runBtn" class="scenario-header-button scenario-header-button--primary" title="执行当前场景中的全部步骤">
                     <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                     <span id="runBtnLabel">执行全部</span>
                 </button>
                 <button id="cancelBtn" disabled class="scenario-header-text-action scenario-header-text-action--danger">停止</button>
+                </div>
+                <div class="scenario-header-secondary-actions">
                 <button id="resetBtn" class="scenario-header-text-action scenario-header-reset">清除结果</button>
                 <button id="configToggleBtn" class="scenario-header-button scenario-header-button--config" title="配置环境参数与全局变量" aria-haspopup="dialog" aria-controls="configModal">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                     <span class="scenario-header-config-label">配置</span>
                 </button>
+                </div>
                 <span id="runState" aria-live="polite" class="sr-only">待执行</span>
             </div>
         </header>
@@ -160,11 +166,20 @@ const workbenchView = (function () {
                     <div class="px-3.5 py-3 border-b border-slate-100 bg-slate-50/50 flex-shrink-0 flex items-center justify-between">
                         <div class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                             <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
-                            <span>统计看板</span>
+                            <span>执行结果</span>
                         </div>
                     </div>
-                    <div id="statsPanel" class="p-3 overflow-y-auto flex-1 min-h-0">
+                    <div class="scenario-side-tabs" role="tablist" aria-label="执行结果视图">
+                        <button id="statsTab" class="scenario-side-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="statsPanel">执行摘要</button>
+                        <button id="reportTab" class="scenario-side-tab" type="button" role="tab" aria-selected="false" aria-controls="reportPanel" disabled>
+                            失败诊断 <span id="reportTabBadge" class="scenario-side-tab__badge">0</span>
+                        </button>
+                    </div>
+                    <div id="statsPanel" class="scenario-side-panel p-3 overflow-y-auto flex-1 min-h-0" role="tabpanel" aria-labelledby="statsTab">
                         <div class="text-xs text-slate-400 text-center py-4">场景未加载或未执行</div>
+                    </div>
+                    <div id="reportPanel" class="scenario-side-panel hidden overflow-y-auto flex-1 min-h-0" role="tabpanel" aria-labelledby="reportTab" aria-live="polite">
+                        <div class="report-empty"><div class="report-empty__title">执行后生成报告</div><div class="report-empty__hint">失败步骤和响应摘要将在这里展示</div></div>
                     </div>
                 </aside>
             </div>
@@ -487,9 +502,10 @@ const workbenchView = (function () {
         var scenarioTotal = scenarioStepsList.length || steps.length || 0;
         var executedCount = steps.length;
         var skipped = steps.filter(function (s) { return s.skipped; }).length;
+        var cancelledCount = steps.filter(function (s) { return s.cancelled; }).length;
         var executed = executedCount - skipped;
-        var passed = steps.filter(function (s) { return !s.skipped && s.passed; }).length;
-        var failed = steps.filter(function (s) { return !s.skipped && !s.passed; }).length;
+        var passed = steps.filter(function (s) { return !s.skipped && !s.cancelled && s.passed; }).length;
+        var failed = steps.filter(function (s) { return !s.skipped && !s.cancelled && !s.passed; }).length;
         var passRate = executed ? ((passed / executed) * 100).toFixed(1) : '0.0';
         var failRate = executed ? ((failed / executed) * 100).toFixed(1) : '0.0';
         var progressPct = scenarioTotal ? ((executedCount / scenarioTotal) * 100).toFixed(1) : '0.0';
@@ -507,6 +523,8 @@ const workbenchView = (function () {
         var statusBadge = '';
         if (executedCount === 0) {
             statusBadge = '<span class="px-2 py-0.5 rounded text-[11px] font-bold bg-slate-100 text-slate-500 border border-slate-200/60">待执行</span>';
+        } else if (cancelledCount > 0) {
+            statusBadge = '<span class="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-50 text-amber-600 border border-amber-200">已取消</span>';
         } else if (failed > 0) {
             statusBadge = '<span class="px-2 py-0.5 rounded text-[11px] font-bold bg-rose-50 text-rose-600 border border-rose-200">' + (isDone ? '存在失败' : '执行中 (' + executedCount + '/' + scenarioTotal + ')') + '</span>';
         } else if (isDone) {
@@ -528,19 +546,22 @@ const workbenchView = (function () {
         if (scenarioTotal > 0 && scenarioTotal <= 24) {
             for (var idx = 0; idx < scenarioTotal; idx++) {
                 var stepResult = steps && steps[idx];
-                var isPassed = stepResult && !stepResult.skipped && stepResult.passed;
-                var isFailed = stepResult && !stepResult.skipped && !stepResult.passed;
+                var isStepCancelled = stepResult && stepResult.cancelled;
+                var isPassed = stepResult && !stepResult.skipped && !stepResult.cancelled && stepResult.passed;
+                var isFailed = stepResult && !stepResult.skipped && !stepResult.cancelled && !stepResult.passed;
                 var isSkipped = stepResult && stepResult.skipped;
 
                 var segClass = isPassed
                     ? 'bg-emerald-500 shadow-2xs'
                     : (isFailed
                         ? 'bg-rose-500 shadow-2xs'
-                        : (isSkipped
-                            ? 'bg-slate-300'
-                            : 'bg-slate-200/80 border border-slate-300/60'));
+                        : (isStepCancelled
+                            ? 'bg-amber-400 shadow-2xs'
+                            : (isSkipped
+                                ? 'bg-slate-300'
+                                : 'bg-slate-200/80 border border-slate-300/60')));
 
-                segmentsHtml += '<div class="flex-1 h-2 rounded-full ' + segClass + ' transition-all duration-300" title="步骤 ' + (idx + 1) + (isPassed ? ': 成功' : (isFailed ? ': 失败' : (isSkipped ? ': 跳过' : ': 待执行'))) + '"></div>';
+                segmentsHtml += '<div class="flex-1 h-2 rounded-full ' + segClass + ' transition-all duration-300" title="步骤 ' + (idx + 1) + (isPassed ? ': 成功' : (isFailed ? ': 失败' : (isStepCancelled ? ': 已取消' : (isSkipped ? ': 跳过' : ': 待执行')))) + '"></div>';
             }
         }
 
@@ -665,9 +686,9 @@ const workbenchView = (function () {
                     '</div>' +
                     '<div class="flex items-center space-x-1.5 flex-shrink-0">' +
                         tags +
-                        '<button type="button" data-copy-step="' + stepIndex + '" class="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]" title="复制步骤标题与接口路径">复制</button>' +
-                        '<button type="button" data-curl-step="' + stepIndex + '" class="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]" title="复制为 cURL 命令行">cURL</button>' +
-                        '<button type="button" data-adhoc-step="' + stepIndex + '" class="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all active:scale-[0.96]">调试</button>' +
+                        '<button type="button" data-copy-step="' + stepIndex + '" class="step-row-action rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]" title="复制步骤标题与接口路径">复制</button>' +
+                        '<button type="button" data-curl-step="' + stepIndex + '" class="step-row-action rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]" title="复制为 cURL 命令行">cURL</button>' +
+                        '<button type="button" data-adhoc-step="' + stepIndex + '" class="step-row-action rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all active:scale-[0.96]">调试</button>' +
                         '<span class="text-[10.5px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200/50">待执行</span>' +
                         '<svg class="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>' +
                     '</div>' +
@@ -846,9 +867,9 @@ const workbenchView = (function () {
                     '<span class="text-xs text-slate-500 font-mono truncate max-w-[40%]" title="' + esc(s.path) + '">' + esc(s.path) + '</span>' +
                 '</div>' +
                 '<div class="flex items-center space-x-2 flex-shrink-0">' +
-                    '<button type="button" data-copy-step="' + i + '" class="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]" title="复制步骤标题与接口路径">复制</button>' +
-                    '<button type="button" data-curl-step="' + i + '" class="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]" title="复制为 cURL 命令行">cURL</button>' +
-                    '<button type="button" data-adhoc-step="' + i + '" class="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]">调试</button>' +
+                    '<button type="button" data-copy-step="' + i + '" class="step-row-action rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]" title="复制步骤标题与接口路径">复制</button>' +
+                    '<button type="button" data-curl-step="' + i + '" class="step-row-action rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]" title="复制为 cURL 命令行">cURL</button>' +
+                    '<button type="button" data-adhoc-step="' + i + '" class="step-row-action rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]">调试</button>' +
                     stepActions +
                     '<span class="text-[10.5px] font-bold font-mono px-2 py-0.5 rounded-md ' + statusBadgeCls + '">' + esc(String(s.status || '-')) + '</span>' +
                     '<span class="text-slate-400 text-xs font-mono w-16 text-right">' + fmt(s.duration) + '</span>' +
@@ -898,11 +919,12 @@ const workbenchView = (function () {
         steps = steps || [];
         var total = steps.length;
         var skipped = steps.filter(function (item) { return item.skipped; }).length;
+        var cancelledCount = steps.filter(function (item) { return item.cancelled; }).length;
         var executed = total - skipped;
-        var passed = steps.filter(function (item) { return !item.skipped && item.passed; }).length;
-        var failed = steps.filter(function (item) { return !item.skipped && !item.passed; }).length;
+        var passed = steps.filter(function (item) { return !item.skipped && !item.cancelled && item.passed; }).length;
+        var failed = steps.filter(function (item) { return !item.skipped && !item.cancelled && !item.passed; }).length;
         var duration = steps.reduce(function (sum, item) { return sum + (item.duration || 0); }, 0);
-        var cancelled = steps.some(function (item) { return item.cancelled; });
+        var cancelled = cancelledCount > 0;
         var status = cancelled ? 'CANCELLED' : failed > 0 ? 'FAILED' : (executed === 0 ? 'SKIPPED' : 'PASSED');
         return {
             title: (scenario && scenario.name) || scenarioFile || '测试报告',
@@ -917,6 +939,7 @@ const workbenchView = (function () {
                 passedSteps: passed,
                 failedSteps: failed,
                 skippedSteps: skipped,
+                cancelledSteps: cancelledCount,
                 passRate: executed ? ((passed / executed) * 100).toFixed(1) + '%' : '0.0%',
                 totalDurationMs: duration,
                 totalDurationFmt: fmt(duration)
@@ -995,6 +1018,14 @@ const workbenchView = (function () {
         steps = steps || [];
         var report = buildOverallReport(steps, scenario, scenarioFile, executionMode, environment);
         var node = document.getElementById('reportPanel');
+        var reportTab = document.getElementById('reportTab');
+        var reportTabBadge = document.getElementById('reportTabBadge');
+        var failedCount = steps.filter(function (step) { return !step.passed && !step.skipped && !step.cancelled; }).length;
+        if (reportTab) reportTab.disabled = !steps.length;
+        if (reportTabBadge) {
+            reportTabBadge.textContent = String(failedCount);
+            reportTabBadge.classList.toggle('is-alert', failedCount > 0);
+        }
         if (!node) return report;
         if (!steps.length) {
             node.innerHTML = '<div class="report-empty"><div class="report-empty__title">执行后生成报告</div><div class="report-empty__hint">结果摘要与失败诊断将在这里展示</div></div>';
@@ -1010,7 +1041,7 @@ const workbenchView = (function () {
         var statusText = cancelled ? '已取消' : hasFailure ? '存在失败' : (allSkipped ? '全部跳过' : (completed ? '全部通过' : '执行中'));
         var modeText = report.executionMode === 'step' ? '单步执行' : '全量执行';
         var progressText = summary.executedSteps + ' / ' + summary.totalSteps;
-        var reportSteps = report.steps.filter(function (step) { return !step.passed && !step.cancelled; });
+        var reportSteps = report.steps.filter(function (step) { return !step.passed && !step.skipped && !step.cancelled; });
         var hasRealFailure = reportSteps.length > 0;
         var stepHtml = reportSteps.map(function (step) {
             var method = String(step.method || 'GET').toUpperCase();
@@ -1044,7 +1075,7 @@ const workbenchView = (function () {
                 ? '<div class="report-healthy"><div class="report-healthy__title">执行已取消</div><div class="report-healthy__hint">取消的步骤不计入失败；详细请求与响应请在左侧步骤列表查看。</div></div>'
                 : (allSkipped
                 ? '<div class="report-healthy"><div class="report-healthy__title">所有步骤均因条件不满足而跳过</div><div class="report-healthy__hint">本次执行未发起任何请求，详细跳过原因请在左侧步骤列表查看。</div></div>'
-                : '<div class="report-healthy"><div class="report-healthy__title">' + (completed ? '所有步骤均已通过' : '当前已执行步骤均通过') + '</div><div class="report-healthy__hint">详细请求与响应请在左侧步骤列表查看；完整报告可通过顶部按钮复制。</div></div>'));
+                : '<div class="report-healthy"><div class="report-healthy__title">' + (completed ? '所有步骤均已通过' : '当前已执行步骤均通过') + '</div><div class="report-healthy__hint">详细请求与响应请在左侧步骤列表查看；可通过下方操作复制完整报告。</div></div>'));
 
         var diagnosisTitle = hasRealFailure ? '失败诊断 · ' + reportSteps.length : '执行结论';
         node.innerHTML = '<div class="report-content">' +
@@ -1056,6 +1087,16 @@ const workbenchView = (function () {
                 '<div class="report-progress"><div class="report-progress__labels"><span>进度 ' + progressText + '</span><strong>' + esc(summary.passRate) + '</strong></div><div class="report-progress__track' + (hasFailure ? ' report-progress__track--failed' : '') + '"><span style="width:' + (summary.totalSteps ? (summary.executedSteps / summary.totalSteps) * 100 : 0) + '%"></span></div></div>' +
             '</div>' +
             '<details class="report-diagnosis"' + (hasRealFailure ? ' open' : '') + '><summary>' + diagnosisTitle + '</summary><div class="report-diagnosis__body">' + diagnosisHtml + '</div></details>' +
+            '<div class="report-actions flex flex-col gap-2 pt-1">' +
+                '<button id="copyDiagnosisMarkdownBtn" type="button" class="w-full stats-action-btn stats-action-btn--primary justify-center py-2 text-xs" title="复制格式化 Markdown 报告 (可直接投喂给 AI 提问/排查)">' +
+                    '<svg class="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg>' +
+                    '<span>复制诊断报告 (AI 排查)</span>' +
+                '</button>' +
+                '<button id="copyDiagnosisJsonBtn" type="button" class="w-full stats-action-btn justify-center py-2 text-xs" title="导出执行结果 JSON">' +
+                    '<svg class="w-3.5 h-3.5 mr-1.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>' +
+                    '<span>导出结果 JSON</span>' +
+                '</button>' +
+            '</div>' +
         '</div>';
         return report;
     }
