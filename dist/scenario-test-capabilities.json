@@ -1,7 +1,7 @@
 {
   "schema": "scenario-test-capabilities",
-  "version": "0.5.22",
-  "contractVersion": 1,
+  "version": "0.5.23",
+  "contractVersion": 2,
   "assertions": {
     "operators": {
       "exists": {
@@ -28,6 +28,10 @@
         "description": "实际值属于期望候选数组之一（深比较）",
         "valueType": "array"
       },
+      "length": {
+        "description": "数组元素个数 / 字符串字符数 / 对象键数等于期望值；非容器类型（number/boolean/null）直接失败",
+        "valueType": "finiteNumber"
+      },
       "gt": {
         "description": "实际值大于期望值",
         "valueType": "finiteNumber"
@@ -52,6 +56,10 @@
       "target",
       "header",
       "implicit"
+    ],
+    "targets": [
+      "status",
+      "duration"
     ],
     "numericOperators": [
       "gt",
@@ -85,7 +93,11 @@
       "timestamp",
       "uuidHex",
       "md5",
-      "signature"
+      "signature",
+      "idcard",
+      "luhn",
+      "phone",
+      "uscc"
     ]
   },
   "globals": {

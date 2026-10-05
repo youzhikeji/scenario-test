@@ -34,6 +34,65 @@ test("默认失败停止并保留提取变量", async () => {
     assert.equal(calls, 2);
 });
 
+test("target: duration 断言单次请求耗时，response.durationMs 随结果透出", async () => {
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        fetch: async () => {
+            // 真实耗时：确保 durationMs 为正数且可被断言
+            await new Promise((resolve) => setTimeout(resolve, 15));
+            return jsonResponse({ ok: 1 });
+        }
+    });
+    const scenario = defineScenario({
+        name: "耗时断言",
+        steps: [
+            { name: "耗时上限", path: "slow", status: 200, assertions: [{ name: "响应在 2 秒内", target: "duration", lte: 2000 }] },
+            { name: "耗时下限失败", path: "slow", status: 200, assertions: [{ name: "响应超过 1 小时（应失败）", target: "duration", gt: 3600000 }] }
+        ]
+    });
+    const report = await engine.runScenario(scenario);
+    const [within, beyond] = report.results;
+    assert.equal(within.passed, true);
+    assert.equal(typeof within.response.durationMs, "number");
+    assert.ok(within.response.durationMs >= 10, "durationMs 应包含真实请求耗时");
+    // gt 1 小时必然失败，且断言结果保留实际耗时毫秒数（assertions[0] 是隐式插入的 HTTP 200 断言）
+    assert.equal(beyond.passed, false);
+    const durationAssertion = beyond.assertions.find((item) => item.name === "响应超过 1 小时（应失败）");
+    assert.equal(durationAssertion.passed, false);
+    assert.equal(durationAssertion.actual, beyond.response.durationMs);
+});
+
+test("length 断言数组条数端到端（含 retryUntil 终态）", async () => {
+    let calls = 0;
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        fetch: async () => {
+            calls += 1;
+            return jsonResponse({ data: { list: ["a"], total: 1 }, ready: calls >= 2 });
+        }
+    });
+    const scenario = defineScenario({
+        name: "条数断言",
+        steps: [
+            {
+                name: "轮询至列表满 2 条",
+                path: "poll",
+                status: 200,
+                retryUntil: { maxAttempts: 2, intervalMs: 100 },
+                assertions: [{ name: "列表恰好 2 条", path: "data.list", length: 2 }]
+            }
+        ]
+    });
+    const report = await engine.runScenario(scenario);
+    // 首次 list 长度 1 → 失败重试；第二次响应仍只有 1 条 → 尝试耗尽断言失败，actual 为可读长度
+    assert.equal(report.passed, false);
+    assert.equal(calls, 2);
+    const assertion = report.results[0].assertions.find((item) => item.name === "列表恰好 2 条");
+    assert.equal(assertion.passed, false);
+    assert.equal(assertion.actual, 1);
+    assert.equal(assertion.expected, 2);
+});
+
 test("continue 策略收集全部失败", async () => {
     const scenario = defineScenario({
         name: "继续策略",
@@ -699,4 +758,364 @@ test("最后一步执行中被取消：整体状态 CANCELLED 而非 FAILED", as
     assert.equal(report.results.length, report.planned, "步骤已全部产生结果（最后一步取消的边界）");
     assert.equal(report.status, "CANCELLED", "任一步骤被取消即 CANCELLED，步数已满不应误判 FAILED");
     assert.equal(report.passed, false);
+});
+
+// ==================== generatedVars idcard（GB 11643 身份证造数） ====================
+
+function gb11643CheckOf(idNo) {
+    const weights = [7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2];
+    const codes = "10X98765432";
+    let sum = 0;
+    for (let i = 0; i < 17; i += 1) sum += Number(idNo[i]) * weights[i];
+    return codes[sum % 11];
+}
+
+function idcardEngine(seen) {
+    return createEngine({
+        baseUrl: "https://mock.local",
+        fetch: async () => {
+            const body = {};
+            seen.push(body);
+            return jsonResponse(body);
+        }
+    });
+}
+
+test("generatedVars idcard：18 位、出生段正确、GB 11643 校验位合法、性别奇偶正确", async () => {
+    const seen = [];
+    const engine = idcardEngine(seen);
+    const scenario = defineScenario({
+        name: "idcard 合法性",
+        generatedVars: [
+            { name: "maleIdNo", type: "idcard", birthDate: "2026-08-15", gender: "MALE", regionCode: "110101" },
+            { name: "femaleIdNo", type: "idcard", birthDate: "1996-03-12", gender: "FEMALE", regionCode: "370102" }
+        ],
+        steps: [
+            { name: "引用男号", path: "one", request: { body: { idNo: "{{vars.maleIdNo}}" } } },
+            { name: "引用女号", path: "two", request: { body: { idNo: "{{vars.femaleIdNo}}" } } }
+        ]
+    });
+    const report = await engine.runScenario(scenario);
+    assert.equal(report.status, "PASSED");
+    const male = report.vars.maleIdNo;
+    const female = report.vars.femaleIdNo;
+    assert.match(male, /^11010120260815\d{3}[\dX]$/);
+    assert.match(female, /^37010219960312\d{3}[\dX]$/);
+    assert.equal(gb11643CheckOf(male), male[17]);
+    assert.equal(gb11643CheckOf(female), female[17]);
+    assert.equal(Number(male[16]) % 2, 1, "MALE 顺序码第 17 位为奇数");
+    assert.equal(Number(female[16]) % 2, 0, "FEMALE 顺序码第 17 位为偶数");
+    assert.notEqual(male, female, "轮内不同名变量互异");
+});
+
+test("generatedVars idcard：跨轮唯一（runId 派生）", async () => {
+    const scenario = defineScenario({
+        name: "idcard 跨轮",
+        generatedVars: [{ name: "idNo", type: "idcard", birthDate: "2026-08-15" }],
+        steps: [{ name: "引用", path: "one" }]
+    });
+    const first = await idcardEngine([]).runScenario(scenario);
+    const second = await idcardEngine([]).runScenario(scenario);
+    assert.equal(first.status, "PASSED");
+    assert.equal(second.status, "PASSED");
+    assert.notEqual(first.vars.idNo, second.vars.idNo, "两轮 runId 不同则号码不同");
+    assert.equal(gb11643CheckOf(second.vars.idNo), second.vars.idNo[17]);
+});
+
+test("generatedVars idcard：非法参数拒绝", async () => {
+    const run = (generatedVars) => idcardEngine([]).runScenario(
+        defineScenario({ name: "idcard 非法参数", generatedVars, steps: [{ name: "s", path: "x" }] }));
+    await assert.rejects(run([{ name: "a", type: "idcard", birthDate: "2026-02-30" }]), /合法日历日期|YYYY-MM-DD/);
+    await assert.rejects(run([{ name: "a", type: "idcard", birthDate: "20260815" }]), /YYYY-MM-DD/);
+    await assert.rejects(run([{ name: "a", type: "idcard", gender: "X" }]), /MALE\/FEMALE/);
+    await assert.rejects(run([{ name: "a", type: "idcard", birthDate: "2026-08-15", regionCode: "1101" }]), /6 位数字/);
+});
+
+test("请求体：对象 JSON 序列化并补默认 Content-Type，字符串直传，GET 不携带 body", async () => {
+    const seen = [];
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        fetch: async (_url, options) => {
+            seen.push({ body: options.body, contentType: options.headers["Content-Type"] });
+            return jsonResponse({ ok: true });
+        }
+    });
+    const scenario = defineScenario({
+        name: "请求体分支",
+        steps: [
+            { name: "json", method: "POST", request: { body: { a: 1 } } },
+            { name: "text", method: "POST", request: { body: "plain-text", headers: { "Content-Type": "text/plain" } } },
+            { name: "get-no-body", method: "GET", request: { body: { a: 1 } } }
+        ]
+    });
+    const report = await engine.runScenario(scenario);
+    assert.equal(report.failed, 0);
+    assert.equal(seen[0].body, '{"a":1}');
+    assert.equal(seen[0].contentType, "application/json");
+    assert.equal(seen[1].body, "plain-text");
+    assert.equal(seen[1].contentType, "text/plain");
+    // GET 请求即使声明了 body 也不发送
+    assert.equal(seen[2].body, undefined);
+});
+
+test("fileUpload：io 构造上传体，omitContentType 时删除步骤 Content-Type，无 io 报环境不支持", async () => {
+    const seen = [];
+    const io = {
+        async createUploadBody(definition) {
+            seen.push(definition);
+            // 模拟真实 io 语义：multipart 边界由运行时生成，步骤可显式关闭省略行为
+            return { body: "RAW-BODY", headers: { "X-Upload": definition.fieldName }, omitContentType: definition.omit !== false };
+        }
+    };
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        io,
+        fetch: async (_url, options) => {
+            seen.push({ body: options.body, uploadHeader: options.headers["X-Upload"], contentType: options.headers["Content-Type"] });
+            return jsonResponse({ ok: true });
+        }
+    });
+    const scenario = defineScenario({
+        name: "上传",
+        steps: [
+            {
+                name: "默认省略 Content-Type",
+                method: "POST",
+                request: { fileUpload: { filePath: "a.txt", fieldName: "f1" }, headers: { "Content-Type": "text/plain" } }
+            },
+            {
+                name: "保留 Content-Type",
+                method: "POST",
+                request: { fileUpload: { filePath: "a.txt", fieldName: "f2", omit: false }, headers: { "Content-Type": "text/plain" } }
+            }
+        ]
+    });
+    const report = await engine.runScenario(scenario);
+    assert.equal(report.failed, 0, JSON.stringify(report.results));
+    // io 收到 resolve 后的上传定义
+    assert.deepEqual(seen[0], { filePath: "a.txt", fieldName: "f1" });
+    assert.equal(seen[1].body, "RAW-BODY");
+    assert.equal(seen[1].uploadHeader, "f1");
+    // omitContentType 默认 true：multipart 边界由运行时生成，步骤声明的 Content-Type 被删除
+    assert.equal(seen[1].contentType, undefined);
+    // seen 序列：[def1, fetch1, def2, fetch2]
+    assert.deepEqual(seen[2], { filePath: "a.txt", fieldName: "f2", omit: false });
+    assert.equal(seen[3].uploadHeader, "f2");
+    assert.equal(seen[3].body, "RAW-BODY");
+    // 步骤要求保留（omit:false → omitContentType:false）时 Content-Type 原样发送
+    assert.equal(seen[3].contentType, "text/plain");
+
+    // 未提供 io（如纯浏览器无实现）时给出明确环境错误
+    const noIo = createEngine({
+        baseUrl: "https://mock.local",
+        fetch: async () => jsonResponse({ ok: true })
+    });
+    const failing = defineScenario({
+        name: "无 io 上传",
+        steps: [{ name: "上传", method: "POST", request: { fileUpload: { filePath: "a.txt" } } }]
+    });
+    const noIoReport = await noIo.runScenario(failing);
+    assert.equal(noIoReport.results[0].status, "ERROR");
+    assert.match(noIoReport.results[0].error, /当前运行环境不支持 fileUpload/);
+});
+
+test("saveResponseAs：模板路径解析后调用 io.saveResponse，body 替换为保存信息", async () => {
+    const saved = [];
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        io: {
+            async saveResponse(relativePath, data, metadata) {
+                saved.push({ relativePath, data, metadata });
+                return { savedTo: `/workspace/${relativePath}`, size: data.byteLength, contentType: metadata.contentType };
+            }
+        },
+        fetch: async () => new Response("binary-ish", { headers: { "Content-Type": "application/octet-stream" } })
+    });
+    const scenario = defineScenario({
+        name: "保存响应",
+        steps: [{ name: "下载", path: "files/report", saveResponseAs: "out/{{vars.runNo}}.bin" }]
+    });
+    const report = await engine.runScenario(scenario);
+    assert.equal(report.failed, 0);
+    assert.equal(saved.length, 1);
+    assert.equal(saved[0].relativePath, `out/${report.vars.runNo}.bin`);
+    assert.equal(saved[0].metadata.contentType, "application/octet-stream");
+    assert.deepEqual(Buffer.from(saved[0].data).toString(), "binary-ish");
+    const response = report.results[0].response;
+    assert.equal(response.body.savedTo, `out/${report.vars.runNo}.bin`.replace("out/", "/workspace/out/"));
+    assert.equal(response.body.size, "binary-ish".length);
+    assert.equal(response.bodyText, null);
+});
+
+// ==================== generatedVars luhn / phone / uscc（测试造数） ====================
+
+// 独立 Luhn 整体校验（与 core 实现互为镜像，防止实现自洽性错误）
+function luhnValid(numberText) {
+    let sum = 0;
+    let alt = false;
+    for (let i = numberText.length - 1; i >= 0; i -= 1) {
+        let digit = Number(numberText[i]);
+        if (alt) { digit *= 2; if (digit > 9) digit -= 9; }
+        sum += digit;
+        alt = !alt;
+    }
+    return sum % 10 === 0;
+}
+
+// 独立 USCC 校验位验证（GB 32100-2015）
+function usccValid(code) {
+    if (!/^[0-9A-HJ-NP-RTUWXY]{18}$/.test(code)) return false;
+    const alphabet = "0123456789ABCDEFGHJKLMNPQRTUWXY";
+    const weights = [1, 3, 9, 27, 19, 26, 16, 17, 20, 29, 25, 13, 8, 24, 10, 30, 28];
+    let sum = 0;
+    for (let i = 0; i < 17; i += 1) sum += alphabet.indexOf(code[i]) * weights[i];
+    return alphabet[(31 - (sum % 31)) % 31] === code[17];
+}
+
+function mockEngine() {
+    return createEngine({ baseUrl: "https://mock.local", fetch: async () => jsonResponse({ code: 200 }) });
+}
+
+test("generatedVars luhn：默认 16 位 62 开头且整体 Luhn 合法；length/prefix 可定制", async () => {
+    const scenario = defineScenario({
+        name: "luhn 造数",
+        generatedVars: [
+            { name: "card", type: "luhn" },
+            { name: "longCard", type: "luhn", length: 19 },
+            { name: "binCard", type: "luhn", length: 16, prefix: "621700" },
+            { name: "peerCard", type: "luhn" }
+        ],
+        steps: [{ name: "s", path: "x", status: 200 }]
+    });
+    const report = await mockEngine().runScenario(scenario);
+    assert.equal(report.failed, 0);
+    const { card, longCard, binCard, peerCard } = report.vars;
+    assert.match(card, /^62\d{14}$/);
+    assert.ok(luhnValid(card), `${card} 应通过 Luhn 校验`);
+    assert.match(longCard, /^62\d{17}$/);
+    assert.ok(luhnValid(longCard));
+    assert.match(binCard, /^621700\d{10}$/);
+    assert.ok(luhnValid(binCard));
+    // 轮内不同名变量互异
+    assert.notEqual(card, peerCard);
+});
+
+test("generatedVars luhn：非法 length / prefix 拒绝", async () => {
+    const run = (extra) => mockEngine().runScenario(defineScenario({
+        name: "luhn 非法参数", generatedVars: [{ name: "a", type: "luhn", ...extra }], steps: [{ name: "s", path: "x" }]
+    }));
+    await assert.rejects(run({ length: 11 }), /12-19/);
+    await assert.rejects(run({ length: "16x" }), /12-19/);
+    // prefix 不短于卡号长度时拒绝（17 位卡头配默认 16 位卡号）
+    await assert.rejects(run({ prefix: "12345678901234567" }), /数字卡头/);
+    await assert.rejects(run({ prefix: "abc" }), /数字卡头/);
+});
+
+test("generatedVars phone：11 位 1[3-9] 开头且号段合法；prefix 可定制；跨轮唯一", async () => {
+    const scenario = defineScenario({
+        name: "phone 造数",
+        generatedVars: [
+            { name: "mobile", type: "phone" },
+            { name: "ctCard", type: "phone", prefix: "166" },
+            { name: "peerMobile", type: "phone" }
+        ],
+        steps: [{ name: "s", path: "x", status: 200 }]
+    });
+    const first = await mockEngine().runScenario(scenario);
+    assert.equal(first.failed, 0);
+    assert.match(first.vars.mobile, /^1[3-9]\d{9}$/);
+    assert.match(first.vars.ctCard, /^166\d{8}$/);
+    assert.notEqual(first.vars.mobile, first.vars.peerMobile);
+    // 跨轮唯一：runId 变化使号码变化
+    const second = await mockEngine().runScenario(scenario);
+    assert.notEqual(first.vars.mobile, second.vars.mobile);
+
+    await assert.rejects(
+        mockEngine().runScenario(defineScenario({
+            name: "phone 非法参数", generatedVars: [{ name: "p", type: "phone", prefix: "128" }], steps: [{ name: "s", path: "x" }]
+        })),
+        /1\[3-9\] 开头的 3 位号段/
+    );
+});
+
+test("generatedVars uscc：18 位 91 开头且 GB 32100 校验合法；regionCode 可定制", async () => {
+    const scenario = defineScenario({
+        name: "uscc 造数",
+        generatedVars: [
+            { name: "corp", type: "uscc" },
+            { name: "shCorp", type: "uscc", regionCode: "310100" }
+        ],
+        steps: [{ name: "s", path: "x", status: 200 }]
+    });
+    const report = await mockEngine().runScenario(scenario);
+    assert.equal(report.failed, 0);
+    // 91 + 110100（默认区划）+ 9 位主体标识码 + 1 位校验位
+    assert.match(report.vars.corp, /^91110100[0-9A-HJ-NP-RTUWXY]{10}$/);
+    assert.ok(usccValid(report.vars.corp), `${report.vars.corp} 应通过 GB 32100 校验`);
+    assert.match(report.vars.shCorp, /^91310100/);
+    assert.ok(usccValid(report.vars.shCorp));
+
+    await assert.rejects(
+        mockEngine().runScenario(defineScenario({
+            name: "uscc 非法参数", generatedVars: [{ name: "u", type: "uscc", regionCode: "11010" }], steps: [{ name: "s", path: "x" }]
+        })),
+        /6 位数字/
+    );
+});
+
+test("响应体读取流异常时报 ERROR 而非挂起", async () => {
+    const failingBody = new ReadableStream({
+        start(controller) { controller.error(new Error("流中途断开")); }
+    });
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        fetch: async () => new Response(failingBody, { status: 200, headers: { "Content-Type": "application/json" } })
+    });
+    const scenario = defineScenario({ name: "读流异常", steps: [{ name: "s", path: "x", status: 200 }] });
+    const report = await engine.runScenario(scenario);
+    assert.equal(report.results[0].status, "ERROR");
+    assert.match(report.results[0].error, /流中途断开/);
+});
+
+test("retryUntil 等待间隔内取消立即生效，不等完整 interval", async () => {
+    const controller = new AbortController();
+    let attempts = 0;
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        fetch: async () => {
+            attempts += 1;
+            return jsonResponse({ state: "PENDING" });
+        }
+    });
+    const scenario = defineScenario({
+        name: "等待期取消",
+        steps: [{
+            name: "轮询",
+            path: "poll",
+            retryUntil: { maxAttempts: 5, intervalMs: 10000 },
+            assertions: [{ path: "state", equals: "DONE" }]
+        }]
+    });
+    const started = Date.now();
+    const pending = engine.runScenario(scenario, { signal: controller.signal });
+    // 等首次请求完成、进入重试等待后取消
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    controller.abort();
+    const report = await pending;
+    const elapsed = Date.now() - started;
+    assert.equal(report.status, "CANCELLED");
+    assert.equal(report.results[0].status, "CANCELLED");
+    assert.equal(attempts, 1);
+    // 立即从 delay 中醒来，而不是等满 10s 间隔
+    assert.ok(elapsed < 5000, `取消应立即生效，实际耗时 ${elapsed}ms`);
+});
+
+test("运行环境无 fetch 实现时 createEngine 快速失败", () => {
+    const originalFetch = globalThis.fetch;
+    delete globalThis.fetch;
+    try {
+        assert.throws(() => createEngine(), /缺少 fetch 实现/);
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
 });

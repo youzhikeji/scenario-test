@@ -234,3 +234,92 @@ test("CLI 配置全部为 manual 时 --all 报明确错误", async () => {
         fs.rmSync(directory, { recursive: true, force: true });
     }
 });
+
+// ==================== CLI 黑盒主路径补充（src/cli.js 直跑，覆盖计入统计） ====================
+
+const cliSrc = path.resolve(import.meta.dirname, "../src/cli.js");
+
+function runCli(args, extraEnv = {}) {
+    return new Promise((resolve) => {
+        const child = spawn(process.execPath, [cliSrc, ...args], {
+            env: { ...process.env, ...extraEnv },
+            stdio: ["ignore", "pipe", "pipe"]
+        });
+        let stdout = "";
+        let stderr = "";
+        child.stdout.on("data", (chunk) => { stdout += chunk; });
+        child.stderr.on("data", (chunk) => { stderr += chunk; });
+        child.on("close", (code) => resolve({ code, stdout, stderr }));
+    });
+}
+
+test("CLI --help 列出全部子命令与关键选项", async () => {
+    const result = await runCli(["--help"]);
+    assert.equal(result.code, 0);
+    for (const keyword of ["run", "serve", "init", "capabilities", "doctor", "--config", "--env", "--base-url", "--scenario", "--all", "--fail-on-skip", "--json"]) {
+        assert.match(result.stdout, new RegExp(keyword.replace(/[-]/g, "\-")), `help 应包含 ${keyword}`);
+    }
+});
+
+test("CLI capabilities 文本模式输出可读清单，--json 输出纯 JSON", async () => {
+    const text = await runCli(["capabilities"]);
+    assert.equal(text.code, 0);
+    assert.match(text.stdout, /generatedVars/);
+    assert.match(text.stdout, /idcard/);
+    assert.match(text.stdout, /luhn/);
+
+    const json = await runCli(["capabilities", "--json"]);
+    assert.equal(json.code, 0);
+    const parsed = JSON.parse(json.stdout);
+    assert.equal(parsed.schema, "scenario-test-capabilities");
+    assert.deepEqual(parsed.generatedVars.types, ["timestamp", "uuidHex", "md5", "signature", "idcard", "luhn", "phone", "uscc"]);
+});
+
+test("CLI run --env 指定未知环境时报错退出，不静默回退", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-cli-env-"));
+    try {
+        fs.writeFileSync(path.join(directory, "scenario.config.js"),
+            `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1:1"}],scenarios:[{id:"health",name:"Health",url:"scenarios/health.js"}]}));`, "utf8");
+        fs.mkdirSync(path.join(directory, "scenarios"), { recursive: true });
+        fs.writeFileSync(path.join(directory, "scenarios/health.js"),
+            `ScenarioTest.registerScenario("health",ScenarioTest.defineScenario({name:"Health",steps:[{name:"h",path:"health",status:200}]}));`, "utf8");
+        const result = await runCli(["--config", path.join(directory, "scenario.config.js"), "--env", "nope", "--all"]);
+        assert.notEqual(result.code, 0);
+        assert.match(result.stderr + result.stdout, /nope/);
+    } finally {
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
+test("CLI run --base-url 临时覆盖环境地址且 SCENARIO_AUTH 注入 Authorization", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-cli-base-"));
+    const hits = [];
+    const serverA = http.createServer((_req, res) => { hits.push("A"); res.end("{}"); });
+    const serverB = http.createServer((req, res) => {
+        hits.push({ target: "B", auth: req.headers.authorization });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ status: "UP" }));
+    });
+    await Promise.all([
+        new Promise((resolve) => serverA.listen(0, "127.0.0.1", resolve)),
+        new Promise((resolve) => serverB.listen(0, "127.0.0.1", resolve))
+    ]);
+    try {
+        const portB = serverB.address().port;
+        fs.mkdirSync(path.join(directory, "scenarios"), { recursive: true });
+        fs.writeFileSync(path.join(directory, "scenario.config.js"),
+            `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1:${serverA.address().port}"}],scenarios:[{id:"health",name:"Health",url:"scenarios/health.js"}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/health.js"),
+            `ScenarioTest.registerScenario("health",ScenarioTest.defineScenario({name:"Health",steps:[{name:"h",path:"health",status:200}]}));`, "utf8");
+        const result = await runCli(
+            ["--config", path.join(directory, "scenario.config.js"), "--all", "--base-url", `http://127.0.0.1:${portB}`],
+            { SCENARIO_AUTH: "Bearer cli-injected" }
+        );
+        assert.equal(result.code, 0, result.stderr);
+        assert.deepEqual(hits, [{ target: "B", auth: "Bearer cli-injected" }], "应只命中覆盖后的 B 服务且带注入的 Authorization");
+    } finally {
+        serverA.close();
+        serverB.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});

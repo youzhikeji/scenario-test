@@ -12,8 +12,8 @@ import {
 } from "../src/index.js";
 import { VERSION } from "../src/version.generated.js";
 
-test("contract 元信息：contractVersion 从 1 开始，runtimeVersion 复用 VERSION", () => {
-    assert.equal(CONTRACT_VERSION, 1);
+test("contract 元信息：contractVersion 为正整数（新增能力时递增），runtimeVersion 复用 VERSION", () => {
+    assert.ok(Number.isInteger(CONTRACT_VERSION) && CONTRACT_VERSION >= 1);
     assert.equal(contract.contractVersion, CONTRACT_VERSION);
     assert.equal(contract.runtimeVersion, VERSION);
 });
@@ -42,7 +42,7 @@ test("when 来源仅 vars；extract 来源与 required 语义；保留变量；g
     assert.deepEqual(contract.extract.from, ["body", "headers", "bodyText", "response"]);
     assert.equal(contract.extract.required, "boolean");
     assert.deepEqual(contract.reservedVars, ["runId", "runNo"]);
-    assert.deepEqual(contract.generatedVars.types, ["timestamp", "uuidHex", "md5", "signature"]);
+    assert.deepEqual(contract.generatedVars.types, ["timestamp", "uuidHex", "md5", "signature", "idcard", "luhn", "phone", "uscc"]);
 });
 
 test("config/scenario 关键字段含 manual；CLI 命令与参数含 capabilities/doctor/fail-on-skip", () => {

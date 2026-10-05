@@ -15,6 +15,7 @@ test("capabilities JSON 结构直接来自 contract 且序列化稳定", () => {
     assert.equal(caps.contractVersion, contract.contractVersion);
     assert.deepEqual(Object.keys(caps.assertions.operators), Object.keys(contract.assertions.operators));
     assert.deepEqual(caps.assertions.metaKeys, [...contract.assertions.metaKeys]);
+    assert.deepEqual(caps.assertions.targets, ["status", "duration"]);
     assert.deepEqual(caps.assertions.numericOperators, [...contract.assertions.numericOperators]);
     assert.deepEqual(caps.when.sources, ["vars"]);
     assert.deepEqual(caps.reservedVars, [...contract.reservedVars]);
@@ -39,6 +40,7 @@ test("capabilities 文本：版本、操作符、when、extract、保留变量�
     for (const op of Object.keys(contract.assertions.operators)) {
         assert.match(text, new RegExp(`\\b${op}\\b`), `文本缺少操作符 ${op}`);
     }
+    assert.match(text, /断言目标 target: status \/ duration/);
     assert.match(text, /when 条件来源: vars/);
     assert.match(text, /extract/);
     assert.match(text, /runId/);

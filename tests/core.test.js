@@ -3,12 +3,23 @@ import test from "node:test";
 import {
     applyExtract,
     buildAssertions,
+    buildChinaIdNumber,
+    buildUsccCode,
     defineConfig,
     evaluateAssertion,
+    formatDuration,
+    gb11643Checksum,
     generateSignature,
+    isGlobalParam,
     joinUrl,
+    luhnCheckDigit,
+    maskSecret,
+    mergeGlobals,
+    normalizeGlobalParam,
     resolve,
     sanitizeSensitive,
+    seedToIndex,
+    usccCheckChar,
     validateAssertion
 } from "../src/index.js";
 
@@ -147,6 +158,51 @@ test("数字比较断言：类型不符合时断言失败而非抛异常，并�
     assert.equal(evaluateAssertion({ path: "total", lte: Infinity }, responseWith({ total: 10 }), runtime).passed, false);
 });
 
+test("length 操作符：数组元素数/字符串字符数/对象键数精确比较", () => {
+    const runtime = runtimeWith();
+    const response = responseWith({ items: ["a", "b", "c"], name: "订单", meta: { x: 1, y: 2 }, total: 10 });
+
+    // 数组/字符串/对象键数三类容器
+    assert.equal(evaluateAssertion({ path: "items", length: 3 }, response, runtime).passed, true);
+    assert.equal(evaluateAssertion({ path: "name", length: 2 }, response, runtime).passed, true);
+    assert.equal(evaluateAssertion({ path: "meta", length: 2 }, response, runtime).passed, true);
+
+    // 比较所用实际值回写为长度，断言表可直接读数
+    const fail = evaluateAssertion({ path: "items", length: 5 }, response, runtime);
+    assert.equal(fail.passed, false);
+    assert.equal(fail.actual, 3);
+    assert.equal(fail.expected, 5);
+
+    // 非容器类型（number）直接失败，actual 保留原始值
+    const notContainer = evaluateAssertion({ path: "total", length: 2 }, response, runtime);
+    assert.equal(notContainer.passed, false);
+    assert.equal(notContainer.actual, 10);
+
+    // 路径不存在（undefined）失败而非抛异常
+    assert.equal(evaluateAssertion({ path: "missing", length: 0 }, response, runtime).passed, false);
+
+    // expected 模板解析为数字时正常比较；非有限数字失败
+    assert.equal(evaluateAssertion({ path: "items", length: "{{vars.n}}" }, response, runtimeWith({ n: 3 })).passed, true);
+    assert.equal(evaluateAssertion({ path: "items", length: NaN }, response, runtime).passed, false);
+    assert.equal(evaluateAssertion({ path: "items", length: "3" }, response, runtime).passed, false);
+});
+
+test("target: duration 断言单次请求耗时（response.durationMs）", () => {
+    const runtime = runtimeWith();
+    const response = { ...responseWith({ ok: true }), durationMs: 128 };
+
+    assert.equal(evaluateAssertion({ target: "duration", lte: 800 }, response, runtime).passed, true);
+    assert.equal(evaluateAssertion({ target: "duration", lte: 100 }, response, runtime).passed, false);
+    const fail = evaluateAssertion({ target: "duration", lte: 100 }, response, runtime);
+    assert.equal(fail.actual, 128);
+    assert.equal(fail.expected, 100);
+
+    // durationMs 缺失（未经过引擎挂载的裸响应）时类型不符，断言失败而非抛异常
+    assert.equal(evaluateAssertion({ target: "duration", lte: 800 }, responseWith({}), runtime).passed, false);
+    // duration 与数值操作符组合走既有 finiteNumber 口径
+    assert.equal(evaluateAssertion({ target: "duration", gte: 100, lte: 200 }, response, runtime).passed, true);
+});
+
 test("运行时非法断言被 evaluateAssertion 拒绝（防止插件绕过）", () => {
     const runtime = runtimeWith();
     const response = responseWith({ total: 10 });
@@ -184,3 +240,126 @@ test("extract 不允许覆盖保留变量 runId/runNo", () => {
     assert.throws(() => applyExtract({ extract: [{ name: "runId", path: "id" }] }, response, runtime), /保留变量/);
     assert.throws(() => applyExtract({ extract: [{ name: "runNo", path: "id" }] }, response, runtime), /保留变量/);
 });
+
+test("全局参数：isGlobalParam 校验、normalize 转字符串、mergeGlobals 按 type:name 去重且后者覆盖", () => {
+    assert.equal(isGlobalParam({ type: "header", name: "X-Token", value: "t" }), true);
+    assert.equal(isGlobalParam({ type: "bogus", name: "X", value: 1 }), false);
+    assert.equal(isGlobalParam({ type: "query", name: "  ", value: 1 }), false);
+    assert.equal(isGlobalParam(null), false);
+    assert.deepEqual(
+        normalizeGlobalParam({ type: "cookie", name: "sid", value: 42 }),
+        { type: "cookie", name: "sid", value: "42" }
+    );
+    assert.deepEqual(
+        mergeGlobals(
+            [{ type: "header", name: "X-A", value: "1" }, { type: "query", name: "q", value: "a" }, { invalid: true }],
+            [{ type: "header", name: "X-A", value: "2" }]
+        ),
+        [
+            // Map 语义：覆盖值但保持首次插入顺序；非法项直接跳过
+            { type: "header", name: "X-A", value: "2" },
+            { type: "query", name: "q", value: "a" }
+        ]
+    );
+    // 空入参与 undefined 列表安全
+    assert.deepEqual(mergeGlobals(), []);
+    assert.deepEqual(mergeGlobals(undefined, null), []);
+});
+
+test("模板可读取 lastResponse / lastResponseBody 及其嵌套路径", () => {
+    const runtime = {
+        vars: { name: "run-1" },
+        lastResponse: { status: 201, headers: { "x-trace": "t-9" }, body: { code: 0 }, bodyText: "raw" },
+        lastResponseBody: { code: 0, data: { id: "7" } }
+    };
+    assert.equal(resolve("{{lastResponse.status}}", runtime), 201);
+    assert.equal(resolve("trace={{lastResponse.headers.x-trace}}", runtime), "trace=t-9");
+    assert.equal(resolve("{{lastResponseBody.data.id}}", runtime), "7");
+    assert.equal(resolve("{{lastResponseBody}}", runtime), runtime.lastResponseBody);
+    // 裸变量名优先命中 vars 同名键（hasOwnProperty 短路），裸路径只在 vars 内解析
+    assert.equal(resolve("{{name}}", runtime), "run-1");
+    assert.equal(resolve("{{vars.data.id}}", runtime), "");
+    // 路径不存在时插值为空串
+    assert.equal(resolve("id={{lastResponseBody.data.missing}}", runtime), "id=");
+});
+
+test("GB11643 底座：标准示例号码、确定性种子与非法输入拒绝", () => {
+    // 国标常见示例号码：110105 + 19491231 + 002 + X
+    assert.equal(
+        buildChinaIdNumber({ regionCode: "110105", birthDate: "1949-12-31", sequence: 2 }),
+        "11010519491231002X"
+    );
+    assert.equal(gb11643Checksum("11010519491231002"), "X");
+    assert.throws(() => gb11643Checksum("12345"), /17 位数字/);
+    assert.throws(() => gb11643Checksum("1101051949123100A"), /17 位数字/);
+
+    assert.throws(
+        () => buildChinaIdNumber({ regionCode: "110105", birthDate: "1949-2-31", sequence: 2 }),
+        /YYYY-MM-DD/
+    );
+    assert.throws(
+        () => buildChinaIdNumber({ regionCode: "110105", birthDate: "2026-02-30", sequence: 2 }),
+        /合法日历日期/
+    );
+    assert.throws(
+        () => buildChinaIdNumber({ regionCode: "110105", birthDate: "2026-02-28", sequence: 1000 }),
+        /0-999/
+    );
+    assert.throws(
+        () => buildChinaIdNumber({ regionCode: "110105", birthDate: "2026-02-28", sequence: 1.5 }),
+        /0-999/
+    );
+
+    // 种子映射确定性：同种子同结果，值域始终落在 [0, max)
+    assert.equal(seedToIndex("run-1|idNo", 500), seedToIndex("run-1|idNo", 500));
+    for (const seed of ["", null, "a", "b", "run-2|idNo"]) {
+        const index = seedToIndex(seed, 7);
+        assert.ok(index >= 0 && index < 7, `seed=${seed} 越界: ${index}`);
+    }
+});
+
+test("Luhn 底座：公认测试卡号锚点与非法输入拒绝", () => {
+    // Visa 公认测试卡 4111111111111111 的前 15 位 + 校验位
+    assert.equal(luhnCheckDigit("411111111111111"), "1");
+    assert.equal(luhnCheckDigit("7992739871"), "3");
+    assert.throws(() => luhnCheckDigit(""), /纯数字/);
+    assert.throws(() => luhnCheckDigit("4111a11111111111"), /纯数字/);
+});
+
+test("USCC 底座：GB 32100 锚点、组装与非法输入拒绝", () => {
+    // 手算锚点：91 + 110000 + 123456789 的 GB 32100 校验位为 Q
+    assert.equal(usccCheckChar("91110000123456789"), "Q");
+    assert.equal(
+        buildUsccCode({ categoryCode: "91", regionCode: "110000", orgCode: "123456789" }),
+        "91110000123456789Q"
+    );
+    // 小写 orgCode 归一化
+    assert.equal(
+        buildUsccCode({ categoryCode: "91", regionCode: "110000", orgCode: "1234567xy" }),
+        buildUsccCode({ categoryCode: "91", regionCode: "110000", orgCode: "1234567XY" })
+    );
+    assert.throws(() => usccCheckChar("9111000012345678"), /17 位字符/);
+    assert.throws(() => usccCheckChar("9111000012345678S"), /非法字符 S/);
+    assert.throws(() => buildUsccCode({ categoryCode: "9", regionCode: "110000", orgCode: "123456789" }), /2 位数字/);
+    assert.throws(() => buildUsccCode({ categoryCode: "91", regionCode: "11000", orgCode: "123456789" }), /6 位数字/);
+    assert.throws(() => buildUsccCode({ categoryCode: "91", regionCode: "110000", orgCode: "1234567890" }), /9 位/);
+    assert.throws(() => buildUsccCode({ categoryCode: "91", regionCode: "110000", orgCode: "12345678I" }), /9 位/);
+});
+
+test("敏感值脱敏与耗时格式化", () => {
+    assert.equal(maskSecret(undefined), "");
+    assert.equal(maskSecret(null), "");
+    assert.equal(maskSecret(""), "");
+    assert.equal(maskSecret("short"), "***");
+    assert.equal(maskSecret("abcdefghijk"), "***");
+    // 阈值是 >12：12 位仍整体隐藏，13 位起保留首尾各 4 位
+    assert.equal(maskSecret("abcdefghijkl"), "***");
+    assert.equal(maskSecret("abcdefghijklm"), "abcd...jklm");
+    assert.equal(maskSecret("super-long-secret-token"), "supe...oken");
+
+    assert.equal(formatDuration(42), "42 ms");
+    assert.equal(formatDuration(1500), "1.50 s");
+    assert.equal(formatDuration(NaN), "-");
+    assert.equal(formatDuration(Infinity), "-");
+});
+

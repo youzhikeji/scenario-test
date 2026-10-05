@@ -16,6 +16,7 @@ export function buildCapabilities(inputContract = contract) {
                 Object.entries(assertions.operators).map(([name, meta]) => [name, { description: meta.description, valueType: meta.valueType }])
             ),
             metaKeys: [...assertions.metaKeys],
+            targets: [...(assertions.targets || [])],
             numericOperators: [...assertions.numericOperators]
         },
         when: {
@@ -72,6 +73,9 @@ export function renderCapabilitiesText(capabilities) {
         lines.push(operatorLine(name, meta));
     }
     lines.push(`  元数据键: ${capabilities.assertions.metaKeys.join(" / ")}`);
+    if (capabilities.assertions.targets?.length) {
+        lines.push(`  断言目标 target: ${capabilities.assertions.targets.join(" / ")}（duration 为单次请求耗时毫秒，见 response.durationMs）`);
+    }
     lines.push("");
     lines.push(`when 条件来源: ${capabilities.when.sources.join(" / ")}`);
     lines.push(`  ${capabilities.when.note}`);

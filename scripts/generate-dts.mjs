@@ -4,12 +4,14 @@
 //   由 contract 投影生成，禁止手工复制名单导致漂移；构建/测试会校验一致。
 // - 手写部分仅为公共 API 形状（函数签名、接口结构）。
 // - 文件头部保留运行时与 contract 版本标记，便于识别构建产物。
+// - 输出目录可用 --out <dir> 覆盖（build.mjs 传 staging 目录做原子交换），默认 dist。
 import fs from "node:fs";
 import path from "node:path";
 import { contract } from "../src/contract.js";
 
 const root = path.resolve(import.meta.dirname, "..");
-const dist = path.join(root, "dist");
+const outArg = process.argv[process.argv.indexOf("--out") + 1];
+const dist = outArg ? path.resolve(root, outArg) : path.join(root, "dist");
 
 const quote = (list) => list.map((item) => JSON.stringify(item)).join(" | ");
 const operatorNames = Object.keys(contract.assertions.operators);
@@ -76,12 +78,12 @@ export interface ScenarioConfig {
     nodePlugins?: string[];
 }
 
-/** 断言定义：元数据键 + 至少一个操作符；gt/gte/lt/lte 只接受有限 number */
+/** 断言定义：元数据键 + 至少一个操作符；gt/gte/lt/lte/length 只接受有限 number；target 可取 status/duration */
 export interface Assertion {
     name?: string;
     path?: string;
     from?: "vars" | "headers" | "bodyText";
-    target?: "status";
+    target?: "status" | "duration";
     header?: string;
     implicit?: boolean;
     exists?: boolean;
@@ -90,6 +92,8 @@ export interface Assertion {
     includes?: unknown;
     matches?: string;
     oneOf?: unknown[];
+    /** 数组元素数 / 字符串字符数 / 对象键数等于期望值 */
+    length?: number;
     gt?: number;
     gte?: number;
     lt?: number;
@@ -114,6 +118,8 @@ export interface WhenDefinition {
     includes?: unknown;
     matches?: string;
     oneOf?: unknown[];
+    /** 数组元素数 / 字符串字符数 / 对象键数等于期望值 */
+    length?: number;
     gt?: number;
     gte?: number;
     lt?: number;
@@ -126,6 +132,16 @@ export interface GeneratedVarDefinition {
     parts?: string[];
     params?: Record<string, string>;
     secretVar?: string;
+    /** idcard 专用：出生日期 YYYY-MM-DD（必填） */
+    birthDate?: string;
+    /** idcard 专用：MALE/FEMALE，默认 MALE */
+    gender?: string;
+    /** idcard/uscc 专用：6 位行政区划（idcard 缺省从测试区划池按轮次派生；uscc 默认 110100） */
+    regionCode?: string;
+    /** luhn 专用：卡号长度 12-19，默认 16 */
+    length?: number;
+    /** luhn 专用：数字卡头（默认 "62"）；phone 专用：3 位号段 1[3-9]x（缺省从测试号段池按轮次派生） */
+    prefix?: string;
 }
 
 export interface RetryUntil {
@@ -295,6 +311,7 @@ export declare const contract: {
     runtimeVersion: string;
     assertions: {
         metaKeys: readonly AssertionMetaKey[];
+        targets: readonly string[];
         operators: Record<AssertionOperator, { description: string; valueType: string }>;
         numericOperators: readonly NumericAssertionOperator[];
     };

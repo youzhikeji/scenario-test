@@ -180,6 +180,8 @@ export function validateAssertion(definition, context) {
 
 function assertionActual(definition, response, runtime) {
     if (definition.target === "status") return response.status;
+    // 单次请求耗时（毫秒）：由 engine 在每次尝试后挂载到 response.durationMs
+    if (definition.target === "duration") return response && typeof response === "object" ? response.durationMs : undefined;
     if (definition.header) return headerValue(response.headers, definition.header);
     if (definition.from === "vars") return definition.path ? getByPath(runtime.vars, definition.path) : runtime.vars;
     if (definition.from === "headers") return definition.path ? getByPath(response.headers, definition.path) : response.headers;
@@ -190,7 +192,7 @@ function assertionActual(definition, response, runtime) {
 export function evaluateAssertion(definition, response, runtime, context) {
     // 执行期也校验：防止插件 transform 之后产生非法断言定义
     validateAssertion(definition, context);
-    const actual = assertionActual(definition, response, runtime);
+    let actual = assertionActual(definition, response, runtime);
     let expected;
     let passed = true;
     if (definition.exists !== undefined) {
@@ -225,6 +227,18 @@ export function evaluateAssertion(definition, response, runtime, context) {
         expected = resolve(definition.oneOf, runtime);
         passed = passed && Array.isArray(expected)
             && expected.some((item) => JSON.stringify(item) === JSON.stringify(actual));
+    }
+    // length：比较所用实际值为容器长度（数组元素数/字符串字符数/对象键数），
+    // 结果里的 actual 也回写为该长度，让断言表直接可读；非容器类型直接失败（与数值操作符口径一致）
+    if (Object.prototype.hasOwnProperty.call(definition, "length")) {
+        expected = resolve(definition.length, runtime);
+        const lengthOf = Array.isArray(actual) ? actual.length
+            : (typeof actual === "string" ? actual.length
+                : (isPlainObject(actual) ? Object.keys(actual).length : null));
+        if (lengthOf !== null) actual = lengthOf;
+        passed = passed && lengthOf !== null
+            && typeof expected === "number" && Number.isFinite(expected)
+            && lengthOf === expected;
     }
     for (const op of ["gt", "gte", "lt", "lte"]) {
         if (!Object.prototype.hasOwnProperty.call(definition, op)) continue;
@@ -312,6 +326,147 @@ export function generateSignature(params, secretValue) {
     const pairs = Object.keys(params || {}).sort().map((key) => `${key}=${params[key] == null ? "" : params[key]}`);
     pairs.push(`apiSecret=${secretValue == null ? "" : secretValue}`);
     return md5(pairs.join("&")).toUpperCase();
+}
+
+// ==================== 校验位底座（GB 11643-1999） ====================
+// 通用加权校验码算法：身份证（18 位）、部分行政区划类证号共用。
+// 双端（浏览器/Node）一致实现，纯函数无 I/O。
+
+const GB11643_WEIGHTS = [7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2];
+const GB11643_CHECK_CODES = "10X98765432";
+
+/**
+ * 计算前 17 位数字串的 GB 11643 校验码（大写 X）。
+ * 输入非法（长度非 17 / 含非数字）时抛错，由调用方保证输入合法。
+ */
+export function gb11643Checksum(first17Digits) {
+    const text = String(first17Digits || "");
+    if (!/^\d{17}$/.test(text)) {
+        throw new Error(`GB11643 校验位输入必须是 17 位数字: ${text}`);
+    }
+    let sum = 0;
+    for (let i = 0; i < 17; i += 1) {
+        sum += (text.charCodeAt(i) - 48) * GB11643_WEIGHTS[i];
+    }
+    return GB11643_CHECK_CODES[sum % 11];
+}
+
+/**
+ * 组合中国大陆 18 位居民身份证号（仅用于测试造数）。
+ *
+ * @param {object} parts
+ * @param {string} parts.regionCode    6 位行政区划编码
+ * @param {string} parts.birthDate     出生日期，YYYY-MM-DD
+ * @param {number} parts.sequence      3 位顺序码（0-999）；第 17 位奇=男、偶=女由调用方保证
+ * @returns {string} 18 位身份证号（校验位合法）
+ */
+export function buildChinaIdNumber({ regionCode, birthDate, sequence }) {
+    const dateText = String(birthDate || "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateText)) {
+        throw new Error(`身份证出生日期必须是 YYYY-MM-DD: ${dateText}`);
+    }
+    const normalized = dateText.replace(/-/g, "");
+    // 0005-05-05 之类格式合法但语义荒谬的日期交由调用方校验；此处只做日历合法性
+    const year = Number(normalized.slice(0, 4));
+    const month = Number(normalized.slice(4, 6));
+    const day = Number(normalized.slice(6, 8));
+    const probe = new Date(Date.UTC(year, month - 1, day));
+    if (probe.getUTCFullYear() !== year || probe.getUTCMonth() !== month - 1 || probe.getUTCDate() !== day) {
+        throw new Error(`身份证出生日期不是合法日历日期: ${dateText}`);
+    }
+    const seq = Number(sequence);
+    if (!Number.isInteger(seq) || seq < 0 || seq > 999) {
+        throw new Error(`身份证顺序码必须是 0-999 整数: ${sequence}`);
+    }
+    const first17 = `${regionCode}${normalized}${String(seq).padStart(3, "0")}`;
+    return `${first17}${gb11643Checksum(first17)}`;
+}
+
+/**
+ * 把任意种子字符串确定性地映射到 [0, maxExclusive) 的整数。
+ * 双端一致（md5 为纯算法），用于从 runId/变量名派生顺序码，保证跨轮唯一、轮内互异。
+ */
+export function seedToIndex(seed, maxExclusive) {
+    const hex = md5(String(seed == null ? "" : seed)).slice(0, 8);
+    return Number.parseInt(hex, 16) % maxExclusive;
+}
+
+// ==================== Luhn 校验位（银行卡号，ISO/IEC 7812-1） ====================
+
+/**
+ * 计算数字串的 Luhn 校验位（返回 "0"-"9"）。
+ * 拼接后整体满足 Luhn 校验（加权和 mod 10 == 0）。输入非法（空/含非数字）时抛错。
+ */
+export function luhnCheckDigit(firstDigits) {
+    const text = String(firstDigits || "");
+    if (!/^\d+$/.test(text)) {
+        throw new Error(`Luhn 校验位输入必须是纯数字: ${text}`);
+    }
+    let sum = 0;
+    let double = true; // 紧邻校验位的一侧（最右输入位）乘 2
+    for (let i = text.length - 1; i >= 0; i -= 1) {
+        let digit = text.charCodeAt(i) - 48;
+        if (double) {
+            digit *= 2;
+            if (digit > 9) digit -= 9;
+        }
+        sum += digit;
+        double = !double;
+    }
+    return String((10 - (sum % 10)) % 10);
+}
+
+// ==================== 统一社会信用代码校验位（GB 32100-2015） ====================
+// 18 位 = 登记管理部门(1) + 机构类别(1) + 登记管理机关行政区划(6) + 主体标识码(9) + 校验位(1)。
+// 字符集不含 I、O、S、V、Z（31 个字符），校验位 = 字符集[(31 - Σ(字符值×权重) mod 31) mod 31]。
+
+const USCC_ALPHABET = "0123456789ABCDEFGHJKLMNPQRTUWXY";
+const USCC_WEIGHTS = [1, 3, 9, 27, 19, 26, 16, 17, 20, 29, 25, 13, 8, 24, 10, 30, 28];
+
+/**
+ * 计算前 17 位统一社会信用代码的校验字符。
+ * 输入非法（长度非 17 / 含字符集外字符）时抛错。
+ */
+export function usccCheckChar(first17Chars) {
+    const text = String(first17Chars || "").toUpperCase();
+    if (text.length !== 17) {
+        throw new Error(`USCC 校验位输入必须是 17 位字符: ${text}`);
+    }
+    let sum = 0;
+    for (let i = 0; i < 17; i += 1) {
+        const value = USCC_ALPHABET.indexOf(text[i]);
+        if (value < 0) {
+            throw new Error(`USCC 含非法字符 ${text[i]}（允许字符集: ${USCC_ALPHABET}）`);
+        }
+        sum += value * USCC_WEIGHTS[i];
+    }
+    return USCC_ALPHABET[(31 - (sum % 31)) % 31];
+}
+
+/**
+ * 组合 18 位统一社会信用代码（仅用于测试造数）。
+ *
+ * @param {object} parts
+ * @param {string} parts.categoryCode   2 位登记管理部门+机构类别（如 "91" 企业法人）
+ * @param {string} parts.regionCode     6 位行政区划编码
+ * @param {string} parts.orgCode        9 位主体标识码（组织机构代码，31 字符集）
+ * @returns {string} 18 位统一社会信用代码（校验位合法）
+ */
+export function buildUsccCode({ categoryCode, regionCode, orgCode }) {
+    const category = String(categoryCode || "");
+    const region = String(regionCode || "");
+    const org = String(orgCode || "").toUpperCase();
+    if (!/^\d{2}$/.test(category)) {
+        throw new Error(`USCC 登记管理部门+机构类别必须是 2 位数字: ${category}`);
+    }
+    if (!/^\d{6}$/.test(region)) {
+        throw new Error(`USCC 行政区划必须是 6 位数字: ${region}`);
+    }
+    if (!new RegExp(`^[0-9A-HJ-NP-RTUWXY]{9}$`).test(org)) {
+        throw new Error(`USCC 主体标识码必须是 9 位（字符集 ${USCC_ALPHABET}）: ${org}`);
+    }
+    const first17 = `${category}${region}${org}`;
+    return `${first17}${usccCheckChar(first17)}`;
 }
 
 export function maskSecret(value) {

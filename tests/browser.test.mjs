@@ -97,6 +97,13 @@ try {
         assert.equal(await page.locator('#stepsList li[data-passed="true"]').count(), 1);
         assert.match(await page.locator("#statsPanel").textContent(), /总步骤/);
 
+        // 运行时变量面板：步骤详情含执行后变量全量（配置变量 + 保留变量）；本场景无 extract，不出现变更徽标
+        const varsSection = await page.locator("#stepsList .details-panel details.report-step__response").first().textContent();
+        assert.match(varsSection, /运行时变量/, "步骤详情应包含运行时变量面板");
+        assert.match(varsSection, /expectedStatus/, "变量面板应展示配置变量");
+        assert.match(varsSection, /runId/, "变量面板应展示保留变量");
+        assert.doesNotMatch(varsSection, /本步变更/, "无 extract 的步骤不应出现变更徽标");
+
         // 复制功能：直接点击统计栏右侧复制按钮，mock 剪贴板验证报告 MD/JSON 与步骤复制的反馈
         await page.evaluate(() => {
             Object.defineProperty(navigator, "clipboard", {

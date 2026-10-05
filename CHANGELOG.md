@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.23] - 2026-10-05
+
+### ✨ DSL / Engine
+
+- 断言新增 `length` 操作符：数组元素个数 / 字符串字符数 / 对象键数精确比较（如 `{ path: "data.list", length: 10 }`）；非容器类型（number/boolean/null）直接失败不抛异常，断言结果中的 actual 回写为可读长度。此前列表条数只能靠 `matches` 正则 hack。
+- 断言新增 `target: "duration"` 耗时目标：`{ target: "duration", lte: 800 }` 断言单次请求耗时（毫秒），可与 gte/gt/lte/lt 组合做耗时区间/SLA 检查；引擎在每次尝试后挂载 `response.durationMs`（适配器自带计时不覆盖），并随 `result.response` 透出到报告与工作台。
+- `generatedVars` 新增 `idcard` 类型：生成中国大陆 18 位居民身份证号（测试造数）。参数 `birthDate`（必填，YYYY-MM-DD 合法日历日期）、`gender`（MALE/FEMALE，默认 MALE，约束顺序码第 17 位奇偶）、`regionCode`（6 位行政区划，缺省从真实测试区划池按轮次派生）。
+- `generatedVars` 新增 `luhn` / `phone` / `uscc` 类型（测试造数）：`luhn` 银行卡号（`length` 12-19 默认 16、`prefix` 数字卡头默认 "62"，末位 Luhn 校验）；`phone` 大陆手机号（`prefix` 3 位号段，缺省从测试号段池派生）；`uscc` 统一社会信用代码（`regionCode` 默认 110100，登记管理/机构类别固定 91 企业法人，校验位按 GB 32100-2015）。
+- 顺序码由 `runId` 与变量名确定性派生：跨轮唯一、轮内不同名变量互异，校验位按 GB 11643-1999 计算；解决"带校验位约束且库内唯一"的字段无法在声明式场景中动态造数、固定值重跑撞唯一性的问题。
+- core 新增通用校验位底座 `gb11643Checksum` / `buildChinaIdNumber` / `seedToIndex`（纯函数，浏览器/Node 双端一致），以及 `luhnCheckDigit` / `usccCheckChar` / `buildUsccCode`。
+- 契约 `contractVersion` 1 → 2（新增能力，保留旧字段）；新增 `assertions.targets`（status/duration）能力声明；`dist/scenario-test.d.ts` 的 `GeneratedVarDefinition` 补充造数参数字段、`Assertion`/`WhenDefinition` 补充 `length` 与 `target: "duration"`；AI 提示词与场景模式规则补充造数类型使用指引（禁止写死固定/真实号码）及 length/duration 断言用法。
+
+### ⚡ 性能 / 工程
+
+- 浏览器工作台步骤快照（`snapshotStepRuntime`）由 JSON 深拷贝改为浅拷贝 + 响应引用共享：大响应多步骤场景不再每步深拷贝两份响应体，单步回退/重跑语义不变。
+- npm tarball 精确列出 dist 产物，不再携带 ~2.6MB 的 sourcemap（`files` 由 `dist` 目录改为逐文件）。
+- 新增 `test:coverage`（Node 内置覆盖率）与 `check:all`（build + test + 浏览器测试）脚本；Node 侧核心模块补齐适配器协议、Node IO、CLI 主路径等测试盲区（129 → 160+ 用例）。
+- 构建原子化：`npm run build` 产物先写入 staging 目录、全部成功后 rename 交换 `dist/`（生成文件一律临时文件 + rename 原子写）。修复 dev 监听重建与 `npm run check` 并发时 dist 处于半成品状态，导致 init/doctor/CLI 类测试偶发失败的问题；构建失败时旧 `dist/` 现在保持完整。
+
+### 🎨 工作台体验 / 开发预览
+
+- 工作台步骤详情新增「运行时变量」折叠面板：展示该步骤执行后的变量全量（配置/场景/造数/提取/保留变量），并用绿色「本步变更」徽标高亮该步骤 `extract` 写入的键——断链调试时可直接看到每步 `{{vars.*}}` 的实际解析结果与写入侧效果；单步回退/重跑/清除结果后面板随快照同步。
+- `npm run dev` 开箱即用：自动拉起本地 Mock 服务并按 `serve` 同款同源代理转发示例请求（HTML 注入 `__SCENARIO_TEST_SERVE_PROXY__`，免 CORS）；Mock 端口从 4310 起自动避让本机占用（可用 `MOCK_PORT` 指定），修复示例环境被本机其它程序（如 QQ）占用 4310 时 basic/complete 示例必坏的问题。
+- Mock 服务补 `GET /slow`（3s 延迟响应，覆盖 basic 的取消/超时场景），端口支持 `MOCK_PORT` 环境变量。
+- 未执行状态去噪：统计面板不再渲染全零指标网格，改为「总步骤进度 + 尚未执行引导」空态；底部「总耗时」未执行时为中性色，有结果后才转绿色。
+- 「失败诊断」Tab 徽标仅在存在失败（>0 或执行前异常 `!`）时显示，未执行/全通过时不再出现无意义的「0」。
+- 修复底部执行栏「开始时间/结束时间」永远显示「-」的死 UI：会话开始/结束（跑完、取消、异常、回退）现在正确落值，「清除结果」后归位。
+
 ## [0.5.22] - 2026-09-11
 
 ### ✨ Browser Workbench

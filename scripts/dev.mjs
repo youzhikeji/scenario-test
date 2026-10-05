@@ -1,8 +1,12 @@
 // 开发模式：监听 src 变化自动重建 dist，并提供静态服务预览 examples。
 // 用法：node scripts/dev.mjs [--port 4300]
 // 打开 http://127.0.0.1:4300/examples/basic/ 等示例页面，修改 src 保存后自动重建，刷新页面即可。
+// 示例页面与 serve 命令一样走同源代理：HTML 注入 __SCENARIO_TEST_SERVE_PROXY__ 标记，
+// 未命中静态文件的请求（/health、/slow 等 mock 端点）转发给自动拉起的 mock 子进程。
+// mock 端口从 4310 起自动避让（可用 MOCK_PORT 指定），避免被本机其它程序（如 QQ）占住导致示例必坏。
 import fs from "node:fs";
 import http from "node:http";
+import net from "node:net";
 import path from "node:path";
 import { spawn } from "node:child_process";
 
@@ -153,7 +157,7 @@ function renderIndexHtml(serverPort) {
                     <span class="badge badge-blue">入门推荐</span>
                     <h2>1. Basic 基础示例</h2>
                     <p class="summary">包含最小配置、健康检查、基础断言与清理步骤。适合快速验证 UI 工作台与核心 DSL 功能。</p>
-                    <div class="notes">无需依赖第三方服务</div>
+                    <div class="notes">无需第三方服务（dev 自动启动本地 Mock 并同源代理）</div>
                 </div>
                 <a class="btn" href="/examples/basic/">进入 Basic 工作台 →</a>
             </div>
@@ -163,7 +167,7 @@ function renderIndexHtml(serverPort) {
                     <span class="badge badge-emerald">完整流程</span>
                     <h2>2. Complete 完整流程</h2>
                     <p class="summary">包含用户登录、Token 提取注入、重试机制、条件跳过等完整生命周期。</p>
-                    <div class="notes">需先运行: <code>node .\\examples\\complete\\mock-server.cjs</code></div>
+                    <div class="notes">dev 模式自动提供本地 Mock（手动运行: <code>node .\\examples\\complete\\mock-server.cjs</code>）</div>
                 </div>
                 <a class="btn" href="/examples/complete/">进入 Complete 工作台 →</a>
             </div>
@@ -180,7 +184,7 @@ function renderIndexHtml(serverPort) {
         </div>
 
         <footer>
-            <span>@yc_yzkj/scenario-test 开发预览</span>
+            <span>示例请求由本地 Mock 经同源代理提供 · @yc_yzkj/scenario-test 开发预览</span>
         </footer>
     </div>
 </body>
@@ -204,9 +208,25 @@ function startServer() {
             }
             if (!filePath) { response.writeHead(403); response.end("Forbidden"); return; }
             fs.stat(filePath, (error, stat) => {
-                if (error || !stat.isFile()) { response.writeHead(404); response.end("Not Found"); return; }
-                response.writeHead(200, { "Cache-Control": "no-store", "Content-Type": contentType(filePath) });
-                fs.createReadStream(filePath).pipe(response);
+                // 未命中静态文件（/health、/slow 等示例 mock 端点）转发给 mock 子进程
+                if (error || !stat.isFile()) { proxyToMock(request, response); return; }
+                const headers = { "Cache-Control": "no-store", "Content-Type": contentType(filePath) };
+                if (path.extname(filePath).toLowerCase() !== ".html") {
+                    response.writeHead(200, headers);
+                    fs.createReadStream(filePath).pipe(response);
+                    return;
+                }
+                fs.readFile(filePath, "utf8", (readError, html) => {
+                    if (readError) { response.writeHead(500); response.end("Internal Server Error"); return; }
+                    // 与 serve 命令一致：注入同源代理标记，工作台请求走当前源，免 CORS 且不受 mock 端口影响
+                    const marker = "<script>window.__SCENARIO_TEST_SERVE_PROXY__ = true;</script>";
+                    const headPattern = /<head(?:\s[^>]*)?>/i;
+                    const content = headPattern.test(html)
+                        ? html.replace(headPattern, (head) => head + marker)
+                        : marker + html;
+                    response.writeHead(200, headers);
+                    response.end(content);
+                });
             });
         } catch {
             response.writeHead(400);
@@ -220,6 +240,86 @@ function startServer() {
     });
 }
 
+let mockChild = null;
+let mockPort = 0;
+
+function checkPortFree(port) {
+    return new Promise((resolve) => {
+        const probe = net.createServer();
+        probe.once("error", () => resolve(false));
+        probe.once("listening", () => probe.close(() => resolve(true)));
+        probe.listen(port, "127.0.0.1");
+    });
+}
+
+async function pickMockPort() {
+    if (process.env.MOCK_PORT) return Number(process.env.MOCK_PORT);
+    for (let candidate = 4310; candidate <= 4329; candidate += 1) {
+        if (await checkPortFree(candidate)) return candidate;
+    }
+    return 0;
+}
+
+async function ensureMockServer() {
+    mockPort = await pickMockPort();
+    if (!mockPort) {
+        console.warn("[dev] 4310-4329 端口均被占用，示例 Mock 服务未启动（可用 MOCK_PORT 指定其它端口）");
+        return;
+    }
+    mockChild = spawn(
+        process.execPath,
+        [path.join(root, "examples", "complete", "mock-server.cjs")],
+        { cwd: root, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, MOCK_PORT: String(mockPort) } }
+    );
+    mockChild.stdout.on("data", (chunk) => process.stdout.write(chunk));
+    mockChild.stderr.on("data", (chunk) => process.stderr.write(chunk));
+    mockChild.on("close", (code) => {
+        mockChild = null;
+        if (code) console.warn(`[dev] Mock 服务异常退出（code ${code}），示例接口请求将返回 502`);
+    });
+    console.log(`[dev] 已启动示例 Mock 服务: http://127.0.0.1:${mockPort}（示例请求经同源代理转发）`);
+}
+
+function stopMockServer() {
+    if (mockChild) {
+        mockChild.kill();
+        mockChild = null;
+    }
+}
+
+process.on("exit", stopMockServer);
+process.on("SIGINT", () => { stopMockServer(); process.exit(0); });
+process.on("SIGTERM", () => { stopMockServer(); process.exit(0); });
+
+// 与 serve 命令一致：剔除 hop-by-hop 头，避免把客户端连接语义泄漏给上游
+const HOP_BY_HOP_HEADERS = new Set(["connection", "keep-alive", "transfer-encoding", "upgrade", "host"]);
+
+function proxyToMock(request, response) {
+    if (!mockChild || !mockPort) {
+        response.writeHead(502, { "Content-Type": "text/plain; charset=utf-8" });
+        response.end("Mock 服务未启动（端口被占用或启动失败），示例接口不可用");
+        return;
+    }
+    const headers = { ...request.headers };
+    for (const name of HOP_BY_HOP_HEADERS) delete headers[name];
+    const upstream = http.request(
+        { host: "127.0.0.1", port: mockPort, path: request.url, method: request.method, headers },
+        (res) => {
+            const resHeaders = { ...res.headers };
+            for (const name of HOP_BY_HOP_HEADERS) delete resHeaders[name];
+            response.writeHead(res.statusCode || 502, resHeaders);
+            res.pipe(response);
+        }
+    );
+    upstream.on("error", (error) => {
+        if (response.headersSent) { response.destroy(); return; }
+        response.writeHead(502, { "Content-Type": "text/plain; charset=utf-8" });
+        response.end(`Mock 服务不可用: ${error.code || error.message}`);
+    });
+    request.pipe(upstream);
+}
+
 rebuild();
 watchSources();
 startServer();
+ensureMockServer();

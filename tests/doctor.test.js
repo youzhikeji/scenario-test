@@ -256,3 +256,121 @@ test("doctor --json：stdout 纯净可解析，含 checks/exitCode 与 manual in
         cleanup(project);
     }
 });
+test("doctor：capabilities.json 解析失败 / schema 不匹配 / 版本不一致分别 FAIL", () => {
+    const { project, dir } = initProject();
+    try {
+        const capPath = path.join(dir, ".scenario-test", "scenario-test-capabilities.json");
+        const original = fs.readFileSync(capPath, "utf8");
+
+        fs.writeFileSync(capPath, "{ not-json", "utf8");
+        let result = runDoctor(dir);
+        assert.equal(result.status, 1);
+        assert.match(result.stdout, /\[FAIL\] capabilities/);
+        assert.match(result.stdout, /解析失败/);
+
+        fs.writeFileSync(capPath, JSON.stringify({ schema: "other-manifest", version: VERSION, contractVersion: CONTRACT_VERSION }), "utf8");
+        result = runDoctor(dir);
+        assert.equal(result.status, 1);
+        assert.match(result.stdout, /\[FAIL\] capabilities/);
+        assert.match(result.stdout, /schema 不匹配/);
+
+        fs.writeFileSync(capPath, JSON.stringify({ schema: "scenario-test-capabilities", version: "0.0.1", contractVersion: CONTRACT_VERSION }), "utf8");
+        result = runDoctor(dir);
+        assert.equal(result.status, 1);
+        assert.match(result.stdout, /\[FAIL\] capabilities/);
+        assert.match(result.stdout, /版本不一致/);
+        assert.match(result.stdout, /用当前版本 CLI 重新 init/);
+
+        // 恢复原文件后 capabilities 检查回到 PASS（同一项目内验证状态随文件内容复位）
+        fs.writeFileSync(capPath, original, "utf8");
+        result = runDoctor(dir);
+        assert.match(result.stdout, /\[PASS\] capabilities/);
+    } finally {
+        cleanup(project);
+    }
+});
+
+test("doctor：capabilities.json 缺失时 WARN 提示 init 补齐（不判 FAIL）", () => {
+    const { project, dir } = initProject();
+    try {
+        fs.rmSync(path.join(dir, ".scenario-test", "scenario-test-capabilities.json"));
+        // 缺文件是 WARN（init 补齐即可），内容损坏/版本漂移才是 FAIL
+        const result = runDoctor(dir);
+        assert.equal(result.status, 0, result.stdout + result.stderr);
+        assert.match(result.stdout, /\[WARN\] capabilities/);
+        assert.match(result.stdout, /缺少运行时副本 scenario-test-capabilities.json/);
+    } finally {
+        cleanup(project);
+    }
+});
+
+test("doctor：版本锁解析失败 / 版本不一致 FAIL，files 缺失或声明文件丢失 WARN", () => {
+    const { project, dir } = initProject();
+    try {
+        const lockPath = path.join(dir, ".scenario-test", ".scenario-test-version.json");
+        const original = fs.readFileSync(lockPath, "utf8");
+
+        fs.writeFileSync(lockPath, "{ broken", "utf8");
+        let result = runDoctor(dir);
+        assert.equal(result.status, 1);
+        assert.match(result.stdout, /\[FAIL\] version-lock/);
+        assert.match(result.stdout, /\.scenario-test-version\.json 解析失败/);
+
+        const lock = JSON.parse(original);
+        lock.runtimeVersion = "0.0.1";
+        fs.writeFileSync(lockPath, JSON.stringify(lock), "utf8");
+        result = runDoctor(dir);
+        assert.equal(result.status, 1);
+        assert.match(result.stdout, /\[FAIL\] version-lock/);
+        assert.match(result.stdout, /版本锁记录 v0\.0\.1/);
+
+        const noFiles = JSON.parse(original);
+        delete noFiles.files;
+        fs.writeFileSync(lockPath, JSON.stringify(noFiles), "utf8");
+        result = runDoctor(dir);
+        assert.match(result.stdout, /\[WARN\] version-lock: 版本锁缺少 files 字段/);
+
+        const missingFile = JSON.parse(original);
+        missingFile.files.capabilities = "scenario-test-capabilities-gone.json";
+        fs.writeFileSync(lockPath, JSON.stringify(missingFile), "utf8");
+        result = runDoctor(dir);
+        assert.match(result.stdout, /\[WARN\] version-lock: 版本锁声明 capabilities 文件 scenario-test-capabilities-gone\.json 不存在/);
+    } finally {
+        cleanup(project);
+    }
+});
+
+test("doctor：配置文件语法错误时 config-load FAIL 且其余检查继续", () => {
+    const { project, dir } = initProject();
+    try {
+        fs.writeFileSync(path.join(dir, "scenario.config.js"), "this is not valid js {{{", "utf8");
+        const result = runDoctor(dir);
+        assert.equal(result.status, 1);
+        assert.match(result.stdout, /\[FAIL\] config-load/);
+        assert.match(result.stdout, /配置文件加载失败/);
+        // node-version 等无关检查仍执行
+        assert.match(result.stdout, /\[PASS\] node-version/);
+    } finally {
+        cleanup(project);
+    }
+});
+
+test("doctor：场景 url 越界时 scenario-list FAIL（缺 id/url 在 defineConfig 加载期即被拒）", () => {
+    const { project, dir } = initProject();
+    try {
+        fs.writeFileSync(path.join(dir, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+            envs: [{ key: "local", name: "本地", baseUrl: "http://127.0.0.1:1" }],
+            defaultEnvKey: "local",
+            scenarios: [
+                { id: "health", name: "Health", url: "scenarios/health.js" },
+                { id: "escape", name: "越界", url: "../outside/escape.js" }
+            ]
+        }));`, "utf8");
+        const result = runDoctor(dir);
+        assert.equal(result.status, 1);
+        assert.match(result.stdout, /\[FAIL\] scenario-list/);
+        assert.match(result.stdout, /url 不安全/);
+    } finally {
+        cleanup(project);
+    }
+});

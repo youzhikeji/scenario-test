@@ -134,7 +134,12 @@ export function createWorkbenchRuntime(options) {
         nextStepIndex: 0,
         scenarioSearch: '',
         discoveredFiles: [],
-        lastReport: null
+        lastReport: null,
+        startTime: null,
+        endTime: null,
+        // varsTrail[i] = 第 i 步执行后的 runtime.vars 浅拷贝；与 debugRuntimes[i]（执行前快照）做差集
+        // 供工作台「运行时变量」面板展示每步执行后的变量与 extract 变更项
+        varsTrail: []
     };
 
     // ===== 存储与配置辅助 =====
@@ -432,14 +437,22 @@ export function createWorkbenchRuntime(options) {
         var endEl = document.getElementById('execEndTime');
         var durEl = document.getElementById('execTotalDuration');
         if (!startEl) return;
+        var executed = (state.steps || []).length;
         var totalMs = (state.steps || []).reduce(function (sum, s) { return sum + (s.duration || 0); }, 0);
-        if (state.startTime && startEl) startEl.textContent = formatTime(state.startTime);
-        if (state.endTime && endEl) endEl.textContent = formatTime(state.endTime);
-        if (durEl) durEl.textContent = totalMs.toFixed(2) + ' ms';
+        // 空值写回「-」：清除结果/回退后不留上一轮的时间残留
+        startEl.textContent = state.startTime ? formatTime(state.startTime) : '-';
+        if (endEl) endEl.textContent = state.endTime ? formatTime(state.endTime) : '-';
+        if (durEl) {
+            durEl.textContent = totalMs.toFixed(2) + ' ms';
+            // 未执行时保持中性色，避免绿色暗示"已完成/成功"
+            durEl.classList.toggle('text-emerald-600', executed > 0);
+            durEl.classList.toggle('text-slate-500', executed === 0);
+        }
     }
 
     function renderStepsAll() {
-        uiView.renderStepsAll(state.steps, state.scenario && state.scenario.steps ? state.scenario.steps : [], state.executionMode);
+        var varsViews = (state.steps || []).map(function (_, idx) { return buildVarsView(idx); });
+        uiView.renderStepsAll(state.steps, state.scenario && state.scenario.steps ? state.scenario.steps : [], state.executionMode, varsViews);
         updateExecutionFooter();
     }
 
@@ -529,10 +542,13 @@ export function createWorkbenchRuntime(options) {
     }
 
     function snapshotStepRuntime(runtime) {
+        // 浅拷贝即可隔离：执行期 vars 唯一写入方是 extract（顶层赋值，见 engine.js 契约注释），
+        // lastResponse/lastResponseBody 每步整体替换、从不原地修改，可共享引用。
+        // 大响应场景下避免每步 JSON 深拷贝两份（快照 + 恢复）的内存/CPU 开销。
         return {
-            vars: clone(runtime.vars),
-            lastResponse: clone(runtime.lastResponse),
-            lastResponseBody: clone(runtime.lastResponseBody)
+            vars: { ...runtime.vars },
+            lastResponse: runtime.lastResponse,
+            lastResponseBody: runtime.lastResponseBody
         };
     }
 
@@ -544,16 +560,34 @@ export function createWorkbenchRuntime(options) {
         var snapshot = state.debugRuntimes[stepIndex];
         if (!snapshot) return null;
         return {
-            vars: clone(snapshot.vars),
-            lastResponse: clone(snapshot.lastResponse),
-            lastResponseBody: clone(snapshot.lastResponseBody)
+            vars: { ...snapshot.vars },
+            lastResponse: snapshot.lastResponse,
+            lastResponseBody: snapshot.lastResponseBody
         };
     }
 
+    // 变量差集：新增键或值（JSON 序列化）变化的键视为本步变更（extract 只做顶层赋值，删除不存在）
+    function diffVars(before, after) {
+        var changed = [];
+        Object.keys(after || {}).forEach(function (key) {
+            var had = Object.prototype.hasOwnProperty.call(before || {}, key);
+            if (!had || JSON.stringify(before[key]) !== JSON.stringify(after[key])) changed.push(key);
+        });
+        return changed;
+    }
+
+    // 运行时变量面板视图：执行后全量 vars + 本步变更键；快照缺失（如旧会话回退越界）时返回 null 不渲染
+    function buildVarsView(stepIndex) {
+        var before = state.debugRuntimes[stepIndex];
+        if (!before) return null;
+        var after = state.varsTrail[stepIndex] || before.vars;
+        return { vars: after, changedKeys: diffVars(before.vars, after) };
+    }
+
     function restoreStepRuntime(runtime, snapshot) {
-        runtime.vars = clone(snapshot.vars);
-        runtime.lastResponse = clone(snapshot.lastResponse);
-        runtime.lastResponseBody = clone(snapshot.lastResponseBody);
+        runtime.vars = { ...snapshot.vars };
+        runtime.lastResponse = snapshot.lastResponse;
+        runtime.lastResponseBody = snapshot.lastResponseBody;
         runtime.abortController = new AbortController();
         runtime.cancelled = false;
     }
@@ -571,8 +605,11 @@ export function createWorkbenchRuntime(options) {
         state.steps = state.steps.slice(0, stepIndex);
         state.stepCheckpoints = state.stepCheckpoints.slice(0, stepIndex + 1);
         state.debugRuntimes = state.debugRuntimes.slice(0, stepIndex);
+        state.varsTrail = state.varsTrail.slice(0, stepIndex);
         state.nextStepIndex = stepIndex;
         state.lastReport = null;
+        // 回退后会话继续：清掉上一轮结束时间，避免底部显示早已过期的完成时刻
+        state.endTime = null;
         refreshStepSessionView();
         uiView.setRunState('idle', '已回退到第 ' + (stepIndex + 1) + ' 步');
         return true;
@@ -623,9 +660,12 @@ export function createWorkbenchRuntime(options) {
         state.stepRuntime = null;
         state.stepCheckpoints = [];
         state.debugRuntimes = [];
+        state.varsTrail = [];
         state.activeRuntime = null;
         state.nextStepIndex = 0;
         state.lastReport = null;
+        state.startTime = null;
+        state.endTime = null;
         state.executionMode = 'full';
         stepsFilterState.type = 'all';
         stepsFilterState.keyword = '';
@@ -640,6 +680,8 @@ export function createWorkbenchRuntime(options) {
     function showDiagnosticError(error, customState) {
         var message = error && error.message ? String(error.message) : (error ? String(error) : '执行异常');
         var runState = customState || (/缺少场景凭据|配置/.test(message) ? '配置缺失' : '执行前失败');
+        // 已开始的会话因异常终止：同样落结束时间，避免底部结束时间停留在「-」
+        if (state.startTime) state.endTime = new Date();
         uiView.setRunState('failed', runState);
         var reportTab = document.getElementById('reportTab');
         var reportTabBadge = document.getElementById('reportTabBadge');
@@ -647,6 +689,7 @@ export function createWorkbenchRuntime(options) {
         if (reportTabBadge) {
             reportTabBadge.textContent = '!';
             reportTabBadge.classList.add('is-alert');
+            reportTabBadge.style.display = '';
         }
         var reportPanel = document.getElementById('reportPanel');
         if (reportPanel) {
@@ -670,10 +713,13 @@ export function createWorkbenchRuntime(options) {
     }
 
     function finishExecutionState(runtime) {
+        // 会话结束（跑完/取消/异常终止统一走这里或 showDiagnosticError）：落结束时间供底部执行栏展示
+        if (state.startTime) state.endTime = new Date();
         var cancelled = Boolean(runtime && runtime.cancelled) || state.steps.some(function (item) { return item.cancelled; });
         if (cancelled) {
             uiView.setRunState('cancelled', '已取消');
             renderReportPanel();
+            updateExecutionFooter();
             return;
         }
         var skipped = state.steps.filter(function (item) { return item.skipped; }).length;
@@ -681,6 +727,7 @@ export function createWorkbenchRuntime(options) {
         var executed = state.steps.length - skipped;
         uiView.setRunState(failed ? 'failed' : (executed === 0 ? 'skipped' : 'success'), failed ? '存在失败' : (executed === 0 ? '全部跳过' : '执行成功'));
         renderReportPanel();
+        updateExecutionFooter();
         if (failed > 0) {
             setSidePanelTab('report');
         } else {
@@ -743,6 +790,9 @@ export function createWorkbenchRuntime(options) {
         state.nextStepIndex = 0;
         state.steps = [];
         state.lastReport = null;
+        state.startTime = new Date();
+        state.endTime = null;
+        state.varsTrail = [];
         setExecutionButtonsDisabled(true);
         uiView.setRunState('running', '执行中');
         // 新一轮开始先全量渲染一次待执行占位（同时清掉上一轮遗留的已渲染步骤）；
@@ -757,9 +807,10 @@ export function createWorkbenchRuntime(options) {
                 var result = await executeStep(list[i], runtime, cfg);
                 result.stepNo = i + 1;
                 state.steps.push(result);
+                state.varsTrail[i] = { ...runtime.vars };
                 renderStatsAll(iterations);
                 renderFilterAll();
-                uiView.appendStepResult(result, i, list, state.executionMode);
+                uiView.appendStepResult(result, i, list, state.executionMode, buildVarsView(i));
                 renderReportPanel();
                 if (!result.passed && (failurePolicy !== 'continue' || runtime.abortController.signal.aborted)) break;
             }
@@ -793,6 +844,9 @@ export function createWorkbenchRuntime(options) {
             state.stepCheckpoints = [snapshotStepRuntime(state.stepRuntime)];
             state.debugRuntimes = [];
             state.lastReport = null;
+            state.startTime = new Date();
+            state.endTime = null;
+            state.varsTrail = [];
             // 从头开始单步执行：全量渲染待执行占位，清掉上一轮遗留（循环内为增量追加）
             renderStepsAll();
             setSidePanelTab('stats');
@@ -813,11 +867,12 @@ export function createWorkbenchRuntime(options) {
             var result = await executeStep(list[stepIndex], runtime, cfg);
             result.stepNo = stepIndex + 1;
             state.steps.push(result);
+            state.varsTrail[stepIndex] = { ...runtime.vars };
             state.nextStepIndex += 1;
             state.stepCheckpoints[state.nextStepIndex] = snapshotStepRuntime(runtime);
             renderStatsAll(state.scenario.iterations || { run: 1, failed: 0 });
             renderFilterAll();
-            uiView.appendStepResult(result, stepIndex, list, state.executionMode);
+            uiView.appendStepResult(result, stepIndex, list, state.executionMode, buildVarsView(stepIndex));
             expandStepDetails(stepIndex);
             renderReportPanel();
 

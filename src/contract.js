@@ -10,7 +10,7 @@
 //   - 不要在本模块手写 runtime 版本，统一复用 version.generated.js 的 VERSION。
 import { VERSION } from "./version.generated.js";
 
-export const CONTRACT_VERSION = 1;
+export const CONTRACT_VERSION = 2;
 
 export const contract = Object.freeze({
     contractVersion: CONTRACT_VERSION,
@@ -22,6 +22,8 @@ export const contract = Object.freeze({
     assertions: Object.freeze({
         // 断言对象允许的元数据键（非操作符键）
         metaKeys: Object.freeze(["name", "path", "from", "target", "header", "implicit"]),
+        // 断言目标 target 的取值：status=HTTP 状态码，duration=本次请求耗时（毫秒，引擎挂载在 response.durationMs）
+        targets: Object.freeze(["status", "duration"]),
         // 断言操作符：键为操作符名；valueType 描述期望值类型约束，
         // finiteNumber 表示实际值与期望值都必须是有限 number（不做字符串隐式转换）
         operators: Object.freeze({
@@ -48,6 +50,10 @@ export const contract = Object.freeze({
             oneOf: Object.freeze({
                 description: "实际值属于期望候选数组之一（深比较）",
                 valueType: "array"
+            }),
+            length: Object.freeze({
+                description: "数组元素个数 / 字符串字符数 / 对象键数等于期望值；非容器类型（number/boolean/null）直接失败",
+                valueType: "finiteNumber"
             }),
             gt: Object.freeze({
                 description: "实际值大于期望值",
@@ -88,7 +94,12 @@ export const contract = Object.freeze({
     reservedVars: Object.freeze(["runId", "runNo"]),
 
     generatedVars: Object.freeze({
-        types: Object.freeze(["timestamp", "uuidHex", "md5", "signature"])
+        types: Object.freeze(["timestamp", "uuidHex", "md5", "signature", "idcard", "luhn", "phone", "uscc"]),
+        note: "证件/卡号/号码类测试造数（顺序码与中间数字均由 runId 与变量名确定性派生：每轮变化、轮内不同名变量互异，撞业务唯一约束时重跑即换号）。"
+            + " idcard：中国大陆 18 位身份证号，birthDate 必填（YYYY-MM-DD 合法日历日期）、gender 可选（MALE/FEMALE，默认 MALE）、regionCode 可选（6 位数字，缺省从真实测试区划池按轮次派生），校验位按 GB 11643 计算。"
+            + " luhn：银行卡号，length 可选（12-19，默认 16）、prefix 可选（数字卡头，默认 62），末位按 Luhn 算法校验。"
+            + " phone：大陆手机号（1[3-9] 开头 11 位），prefix 可选（3 位号段，缺省从测试号段池按轮次派生）。"
+            + " uscc：统一社会信用代码（18 位），regionCode 可选（6 位数字，默认 110100），登记管理/机构类别固定 91（企业法人），校验位按 GB 32100-2015 计算"
     }),
 
     globals: Object.freeze({

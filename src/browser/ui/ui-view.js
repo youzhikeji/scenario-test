@@ -159,7 +159,7 @@ const workbenchView = (function () {
                             <span>开始时间: <span id="execStartTime" class="text-slate-700 font-semibold">-</span></span>
                         </div>
                         <div>结束时间: <span id="execEndTime" class="text-slate-700 font-semibold">-</span></div>
-                        <div>总耗时: <span id="execTotalDuration" class="text-emerald-600 font-bold">0.00 ms</span></div>
+                        <div>总耗时: <span id="execTotalDuration" class="text-slate-500 font-bold">0.00 ms</span></div>
                     </div>
                 </div>
                 <aside class="scenario-pane scenario-pane--stats bg-white rounded-lg shadow-xs border border-slate-200 overflow-hidden flex flex-col h-full min-h-0">
@@ -172,7 +172,7 @@ const workbenchView = (function () {
                     <div class="scenario-side-tabs" role="tablist" aria-label="执行结果视图">
                         <button id="statsTab" class="scenario-side-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="statsPanel">执行摘要</button>
                         <button id="reportTab" class="scenario-side-tab" type="button" role="tab" aria-selected="false" aria-controls="reportPanel" disabled>
-                            失败诊断 <span id="reportTabBadge" class="scenario-side-tab__badge">0</span>
+                            失败诊断 <span id="reportTabBadge" class="scenario-side-tab__badge" style="display:none">0</span>
                         </button>
                     </div>
                     <div id="statsPanel" class="scenario-side-panel p-3 overflow-y-auto flex-1 min-h-0" role="tabpanel" aria-labelledby="statsTab">
@@ -434,6 +434,49 @@ const workbenchView = (function () {
         '</div>';
     }
 
+    // 运行时变量面板的取值展示：紧凑 JSON，超长截断
+    function fmtVarValue(value) {
+        var text;
+        if (value === undefined) text = 'undefined';
+        else if (typeof value === 'string') text = value;
+        else {
+            try { text = JSON.stringify(value); }
+            catch (e) { text = String(value); }
+        }
+        text = String(text);
+        if (text.length > 512) text = text.slice(0, 512) + '…（共 ' + text.length + ' 字符）';
+        return text;
+    }
+
+    // 变量视图 view = { vars: 执行后全量, changedKeys: 本步骤 extract 变更的键 }；
+    // 回答两个调试问题：本步骤的 {{vars.*}} 解析成了什么、本步 extract 写入了什么
+    function renderVarsSection(view) {
+        if (!view || !view.vars) return '';
+        var keys = Object.keys(view.vars);
+        if (!keys.length) return '';
+        var changed = view.changedKeys || [];
+        var rows = keys.map(function (key) {
+            var isChanged = changed.indexOf(key) >= 0;
+            return '<tr class="' + (isChanged ? 'bg-emerald-50/60' : '') + '">' +
+                '<td class="px-3 py-1.5 font-mono text-[11px] text-slate-700 whitespace-nowrap align-top">' + esc(key) +
+                    (isChanged ? '<span class="ml-1.5 px-1 py-px rounded bg-emerald-100 text-emerald-700 text-[9.5px] font-bold">本步变更</span>' : '') +
+                '</td>' +
+                '<td class="px-3 py-1.5 font-mono text-[11px] text-slate-600 break-all">' + esc(fmtVarValue(view.vars[key])) + '</td>' +
+            '</tr>';
+        }).join('');
+        return '<details class="report-step__response mt-4 pt-3.5 border-t border-slate-200/80">' +
+            '<summary>运行时变量 · ' + keys.length + ' 项' + (changed.length ? '（本步变更 ' + changed.length + '）' : '') + '</summary>' +
+            '<div class="border border-slate-200/80 rounded-md overflow-hidden bg-white shadow-2xs mt-2">' +
+                '<table class="w-full text-left text-xs">' +
+                    '<thead class="bg-slate-50 text-[10px] text-slate-500 font-semibold border-b border-slate-200/60 uppercase tracking-wider">' +
+                        '<tr><th class="px-3 py-1.5">变量名</th><th class="px-3 py-1.5">值（本步骤执行后）</th></tr>' +
+                    '</thead>' +
+                    '<tbody class="divide-y divide-slate-100">' + rows + '</tbody>' +
+                '</table>' +
+            '</div>' +
+        '</details>';
+    }
+
     function extractQueryParams(pathStr, queryObj) {
         var params = [];
         if (queryObj && typeof queryObj === 'object') {
@@ -563,6 +606,30 @@ const workbenchView = (function () {
 
                 segmentsHtml += '<div class="flex-1 h-2 rounded-full ' + segClass + ' transition-all duration-300" title="步骤 ' + (idx + 1) + (isPassed ? ': 成功' : (isFailed ? ': 失败' : (isStepCancelled ? ': 已取消' : (isSkipped ? ': 跳过' : ': 待执行')))) + '"></div>';
             }
+        }
+
+        // 未执行/未加载时不渲染全零指标网格（一排无意义的 0），改为进度条 + 引导空态
+        if (!executedCount) {
+            var pendingHint = scenarioTotal > 0
+                ? '<div class="p-3 rounded-lg border border-dashed border-slate-300/80 bg-white text-center space-y-1.5">' +
+                    '<div class="text-xs font-bold text-slate-600">尚未执行</div>' +
+                    '<div class="text-[11px] text-slate-400 leading-relaxed">点击顶部「执行全部」运行整个场景，或用「下一步」逐条执行；执行后这里展示通过率与耗时统计。</div>' +
+                '</div>'
+                : '<div class="text-xs text-slate-400 text-center py-4">场景未加载或未执行</div>';
+            statsPanel.innerHTML =
+                '<div class="space-y-3">' +
+                    (scenarioTotal > 0
+                        ? '<div class="p-3 rounded-lg border border-slate-200/80 bg-slate-50/60 space-y-2">' +
+                            '<div class="flex items-center justify-between">' +
+                                '<span class="text-xs font-bold text-slate-700">总步骤进度</span>' +
+                                '<span class="text-xs font-mono font-bold text-slate-900">0 / ' + scenarioTotal + ' <span class="text-slate-400 font-semibold font-sans">(0.0%)</span></span>' +
+                            '</div>' +
+                            '<div class="flex items-center gap-1 w-full">' + segmentsHtml + '</div>' +
+                        '</div>'
+                        : '') +
+                    pendingHint +
+                '</div>';
+            return;
         }
 
         statsPanel.innerHTML =
@@ -703,7 +770,7 @@ const workbenchView = (function () {
         }).join('');
     }
 
-    function renderStepItem(s, i, executionMode) {
+    function renderStepItem(s, i, executionMode, varsView) {
         var ok = s.passed;
         var skipped = s.skipped;
         var seqNum = i + 1;
@@ -883,11 +950,12 @@ const workbenchView = (function () {
                     rightColumn +
                 '</div>' +
                 assertHtml +
+                renderVarsSection(varsView) +
             '</div>' +
         '</li>';
     }
 
-    function renderStepsAll(steps, scenarioSteps, executionMode) {
+    function renderStepsAll(steps, scenarioSteps, executionMode, varsViews) {
         var ul = document.getElementById('stepsList');
         if (!ul) return;
         steps = steps || [];
@@ -896,19 +964,20 @@ const workbenchView = (function () {
             ul.innerHTML = '<li class="p-8 text-center text-slate-400 text-xs">点击「执行全部」开始发起请求</li>';
             return;
         }
-        ul.innerHTML = steps.map(function (s, i) { return renderStepItem(s, i, executionMode); }).join('')
+        varsViews = varsViews || [];
+        ul.innerHTML = steps.map(function (s, i) { return renderStepItem(s, i, executionMode, varsViews[i]); }).join('')
             + renderPendingSteps(scenarioSteps, steps.length);
         if (window.__R && window.__R.applyFilter) {
             window.__R.applyFilter();
         }
     }
 
-    function appendStepResult(result, index, scenarioSteps, executionMode) {
+    function appendStepResult(result, index, scenarioSteps, executionMode, varsView) {
         var ul = document.getElementById('stepsList');
         if (!ul) return;
         ul.querySelectorAll('li[data-passed="pending"]').forEach(function (node) { node.remove(); });
         var template = document.createElement('template');
-        template.innerHTML = renderStepItem(result, index, executionMode) + renderPendingSteps(scenarioSteps, index + 1);
+        template.innerHTML = renderStepItem(result, index, executionMode, varsView) + renderPendingSteps(scenarioSteps, index + 1);
         ul.appendChild(template.content);
         if (window.__R && window.__R.applyFilter) {
             window.__R.applyFilter();
@@ -1025,6 +1094,8 @@ const workbenchView = (function () {
         if (reportTabBadge) {
             reportTabBadge.textContent = String(failedCount);
             reportTabBadge.classList.toggle('is-alert', failedCount > 0);
+            // 0 失败时不渲染徽标，避免未执行/全通过状态下出现无意义的「0」
+            reportTabBadge.style.display = failedCount > 0 ? '' : 'none';
         }
         if (!node) return report;
         if (!steps.length) {

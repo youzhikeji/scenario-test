@@ -1,6 +1,9 @@
 const http = require("node:http");
 const { randomUUID } = require("node:crypto");
 
+// 端口可用 MOCK_PORT 覆盖；dev.mjs 会在 4310 被占用时自动挑选空闲端口并经环境变量传入
+const PORT = Number(process.env.MOCK_PORT || 4310);
+
 const orders = new Map();
 const tasks = new Map();
 
@@ -33,7 +36,7 @@ const server = http.createServer(async (request, response) => {
         send(response, 204, {});
         return;
     }
-    const url = new URL(request.url, "http://127.0.0.1:4310");
+    const url = new URL(request.url, `http://127.0.0.1:${PORT}`);
     try {
         if (request.method === "GET" && url.pathname === "/health") {
             send(response, 200, { status: "UP" });
@@ -79,12 +82,20 @@ const server = http.createServer(async (request, response) => {
             send(response, 200, { status: "UP" });
             return;
         }
+        // basic 示例的 slow/timeout 场景依赖：响应延迟需大于步骤 timeoutMs（500ms）
+        if (request.method === "GET" && url.pathname === "/slow") {
+            const startedAt = Date.now();
+            setTimeout(() => {
+                send(response, 200, { status: "SLOW_OK", elapsedMs: Date.now() - startedAt });
+            }, 3000);
+            return;
+        }
         send(response, 404, { message: "not found" });
     } catch (error) {
         send(response, 400, { message: error.message });
     }
 });
 
-server.listen(4310, "127.0.0.1", () => {
-    console.log("Complete example Mock API: http://127.0.0.1:4310");
+server.listen(PORT, "127.0.0.1", () => {
+    console.log(`Complete example Mock API: http://127.0.0.1:${PORT}`);
 });

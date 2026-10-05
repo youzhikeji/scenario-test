@@ -8,7 +8,7 @@
 node .\examples\complete\mock-server.cjs
 ```
 
-Mock API 监听 `http://127.0.0.1:4310`，不访问外网或业务系统。
+Mock API 监听 `http://127.0.0.1:4310`，不访问外网或业务系统。端口可用环境变量 `MOCK_PORT` 覆盖；`npm run dev` 开发预览会自动拉起该服务并经同源代理转发请求，无需手动启动。
 
 ## 浏览器工作台
 

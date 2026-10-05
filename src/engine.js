@@ -4,16 +4,20 @@ import {
     assertNotReservedVar,
     buildAssertions,
     buildUrl,
+    buildChinaIdNumber,
+    buildUsccCode,
     clone,
     generateSignature,
     hasHeader,
     headersToObject,
     joinUrl,
+    luhnCheckDigit,
     md5,
     parseBody,
     evaluateAssertion,
     resolve,
-    resolveString
+    resolveString,
+    seedToIndex
 } from "./core.js";
 import { contract } from "./contract.js";
 import { defineScenario, listAdapters } from "./registry.js";
@@ -76,6 +80,13 @@ function createRequestSignal(parentSignal, timeoutMs) {
     };
 }
 
+// idcard 未显式声明 regionCode 时使用的真实行政区划测试池（容量扩展用，均为真实存在的区县级编码）
+const IDCARD_TEST_REGIONS = ["110101", "110105", "310101", "440103", "510107", "330102", "420102", "610103"];
+// phone 未显式声明 prefix 时使用的测试号段池（均为三大运营商+虚商真实在用号段）
+const PHONE_TEST_PREFIXES = ["138", "139", "150", "155", "158", "159", "176", "177", "185", "186", "187", "199"];
+// uscc 主体标识码（9 位）的派生字符集：与 core 的 USCC_ALPHABET 保持一致
+const USCC_ORG_ALPHABET = "0123456789ABCDEFGHJKLMNPQRTUWXY";
+
 function createRunIdentifiers() {
     const timestamp = String(Date.now());
     const random = globalThis.crypto?.randomUUID
@@ -131,6 +142,73 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables, options = 
         else if (definition.type === "uuidHex") {
             if (!globalThis.crypto?.randomUUID) throw new Error("当前环境不支持 crypto.randomUUID");
             vars[definition.name] = globalThis.crypto.randomUUID().replace(/-/g, "");
+        } else if (definition.type === "idcard") {
+            // 中国大陆 18 位身份证号（测试造数）：出生日期必填 YYYY-MM-DD；
+            // gender MALE/FEMALE（默认 MALE）约束顺序码第 17 位奇偶；
+            // regionCode 6 位行政区划（不声明时从真实测试区划池按轮次派生）。
+            // 顺序码 = hash(runId + 变量名) % 500 * 2 + 性别位：随轮次变化、轮内不同名变量互异，
+            // 校验位按 GB 11643 计算；同(性别,出生日期)下唯一容量约 4000，极小概率撞库时重跑即换号。
+            const gender = definition.gender == null ? "MALE" : definition.gender;
+            if (gender !== "MALE" && gender !== "FEMALE") {
+                throw new Error(`generatedVars idcard 的 gender 只支持 MALE/FEMALE: ${gender}`);
+            }
+            // 未显式声明区划时从真实测试区划池按轮次派生，把唯一容量从 500/性别/生日 扩至 8 倍
+            let regionCode = definition.regionCode == null
+                ? IDCARD_TEST_REGIONS[seedToIndex(identifiers.runId, IDCARD_TEST_REGIONS.length)]
+                : String(definition.regionCode);
+            if (!/^\d{6}$/.test(regionCode)) {
+                throw new Error(`generatedVars idcard 的 regionCode 必须是 6 位数字: ${regionCode}`);
+            }
+            const seqBase = seedToIndex(`${identifiers.runId}|${definition.name}`, 500);
+            vars[definition.name] = buildChinaIdNumber({
+                regionCode,
+                birthDate: definition.birthDate,
+                sequence: seqBase * 2 + (gender === "MALE" ? 1 : 0)
+            });
+        } else if (definition.type === "luhn") {
+            // 银行卡号（Luhn 校验，测试造数）：prefix 数字卡头（默认 "62" 银联）、length 12-19（默认 16）；
+            // 卡头与校验位之间的数字由 runId+变量名逐位派生，末位按 Luhn 算法补齐。
+            const length = definition.length == null ? 16 : Number(definition.length);
+            if (!Number.isInteger(length) || length < 12 || length > 19) {
+                throw new Error(`generatedVars luhn 的 length 必须是 12-19 整数: ${definition.length}`);
+            }
+            const prefix = definition.prefix == null ? "62" : String(definition.prefix);
+            if (!/^\d{1,16}$/.test(prefix) || prefix.length >= length) {
+                throw new Error(`generatedVars luhn 的 prefix 必须是短于卡号长度的数字卡头: ${definition.prefix}`);
+            }
+            let body = "";
+            for (let i = 0; i < length - 1 - prefix.length; i += 1) {
+                body += seedToIndex(`${identifiers.runId}|${definition.name}|${i}`, 10);
+            }
+            const first = `${prefix}${body}`;
+            vars[definition.name] = `${first}${luhnCheckDigit(first)}`;
+        } else if (definition.type === "phone") {
+            // 大陆手机号（测试造数）：prefix 三位号段（1[3-9]x），缺省从测试号段池按轮次派生；
+            // 后 8 位由 runId+变量名逐位派生，撞业务唯一约束时重跑即换号。
+            const prefix = definition.prefix == null
+                ? PHONE_TEST_PREFIXES[seedToIndex(identifiers.runId, PHONE_TEST_PREFIXES.length)]
+                : String(definition.prefix);
+            if (!/^1[3-9]\d$/.test(prefix)) {
+                throw new Error(`generatedVars phone 的 prefix 必须是 1[3-9] 开头的 3 位号段: ${definition.prefix}`);
+            }
+            let tail = "";
+            for (let i = 0; i < 8; i += 1) {
+                tail += seedToIndex(`${identifiers.runId}|${definition.name}|${i}`, 10);
+            }
+            vars[definition.name] = `${prefix}${tail}`;
+        } else if (definition.type === "uscc") {
+            // 统一社会信用代码（GB 32100-2015，测试造数）：登记管理部门+机构类别固定 91（企业法人）；
+            // regionCode 6 位行政区划（默认 110100），主体标识码 9 位由 runId+变量名逐位派生（31 字符集），
+            // 校验位按 GB 32100 计算。
+            const regionCode = definition.regionCode == null ? "110100" : String(definition.regionCode);
+            if (!/^\d{6}$/.test(regionCode)) {
+                throw new Error(`generatedVars uscc 的 regionCode 必须是 6 位数字: ${definition.regionCode}`);
+            }
+            let orgCode = "";
+            for (let i = 0; i < 9; i += 1) {
+                orgCode += USCC_ORG_ALPHABET[seedToIndex(`${identifiers.runId}|${definition.name}|${i}`, USCC_ORG_ALPHABET.length)];
+            }
+            vars[definition.name] = buildUsccCode({ categoryCode: "91", regionCode, orgCode });
         } else if (definition.type === "md5") {
             const source = (definition.parts || []).map((name) => vars[name] == null ? "" : String(vars[name])).join("");
             vars[definition.name] = md5(source);
@@ -453,9 +531,16 @@ export function createEngine(engineOptions = {}) {
                 }
 
                 const selection = chooseAdapter(step, adapters);
+                const attemptStartedAt = now();
                 lastExecution = selection
                     ? await executeAdapter(selection.adapter, selection.name, step, runtime, options)
                     : await executeHttp(step, runtime, options);
+                // 单次请求耗时（毫秒）：供 { target: "duration", lte: N } 等耗时断言使用；
+                // 适配器自带计时时不覆盖。计入 result.response，报告/工作台可见
+                if (lastExecution.response && typeof lastExecution.response === "object"
+                    && lastExecution.response.durationMs === undefined) {
+                    lastExecution.response.durationMs = now() - attemptStartedAt;
+                }
                 runtime.lastResponse = lastExecution.response;
                 // lastResponseBody 是解析后的响应体（双端一致）；原始文本见 response.bodyText
                 runtime.lastResponseBody = lastExecution.response.body;
