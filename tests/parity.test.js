@@ -122,7 +122,14 @@ const assertionCases = [
     { from: "bodyText", matches: "code" },
     { from: "bodyText", equals: JSON.stringify({ code: 200 }) },
     { path: "code", equals: 200 },
-    { path: "nested.flag", equals: true }
+    { path: "nested.flag", equals: true },
+    // each：数组逐项断言（expected 为子断言对象；对每个元素套用，任一元素失败则整体失败）
+    { path: "items", each: { lt: 5 } },
+    { path: "list", each: { gte: 10 } },
+    { path: "list", each: { gt: 15 } },
+    { path: "list", each: { equals: 10 } },
+    { path: "code", each: { gte: 0 } },
+    { path: "missing", each: { exists: true } }
 ];
 
 // 每个用例的期望 passed（与 assertionCases 顺序一一对应）。
@@ -196,7 +203,13 @@ const expectedPassed = [
     true,  // from:bodyText matches code
     true,  // from:bodyText equals 原始 JSON
     true,  // path code equals 200
-    true   // path nested.flag equals true
+    true,  // path nested.flag equals true
+    true,  // each {lt:5} 对 items=[1,2,3]
+    true,  // each {gte:10} 对 list=[10,20]
+    false, // each {gt:15} 判别 vs includes：some 语义会因 20>15 通过，逐项语义必失败
+    false, // each {equals:10} 第二项 20 不等
+    false, // each 对非数组实际值（code=200）必失败——判别 vs gte（200>=0 会通过）
+    false  // each 对 missing（undefined 非数组）必失败
 ];
 
 test("断言求值极性：全部操作符逐条锁定 passed（含 includes/oneOf/exists 假绿回归）", () => {
@@ -237,6 +250,52 @@ test("断言求值深比较语义：includes 数组不字符串化、oneOf 非�
     const nullActual = nodeCore.evaluateAssertion({ path: "nothing", startsWith: "x" }, response, runtime);
     assert.equal(nullActual.passed, false);
     assert.equal(nullActual.actual, null);
+});
+
+test("each 逐项断言：子断言数组与相对 path、空数组 every 语义、模板变量与非法形状 fail-fast", () => {
+    const usersResponse = { status: 200, headers: {}, body: { users: [{ id: "a1", age: 20 }, { id: "b2", age: 30 }] }, bodyText: "" };
+
+    // 子断言数组：每项需同时满足全部子断言；子断言 path 相对元素自身
+    const multi = nodeCore.evaluateAssertion(
+        { path: "users", each: [{ path: "id", matches: "^[ab]\\d$" }, { path: "age", gte: 18 }] },
+        usersResponse,
+        runtime
+    );
+    assert.equal(multi.passed, true);
+
+    // 判别「对整体数组求值」vs「逐元素求值」：单个元素违规时必失败
+    const badElement = nodeCore.evaluateAssertion(
+        { path: "users", each: { path: "id", matches: "^[ab]\\d$" } },
+        { ...usersResponse, body: { users: [{ id: "a1" }, { id: "B3" }] } },
+        runtime
+    );
+    assert.equal(badElement.passed, false);
+
+    // 空数组：every 语义恒通过（判别 vs includes/length 等「至少一项」误实现）
+    const emptyList = nodeCore.evaluateAssertion(
+        { path: "users", each: { exists: true } },
+        { ...usersResponse, body: { users: [] } },
+        runtime
+    );
+    assert.equal(emptyList.passed, true);
+
+    // 子断言期望值支持 {{vars.*}} 模板变量
+    const template = nodeCore.evaluateAssertion(
+        { path: "users", each: { path: "age", gte: "{{vars.minAge}}" } },
+        usersResponse,
+        runtimeWith({ minAge: 18 })
+    );
+    assert.equal(template.passed, true);
+
+    // 非数组实际值：断言失败而非抛异常（结果保留原始实际值）
+    const nonArray = nodeCore.evaluateAssertion({ path: "nested", each: { exists: true } }, response, runtime);
+    assert.equal(nonArray.passed, false);
+    assert.deepEqual(nonArray.actual, { flag: true });
+
+    // 非法形状定义期 fail-fast：非对象 / 数组含非对象项 / 子断言缺操作符，均抛 TypeError
+    assert.throws(() => nodeCore.validateAssertion({ path: "users", each: "gte:18" }, {}), TypeError);
+    assert.throws(() => nodeCore.validateAssertion({ path: "users", each: [{ equals: 1 }, "x"] }, {}), TypeError);
+    assert.throws(() => nodeCore.validateAssertion({ path: "users", each: { notAnOperator: 1 } }, {}), TypeError);
 });
 
 test("buildAssertions 契约：step.status 简写与默认 2xx 注入", () => {

@@ -10,7 +10,7 @@
 //   - 不要在本模块手写 runtime 版本，统一复用 version.generated.js 的 VERSION。
 import { VERSION } from "./version.generated.js";
 
-export const CONTRACT_VERSION = 3;
+export const CONTRACT_VERSION = 4;
 
 export const contract = Object.freeze({
     contractVersion: CONTRACT_VERSION,
@@ -42,6 +42,10 @@ export const contract = Object.freeze({
             includes: Object.freeze({
                 description: "数组包含期望项，或字符串包含期望子串",
                 valueType: "any"
+            }),
+            each: Object.freeze({
+                description: "数组逐项断言：实际值必须是数组，expected 为子断言定义对象或其数组，对每个元素套用子断言（子断言 path 相对元素自身，期望值支持模板变量）；任一元素任一子断言失败则整体失败，空数组恒通过，非数组实际值直接失败",
+                valueType: "assertion"
             }),
             matches: Object.freeze({
                 description: "正则表达式匹配字符串化后的实际值",

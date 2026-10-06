@@ -175,6 +175,21 @@ export function validateAssertion(definition, context) {
     if (!operators.length) {
         throw new TypeError(`${prefix}: 必须至少包含一个操作符（${ASSERTION_OPERATORS.join("/")}）`);
     }
+    // each：期望值为子断言定义对象或其数组，递归复用同一 schema 校验，
+    // 让非法子断言（缺操作符/未知键/非对象项）在定义期 fail-fast 并定位到具体项
+    if (definition.each !== undefined) {
+        const eachLabel = `${prefix}: each 的期望值必须是子断言对象或其数组`;
+        if (Array.isArray(definition.each)) {
+            definition.each.forEach((sub, subIndex) => {
+                if (!isPlainObject(sub)) throw new TypeError(`${eachLabel}（第 ${subIndex + 1} 项不是对象）`);
+                validateAssertion(sub, context);
+            });
+        } else if (isPlainObject(definition.each)) {
+            validateAssertion(definition.each, context);
+        } else {
+            throw new TypeError(eachLabel);
+        }
+    }
     return definition;
 }
 
@@ -213,6 +228,19 @@ export function evaluateAssertion(definition, response, runtime, context) {
         passed = passed && (Array.isArray(actual)
             ? actual.some((item) => JSON.stringify(item) === JSON.stringify(expected))
             : String(actual == null ? "" : actual).includes(String(expected)));
+    }
+    // each：数组逐项断言——对实际数组的每个元素套用子断言（对象或其数组），
+    // 以 { body: 元素 } 合成响应复用同一求值管线（子断言 path 相对元素自身）。
+    // every 语义：任一元素任一子断言失败则整体失败，空数组恒通过；
+    // 非数组实际值 / 期望值形状非法直接失败（与 oneOf 非数组口径一致：FAIL 而非抛异常）
+    if (Object.prototype.hasOwnProperty.call(definition, "each")) {
+        expected = resolve(definition.each, runtime);
+        const subDefinitions = Array.isArray(expected) ? expected : isPlainObject(expected) ? [expected] : null;
+        passed = passed && Array.isArray(actual) && subDefinitions !== null
+            && actual.every((element) => {
+                const elementResponse = { status: undefined, headers: {}, body: element, bodyText: "" };
+                return subDefinitions.every((sub) => evaluateAssertion(sub, elementResponse, runtime, context).passed);
+            });
     }
     if (definition.matches !== undefined) {
         expected = resolve(definition.matches, runtime);

@@ -22,7 +22,8 @@ const valueTypeToTs = {
     any: "unknown",
     string: "string",
     array: "unknown[]",
-    finiteNumber: "number"
+    finiteNumber: "number",
+    assertion: "Assertion | Assertion[]"
 };
 
 const operatorMembers = (indent) => Object.entries(contract.assertions.operators).map(([name, spec]) => {

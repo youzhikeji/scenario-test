@@ -316,7 +316,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.5.23";
 
 // src/contract.js
-var CONTRACT_VERSION = 3;
+var CONTRACT_VERSION = 4;
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
   runtimeVersion: VERSION,
@@ -345,6 +345,10 @@ var contract = Object.freeze({
       includes: Object.freeze({
         description: "\u6570\u7EC4\u5305\u542B\u671F\u671B\u9879\uFF0C\u6216\u5B57\u7B26\u4E32\u5305\u542B\u671F\u671B\u5B50\u4E32",
         valueType: "any"
+      }),
+      each: Object.freeze({
+        description: "\u6570\u7EC4\u9010\u9879\u65AD\u8A00\uFF1A\u5B9E\u9645\u503C\u5FC5\u987B\u662F\u6570\u7EC4\uFF0Cexpected \u4E3A\u5B50\u65AD\u8A00\u5B9A\u4E49\u5BF9\u8C61\u6216\u5176\u6570\u7EC4\uFF0C\u5BF9\u6BCF\u4E2A\u5143\u7D20\u5957\u7528\u5B50\u65AD\u8A00\uFF08\u5B50\u65AD\u8A00 path \u76F8\u5BF9\u5143\u7D20\u81EA\u8EAB\uFF0C\u671F\u671B\u503C\u652F\u6301\u6A21\u677F\u53D8\u91CF\uFF09\uFF1B\u4EFB\u4E00\u5143\u7D20\u4EFB\u4E00\u5B50\u65AD\u8A00\u5931\u8D25\u5219\u6574\u4F53\u5931\u8D25\uFF0C\u7A7A\u6570\u7EC4\u6052\u901A\u8FC7\uFF0C\u975E\u6570\u7EC4\u5B9E\u9645\u503C\u76F4\u63A5\u5931\u8D25",
+        valueType: "assertion"
       }),
       matches: Object.freeze({
         description: "\u6B63\u5219\u8868\u8FBE\u5F0F\u5339\u914D\u5B57\u7B26\u4E32\u5316\u540E\u7684\u5B9E\u9645\u503C",
@@ -614,6 +618,19 @@ function validateAssertion(definition, context) {
   if (!operators.length) {
     throw new TypeError(`${prefix}: \u5FC5\u987B\u81F3\u5C11\u5305\u542B\u4E00\u4E2A\u64CD\u4F5C\u7B26\uFF08${ASSERTION_OPERATORS.join("/")}\uFF09`);
   }
+  if (definition.each !== void 0) {
+    const eachLabel = `${prefix}: each \u7684\u671F\u671B\u503C\u5FC5\u987B\u662F\u5B50\u65AD\u8A00\u5BF9\u8C61\u6216\u5176\u6570\u7EC4`;
+    if (Array.isArray(definition.each)) {
+      definition.each.forEach((sub, subIndex) => {
+        if (!isPlainObject(sub)) throw new TypeError(`${eachLabel}\uFF08\u7B2C ${subIndex + 1} \u9879\u4E0D\u662F\u5BF9\u8C61\uFF09`);
+        validateAssertion(sub, context);
+      });
+    } else if (isPlainObject(definition.each)) {
+      validateAssertion(definition.each, context);
+    } else {
+      throw new TypeError(eachLabel);
+    }
+  }
   return definition;
 }
 function assertionActual(definition, response, runtime) {
@@ -646,6 +663,14 @@ function evaluateAssertion(definition, response, runtime, context) {
   if (Object.prototype.hasOwnProperty.call(definition, "includes")) {
     expected = resolve(definition.includes, runtime);
     passed = passed && (Array.isArray(actual) ? actual.some((item) => JSON.stringify(item) === JSON.stringify(expected)) : String(actual == null ? "" : actual).includes(String(expected)));
+  }
+  if (Object.prototype.hasOwnProperty.call(definition, "each")) {
+    expected = resolve(definition.each, runtime);
+    const subDefinitions = Array.isArray(expected) ? expected : isPlainObject(expected) ? [expected] : null;
+    passed = passed && Array.isArray(actual) && subDefinitions !== null && actual.every((element) => {
+      const elementResponse = { status: void 0, headers: {}, body: element, bodyText: "" };
+      return subDefinitions.every((sub) => evaluateAssertion(sub, elementResponse, runtime, context).passed);
+    });
   }
   if (definition.matches !== void 0) {
     expected = resolve(definition.matches, runtime);

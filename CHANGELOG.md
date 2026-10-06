@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### ✨ DSL / Engine
 
+- 断言新增 `each` 操作符：数组元素逐项断言（如 `{ path: "data.list", each: { path: "code", equals: 0 } }`；或传子断言数组要求每项同时满足多条）。此前「列表每一项的 code 都是 0」只能 `matches` 正则 hack 或按索引拆成 N 条断言。子断言 `path` 相对每个元素自身，期望值支持 `{{vars.*}}` 模板变量；任一元素任一子断言失败则整体失败；空数组恒通过；非数组实际值直接失败不抛异常。定义期即校验子断言形状（缺操作符/未知键 fail-fast 定位到场景/步骤/断言序号）。
+- 契约 `contractVersion` 3 → 4（新增能力，保留旧字段）：capabilities JSON、`scenario-test.d.ts`、AI 提示词与场景模式文档同步投影新操作符（d.ts 中 `each` 投射为 `Assertion | Assertion[]` 自引用类型）。
 - 断言新增 `startsWith` / `endsWith` 操作符：前缀/后缀精确断言（如 `{ path: "data.token", startsWith: "Bearer " }`、`{ header: "Content-Disposition", endsWith: ".pdf" }`）。此前前缀/后缀只能用 `matches` 写正则，转义负担大且可读性差。大小写敏感；非字符串实际值先字符串化再比较，null/undefined 实际值视为空串（与 `includes` 字符串分支口径一致）；期望值支持 `{{vars.*}}` 模板变量。
 - 契约 `contractVersion` 2 → 3（新增能力，保留旧字段）：capabilities JSON、`scenario-test.d.ts`、AI 提示词与场景模式文档同步投影新操作符。
 - 修复 d.ts 投射缺漏：`Assertion`/`WhenDefinition` 接口属性现由 contract 操作符表自动投影（此前手写，新增 `startsWith`/`endsWith` 时漏更导致 TS2353）；`generate-dts.mjs` 不再维护第二份操作符名单，新增测试锁定接口属性与 contract 全量一致。
