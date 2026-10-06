@@ -112,7 +112,7 @@ test("对外接入文档使用当前版本且只要求复制一次 Prompt", () =
     assert.match(readme, /SCENARIO_TEST_USE_NPM|-UseNpm/);
     assert.match(readme, /npm install -D @yc_yzkj\/scenario-test/);
     assert.match(readme, /reference path="\.\/\.scenario-test\/scenario-test\.d\.ts"/);
-    const inlineInstallPrompt = readme.match(/## 快速接入[\s\S]*?```text\n([\s\S]*?)```/)?.[1] ?? "";
+    const inlineInstallPrompt = readme.match(/## 快速接入[\s\S]*?```text\r?\n([\s\S]*?)```/)?.[1] ?? "";
     assert.ok(inlineInstallPrompt, "README 快速接入缺少可复制 Prompt");
     assert.match(inlineInstallPrompt, new RegExp(`scenario-test@v${VERSION}/scripts/install\\.ps1`));
     assert.match(inlineInstallPrompt, new RegExp(`scenario-test@v${VERSION}/scripts/install\\.sh`));
