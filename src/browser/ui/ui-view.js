@@ -824,12 +824,27 @@ const workbenchView = (function () {
                 var resLabel = rowOk
                     ? '<span class="text-emerald-600 font-bold flex items-center gap-1"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg> 通过</span>'
                     : '<span class="text-rose-600 font-bold flex items-center gap-1"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"></path></svg> 失败</span>';
+                // each 失败明细：失败断言下逐行列出失败元素（序号 1 基，与断言报错口径一致）
+                // 与该元素上失败子断言的期望/实际值，定位「第几项、哪个子断言错」
+                var detailRows = '';
+                if (!rowOk && Array.isArray(a.detail)) {
+                    detailRows = a.detail.map(function (d) {
+                        return d.assertions.filter(function (sub) { return !sub.passed; }).map(function (sub) {
+                            return '<tr class="bg-rose-50/40">' +
+                                '<td class="px-3.5 py-1.5 font-mono text-[11px] whitespace-nowrap text-rose-600">↳ 第 ' + (d.index + 1) + ' 项</td>' +
+                                '<td class="px-3.5 py-1.5 font-mono text-[11px] text-rose-700">' + esc(stringify(sub.expected)) + '</td>' +
+                                '<td class="px-3.5 py-1.5 font-mono text-[11px] text-rose-900">' + esc(stringify(sub.actual)) + '</td>' +
+                                '<td class="px-3.5 py-1.5"></td>' +
+                            '</tr>';
+                        }).join('');
+                    }).join('');
+                }
                 return '<tr class="' + rowCls + ' transition-colors">' +
                     '<td class="px-3.5 py-2 font-medium ' + (rowOk ? 'text-slate-700' : 'text-rose-800 font-bold') + '">' + esc(a.name) + '</td>' +
                     '<td class="px-3.5 py-2 font-mono text-[11px] ' + (rowOk ? 'text-slate-600' : 'text-rose-700') + '">' + esc(stringify(a.expected)) + '</td>' +
                     '<td class="px-3.5 py-2 font-mono text-[11px] ' + (rowOk ? 'text-slate-600' : 'text-rose-900 font-bold') + '">' + esc(stringify(a.actual)) + '</td>' +
                     '<td class="px-3.5 py-2 text-xs">' + resLabel + '</td>' +
-                '</tr>';
+                '</tr>' + detailRows;
             }).join('');
 
             assertHtml =
@@ -1065,6 +1080,13 @@ const workbenchView = (function () {
                 lines.push('- **断言结果**:');
                 step.assertions.forEach(function (a) {
                     lines.push('  - [' + (a.passed ? 'x' : ' ') + '] ' + a.name);
+                    // each 失败明细：逐行列出失败元素（序号 1 基）与失败子断言的期望/实际值
+                    (a.detail || []).forEach(function (d) {
+                        d.assertions.forEach(function (sub) {
+                            if (sub.passed) return;
+                            lines.push('    - 第 ' + (d.index + 1) + ' 项失败: 期望 ' + stringify(sub.expected) + ',实得 ' + stringify(sub.actual));
+                        });
+                    });
                 });
             }
             var response = step.response || {};

@@ -305,6 +305,62 @@ test("each 逐项断言：子断言数组与相对 path、空数组 every 语义
     assert.throws(() => nodeCore.validateAssertion({ path: "users", each: { notAnOperator: 1 } }, {}), TypeError);
 });
 
+test("each 失败明细：detail 透出失败元素下标与子断言结果，通过/非数组失败不携带", () => {
+    // 失败极性：detail 存在且形状完整——失败元素 0 基下标、该元素值、全部子断言结果（含通过项）
+    const failed = nodeCore.evaluateAssertion(
+        { path: "users", each: [{ path: "id", matches: "^[ab]\\d$" }, { path: "age", gte: 18 }] },
+        { status: 200, headers: {}, body: { users: [{ id: "a1", age: 20 }, { id: "B3", age: 22 }] }, bodyText: "" },
+        runtime
+    );
+    assert.equal(failed.passed, false);
+    assert.ok(Array.isArray(failed.detail), "each 失败时 detail 必须存在");
+    assert.deepEqual(failed.detail.map((d) => d.index), [1], "仅失败元素计入明细，下标 0 基");
+    assert.deepEqual(failed.detail[0].actual, { id: "B3", age: 22 });
+    assert.equal(failed.detail[0].assertions.length, 2, "明细携带该元素全部子断言（含通过项）");
+    const failedSubs = failed.detail[0].assertions.filter((sub) => !sub.passed);
+    assert.equal(failedSubs.length, 1);
+    assert.equal(failedSubs[0].expected, "^[ab]\\d$");
+    assert.equal(failedSubs[0].actual, "B3");
+    assert.equal(JSON.parse(JSON.stringify(failed)).detail[0].index, 1, "明细可 JSON 序列化（报告/工作台透出）");
+
+    // 通过极性：detail 键不存在（而非仅 falsy），既有四字段形状保持不变
+    const ok = nodeCore.evaluateAssertion(
+        { path: "users", each: { path: "age", gte: 18 } },
+        { status: 200, headers: {}, body: { users: [{ id: "a1", age: 20 }] }, bodyText: "" },
+        runtime
+    );
+    assert.equal(ok.passed, true);
+    assert.ok(!("detail" in ok), "通过时不得携带 detail 字段");
+    assert.deepEqual(Object.keys(ok), ["name", "passed", "actual", "expected"], "通过时保持既有四字段形状");
+
+    // 非数组实际值失败：无元素级明细（actual/expected 自身可定位），不挂 detail
+    const nonArray = nodeCore.evaluateAssertion({ path: "code", each: { gte: 0 } }, response, runtime);
+    assert.equal(nonArray.passed, false);
+    assert.ok(!("detail" in nonArray), "非数组失败不携带 detail");
+
+    // 嵌套 each：外层明细指向失败的外层元素，内层失败元素由子结果自身的 detail 描述
+    const nested = nodeCore.evaluateAssertion(
+        { path: "matrix", each: { each: { lt: 5 } } },
+        { status: 200, headers: {}, body: { matrix: [[1, 2], [3, 9]] }, bodyText: "" },
+        runtime
+    );
+    assert.equal(nested.passed, false);
+    assert.deepEqual(nested.detail.map((d) => d.index), [1]);
+    const inner = nested.detail[0].assertions[0];
+    assert.equal(inner.passed, false);
+    assert.deepEqual(inner.detail.map((d) => d.index), [1], "内层失败元素下标由内层 detail 描述");
+    assert.equal(inner.detail[0].actual, 9);
+
+    // buildAssertions 透传：步骤断言数组直接携带明细（报告 JSON 随 results.assertions 流出）
+    const built = nodeCore.buildAssertions(
+        { assertions: [{ path: "users", each: { path: "age", gte: 18 } }] },
+        { status: 200, headers: {}, body: { users: [{ age: 15 }] }, bodyText: "" },
+        runtime
+    );
+    assert.equal(built[0].passed, false);
+    assert.ok(Array.isArray(built[0].detail));
+});
+
 test("buildAssertions 契约：step.status 简写与默认 2xx 注入", () => {
     const steps = [
         { name: "s1", status: 200, assertions: [{ path: "code", equals: 200 }] },

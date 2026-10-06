@@ -181,11 +181,21 @@ export interface ScenarioDefinition {
     failurePolicy?: FailurePolicy;
 }
 
+// each 操作符的失败元素明细：index 为失败元素在数组中的下标（0 基），
+// actual 为该元素值，assertions 为该元素上全部子断言的求值结果
+// （嵌套 each 的子结果同样是 AssertionResult，失败时携带各自的 detail）
+export interface AssertionEachFailure {
+    index: number;
+    actual?: unknown;
+    assertions: AssertionResult[];
+}
+
 export interface AssertionResult {
     name: string;
     passed: boolean;
     actual?: unknown;
     expected?: unknown;
+    detail?: AssertionEachFailure[];
 }
 
 export interface ScenarioStepResult {

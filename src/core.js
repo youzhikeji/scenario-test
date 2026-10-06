@@ -210,6 +210,8 @@ export function evaluateAssertion(definition, response, runtime, context) {
     let actual = assertionActual(definition, response, runtime);
     let expected;
     let passed = true;
+    // each 失败元素明细：[{ index, actual, assertions }]，仅在存在失败元素时挂到结果上
+    let eachFailures = null;
     if (definition.exists !== undefined) {
         expected = Boolean(definition.exists);
         const exists = actual !== undefined && actual !== null && actual !== "";
@@ -236,11 +238,21 @@ export function evaluateAssertion(definition, response, runtime, context) {
     if (Object.prototype.hasOwnProperty.call(definition, "each")) {
         expected = resolve(definition.each, runtime);
         const subDefinitions = Array.isArray(expected) ? expected : isPlainObject(expected) ? [expected] : null;
-        passed = passed && Array.isArray(actual) && subDefinitions !== null
-            && actual.every((element) => {
+        passed = passed && Array.isArray(actual) && subDefinitions !== null;
+        // 遍历全部元素收集失败项（不短路）：透出失败元素下标（0 基）与该元素上全部
+        // 子断言的求值结果，让工作台/报告能定位「第几项、哪个子断言错」；嵌套 each 的
+        // 子结果递归求值，自带各自的 detail。非数组/期望值形状非法的失败不产生元素级
+        // 明细（此时 actual/expected 自身已可定位）；仅在确有失败元素时挂 detail 字段
+        if (passed) {
+            actual.forEach((element, index) => {
                 const elementResponse = { status: undefined, headers: {}, body: element, bodyText: "" };
-                return subDefinitions.every((sub) => evaluateAssertion(sub, elementResponse, runtime, context).passed);
+                const subResults = subDefinitions.map((sub) => evaluateAssertion(sub, elementResponse, runtime, context));
+                if (subResults.some((result) => !result.passed)) {
+                    (eachFailures ??= []).push({ index, actual: element, assertions: subResults });
+                    passed = false;
+                }
             });
+        }
     }
     if (definition.matches !== undefined) {
         expected = resolve(definition.matches, runtime);
@@ -292,7 +304,9 @@ export function evaluateAssertion(definition, response, runtime, context) {
         name: definition.name || definition.path || "断言",
         passed,
         actual,
-        expected
+        expected,
+        // detail 仅在 each 存在失败元素时出现；通过时保持既有四字段形状（旧消费方不受影响）
+        ...(eachFailures ? { detail: eachFailures } : {})
     };
 }
 

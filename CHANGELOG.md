@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### ✨ DSL / Engine
 
+- `each` 断言失败时透出元素级明细：断言结果新增可选 `detail` 字段（`AssertionResult` 既有四字段不变，旧消费方不受影响），列出每个失败元素的下标（0 基）、元素值与该元素上全部子断言的期望/实际值——此前 `each` 失败只显示整个数组 vs 子断言，无从得知第几项、哪个子断言错；嵌套 `each` 的子结果递归携带各自的 `detail`。明细随步骤断言结果流入场景报告 JSON（CLI `run` / 工作台导出）。
+- 工作台断言表格：`each` 失败行下方逐行列出失败元素（「↳ 第 N 项」）与失败子断言的期望/实际值；Markdown 报告导出同步透出「第 N 项失败: 期望 X，实得 Y」。
 - 断言新增 `each` 操作符：数组元素逐项断言（如 `{ path: "data.list", each: { path: "code", equals: 0 } }`；或传子断言数组要求每项同时满足多条）。此前「列表每一项的 code 都是 0」只能 `matches` 正则 hack 或按索引拆成 N 条断言。子断言 `path` 相对每个元素自身，期望值支持 `{{vars.*}}` 模板变量；任一元素任一子断言失败则整体失败；空数组恒通过；非数组实际值直接失败不抛异常。定义期即校验子断言形状（缺操作符/未知键 fail-fast 定位到场景/步骤/断言序号）。
 - 契约 `contractVersion` 3 → 4（新增能力，保留旧字段）：capabilities JSON、`scenario-test.d.ts`、AI 提示词与场景模式文档同步投影新操作符（d.ts 中 `each` 投射为 `Assertion | Assertion[]` 自引用类型）。
 - 断言新增 `startsWith` / `endsWith` 操作符：前缀/后缀精确断言（如 `{ path: "data.token", startsWith: "Bearer " }`、`{ header: "Content-Disposition", endsWith: ".pdf" }`）。此前前缀/后缀只能用 `matches` 写正则，转义负担大且可读性差。大小写敏感；非字符串实际值先字符串化再比较，null/undefined 实际值视为空串（与 `includes` 字符串分支口径一致）；期望值支持 `{{vars.*}}` 模板变量。
