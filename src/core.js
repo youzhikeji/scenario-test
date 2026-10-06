@@ -98,10 +98,32 @@ export function resolve(value, runtime) {
     return resolveString(value, runtime);
 }
 
-export function headerValue(headers, name) {
+function headerKey(headers, name) {
     const target = String(name || "").toLowerCase();
-    const key = Object.keys(headers || {}).find((item) => item.toLowerCase() === target);
+    return Object.keys(headers || {}).find((item) => item.toLowerCase() === target);
+}
+
+export function headerValue(headers, name) {
+    const key = headerKey(headers, name);
     return key === undefined ? undefined : headers[key];
+}
+
+// from:"headers" 配 path 的取值：首段按 HTTP 头名大小写不敏感匹配（HTTP/2 响应头全小写），
+// 与 header 简写（headerValue）口径一致；首段之后的子路径维持 getByPath 既有语义（在头值上取子路径）。
+// 通用路径导航（from:"response" / 模板 lastResponse.headers.*）不经过此处，保持精确匹配。
+export function getHeaderByPath(headers, valuePath) {
+    if (!valuePath) return headers;
+    const text = String(valuePath);
+    const match = text.match(/[^.\[\]]+|\[(?:-?\d+|".*?"|'.*?')\]/);
+    if (!match) return getByPath(headers, text);
+    const token = match[0];
+    const key = token.startsWith("[")
+        ? token.slice(1, -1).replace(/^['"]|['"]$/g, "")
+        : token;
+    const matched = headerKey(headers, key);
+    if (matched === undefined) return undefined;
+    const rest = text.slice(token.length);
+    return rest ? getByPath(headers[matched], rest) : headers[matched];
 }
 
 export function hasHeader(headers, name) {
@@ -199,7 +221,7 @@ function assertionActual(definition, response, runtime) {
     if (definition.target === "duration") return response && typeof response === "object" ? response.durationMs : undefined;
     if (definition.header) return headerValue(response.headers, definition.header);
     if (definition.from === "vars") return definition.path ? getByPath(runtime.vars, definition.path) : runtime.vars;
-    if (definition.from === "headers") return definition.path ? getByPath(response.headers, definition.path) : response.headers;
+    if (definition.from === "headers") return definition.path ? getHeaderByPath(response.headers, definition.path) : response.headers;
     if (definition.from === "bodyText") return response.bodyText;
     return definition.path ? getByPath(response.body, definition.path) : response.body;
 }
@@ -350,7 +372,10 @@ export function applyExtract(step, response, runtime) {
         else if (definition.from === "headers") source = response.headers;
         else if (definition.from === "bodyText") source = response.bodyText;
         else if (definition.from === "response") source = response;
-        const value = definition.path ? getByPath(source, definition.path) : source;
+        // from:"headers" 的 path 首段按头名大小写不敏感匹配（getHeaderByPath）；其余来源维持 getByPath
+        const value = definition.path
+            ? (definition.from === "headers" ? getHeaderByPath(source, definition.path) : getByPath(source, definition.path))
+            : source;
         if (value === undefined) {
             if (definition.required === true) {
                 failures.push({

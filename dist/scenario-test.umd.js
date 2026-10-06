@@ -275,6 +275,7 @@ var ScenarioTest = (() => {
     getAdapter: () => getAdapter,
     getByPath: () => getByPath,
     getConfig: () => getConfig,
+    getHeaderByPath: () => getHeaderByPath,
     getScenario: () => getScenario,
     hasHeader: () => hasHeader,
     headerValue: () => headerValue,
@@ -544,10 +545,25 @@ var ScenarioTest = (() => {
     }
     return resolveString(value, runtime);
   }
-  function headerValue(headers, name) {
+  function headerKey(headers, name) {
     const target = String(name || "").toLowerCase();
-    const key = Object.keys(headers || {}).find((item) => item.toLowerCase() === target);
+    return Object.keys(headers || {}).find((item) => item.toLowerCase() === target);
+  }
+  function headerValue(headers, name) {
+    const key = headerKey(headers, name);
     return key === void 0 ? void 0 : headers[key];
+  }
+  function getHeaderByPath(headers, valuePath) {
+    if (!valuePath) return headers;
+    const text = String(valuePath);
+    const match = text.match(/[^.\[\]]+|\[(?:-?\d+|".*?"|'.*?')\]/);
+    if (!match) return getByPath(headers, text);
+    const token = match[0];
+    const key = token.startsWith("[") ? token.slice(1, -1).replace(/^['"]|['"]$/g, "") : token;
+    const matched = headerKey(headers, key);
+    if (matched === void 0) return void 0;
+    const rest = text.slice(token.length);
+    return rest ? getByPath(headers[matched], rest) : headers[matched];
   }
   function hasHeader(headers, name) {
     return headerValue(headers, name) !== void 0;
@@ -634,7 +650,7 @@ var ScenarioTest = (() => {
     if (definition.target === "duration") return response && typeof response === "object" ? response.durationMs : void 0;
     if (definition.header) return headerValue(response.headers, definition.header);
     if (definition.from === "vars") return definition.path ? getByPath(runtime.vars, definition.path) : runtime.vars;
-    if (definition.from === "headers") return definition.path ? getByPath(response.headers, definition.path) : response.headers;
+    if (definition.from === "headers") return definition.path ? getHeaderByPath(response.headers, definition.path) : response.headers;
     if (definition.from === "bodyText") return response.bodyText;
     return definition.path ? getByPath(response.body, definition.path) : response.body;
   }
@@ -756,7 +772,7 @@ var ScenarioTest = (() => {
       else if (definition.from === "headers") source = response.headers;
       else if (definition.from === "bodyText") source = response.bodyText;
       else if (definition.from === "response") source = response;
-      const value = definition.path ? getByPath(source, definition.path) : source;
+      const value = definition.path ? definition.from === "headers" ? getHeaderByPath(source, definition.path) : getByPath(source, definition.path) : source;
       if (value === void 0) {
         if (definition.required === true) {
           failures.push({

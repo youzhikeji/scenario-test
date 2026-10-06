@@ -413,6 +413,47 @@ test("extract 契约：from 各来源 + status/header 简写 + required 语义",
     }
 });
 
+test("from:headers 配 path：头名大小写不敏感（与 header 简写口径一致）", () => {
+    const ctx = { stepName: "头名大小写" };
+    // HTTP/2 响应头全小写：path 任意大小写都应命中同一头（fixture 头键为 X-Total / Content-Type）
+    const lower = nodeCore.evaluateAssertion({ from: "headers", path: "x-total", equals: "42" }, response, runtime, ctx);
+    assert.equal(lower.passed, true);
+    const upper = nodeCore.evaluateAssertion({ from: "headers", path: "X-TOTAL", exists: true }, response, runtime, ctx);
+    assert.equal(upper.passed, true);
+    // 判别 1：不实现（仍大小写敏感）时 x-total 取不到值，上行必失败
+    // 判别 2：不存在的头不得因大小写折叠而误命中
+    const missing = nodeCore.evaluateAssertion({ from: "headers", path: "x-missing", exists: false }, response, runtime, ctx);
+    assert.equal(missing.passed, true);
+    // 判别 3：大小写折叠仅限头名——body 路径仍精确匹配（body 键为 code，Code 必须取不到）
+    const bodyCase = nodeCore.evaluateAssertion({ path: "Code", exists: true }, response, runtime, ctx);
+    assert.equal(bodyCase.passed, false);
+});
+
+test("extract from:headers 配 path：头名大小写不敏感，通用 response 路径仍精确匹配", () => {
+    const target = runtimeWith();
+    const result = nodeCore.applyExtract(
+        {
+            extract: [
+                { name: "lower", from: "headers", path: "x-total" },
+                { name: "mixed", from: "headers", path: "CoNtEnT-tYpE" },
+                { name: "deepOnValue", from: "headers", path: "X-TOTAL.length" },
+                { name: "stillMissing", from: "headers", path: "X-Missing" },
+                { name: "responseNavStillExact", from: "response", path: "headers.x-total" }
+            ]
+        },
+        response,
+        target
+    );
+    assert.equal(target.vars.lower, "42");
+    assert.equal(target.vars.mixed, "application/json");
+    assert.equal(target.vars.deepOnValue, 2);
+    assert.equal(target.vars.stillMissing, undefined);
+    // 边界：from:"response" 是通用路径导航，不套用头名折叠（本轮仅修正 from:"headers" 专用口径）
+    assert.equal(target.vars.responseNavStillExact, undefined);
+    assert.equal(result.failures.length, 0);
+    assert.equal(result.warnings.length, 2); // stillMissing + responseNavStillExact
+});
+
 test("ui-utils：copyText 在无 DOM 的 Node 环境中返回 false", async () => {
     assert.equal(await copyText("测试内容"), false);
 });
