@@ -1,36 +1,38 @@
 # NEXT_STEPS — 优化迭代交接点
 
-## 第 2 轮（2026-10-06，提交 e6e17cc）
+## 第 3 轮（2026-10-06）
 
 ### 本轮完成
 
-- **选题**：候选 A（DSL 能力扩展）——断言新增 `each` 操作符（数组元素逐项断言），采纳第 1 轮交接的首选建议。
+- **选题**：候选 B——失败诊断增强（采纳第 2 轮交接的首选建议）：`each` 断言失败时透出失败元素索引与该元素子断言结果。
 - **实现**：
-  - `src/contract.js`：operators 在 `includes` 后新增 `each`（valueType: `"assertion"`），`contractVersion` 3 → 4，旧字段全保留。description 措辞注意避免花括号（见遗留事项第 2 条）。
-  - `src/core.js` 两处：`validateAssertion` 递归校验子断言形状（非对象 / 数组含非对象项 / 子断言缺操作符 → 定义期抛 TypeError，报错带场景/步骤/断言上下文）；`evaluateAssertion` 新增求值分支——以 `{ body: 元素 }` 合成响应**递归复用同一求值管线**，子断言 `path` 相对元素自身；every 语义（任一元素任一子断言失败即整体失败），空数组恒通过，非数组实际值 / 期望值形状非法 → FAIL 不抛异常（与 `oneOf` 非数组口径一致）。
-  - `scripts/generate-dts.mjs`：valueTypeToTs 新增 `assertion → "Assertion | Assertion[]"` 自引用映射（TS 接口自引用合法）。
-- **测试**：`tests/parity.test.js` 极性矩阵 +6 行（两个判别用例：`each {gt:15}` 若被误实现为 includes 的 some 语义必失败；`each` 对非数组实际值若被误实现为 gte 必失败）+ 新增独立测试块（子断言数组+相对 path、逐元素求值判别、空数组 every 语义、子断言期望值模板变量、非数组失败且保留原始 actual、非法形状定义期抛 TypeError ×3）。
-- **验证**：`npm run check` 全绿（build 投影 contract v4 到 capabilities JSON / d.ts / AI 提示词；tests 181/181 通过）。
-- **文档**：CHANGELOG.md `[Unreleased]` 新增两条（each 操作符 + contractVersion 3→4），面向使用者写。
+  - `src/core.js` `evaluateAssertion` 的 each 分支由「短路 every」改为「全量遍历收集失败元素」：结果对象仅在**确有失败元素**时挂 `detail` 字段（`[{ index, actual, assertions }]`，index 为 0 基下标，assertions 为该元素上**全部**子断言求值结果、含通过项）；通过时保持既有四字段形状（键都不存在）。嵌套 each 的子结果递归求值、自带各自 detail。非数组/期望值形状非法的失败不产生元素级明细（actual/expected 自身可定位）。passed 语义与旧实现逐点等价（空数组通过、every 语义、非数组 FAIL 不抛异常）。
+  - `scripts/generate-dts.mjs`：`AssertionResult` 新增 `detail?: AssertionEachFailure[]`，新增 `AssertionEachFailure` 接口（`{ index, actual?, assertions: AssertionResult[] }`）。接口体内无花括号字面量，规避 dts.test.js `[^}]*` 块扫描截断雷。**contract.js 未动**（断言结果形状不是 DSL 输入，不在契约投射范围），contractVersion 保持 4。
+  - 引擎/CLI 零改动：`engine.js:549` 原样引用 `buildAssertions` 结果，`detail` 随 `stepResult.assertions` 流入场景报告 JSON（CLI `run` 输出、工作台导出摘要 `assertions: item.assertions || []` 均直接引用原数组）。
+  - 工作台 `src/browser/ui/ui-view.js` 两处：断言表格失败行下方插入明细子行（「↳ 第 N 项」1 基展示，与 validateAssertion 报错口径一致 + 失败子断言 expected/actual，四列对齐）；Markdown 报告导出在失败断言下逐行「第 N 项失败: 期望 X，实得 Y」。
+- **测试**：`tests/parity.test.js` 新增独立测试块锁形状与极性——失败时 detail 存在且 `{index/actual/assertions}` 形状完整（仅失败元素计入、0 基、含通过子断言、可 JSON 序列化）；**通过时 `!("detail" in ok)` 且 `Object.keys` 恰为四字段**；非数组失败不挂 detail；嵌套 each 外层 detail 指向外层元素下标、内层失败由子结果自身 detail 描述；`buildAssertions` 透传。
+- **验证**：`npm run check` 全绿，**182/182**（181 基线 + 本轮 1 块）。
 
 ### 本轮遗留事项
 
-1. **TDD「红」阶段未单独演示**：为守住取证预算（本轮取证 16 次，超任务书 15 上限 1 次——首跑 check 抓到下述 dts 投射冲突，修复后必须复跑），实现与测试同批落地。补偿口径与第 1 轮一致：极性用例显式锁定期望值——`each` 未实现时 `validateAssertion` 对矩阵用例抛「未知键 each」，误实现为 includes/gte 时判别用例必失败。
-2. **踩坑（务必传给下轮）**：`tests/dts.test.js` 用 `[^}]*` 正则扫描 Assertion/WhenDefinition 接口块，**contract 操作符 description 不能含 `}`**（如 `{{vars.*}}` 字样会导致扫描截断、dts 测试失败）。本轮已把描述改为「期望值支持模板变量」。下轮写 description 时避免花括号；或评估把该测试正则改为可跨 `}` 的形式（本轮未做，避免扩散改动面）。
-3. **each 失败定位信息未透出**：断言结果仍为 `{ name, passed, actual, expected }` 四字段，each 失败时 actual=原数组、expected=子断言，看不到第几项错。诊断缺口随数组断言能力放大——见下轮首选建议。
-4. 全绿基线现为 **181/181**（较第 1 轮交接记录的 179 多 2：本轮新增 1 个独立 each 测试块，另 1 处差异源自第 1 轮 dts 一致性测试提交，交接时未更新计数）。
-5. shell 权限沿用第 1 轮结论：`git` 直接放行；`node`/`npm` 需 `dangerouslyDisableSandbox`。
+1. **取证 17 次，超软闸 2 次，自报**：git log/定位消费方/测试风格等取证 15 次后，追加 `npm run check`（构建+全量测试为验收必需）与 CHANGELOG 头部格式确认各 1 次。无冗余复跑（check 一次通过）。另有 2 次 PowerShell/Bash 权限审批失败重试（沙箱放行方式切换，非取证内容）。
+2. 工作台明细行为无浏览器自动化覆盖（browser.test.mjs 不渲染断言表失败明细）：ui-view 改动为纯字符串拼接，已由 check 的 esbuild 打包验证语法。下轮若做 UI 线可补 Playwright 用例。
+3. 组合断言中 each **之前**的操作符已失败时，each 明细不收集（与旧实现的 `&&` 短路口径一致）；each 通常独用，未视为缺陷。
+4. CLI 人类可读输出（非 JSON）未单列 detail 行：报告 JSON 已透出，文本格式化留待「CLI 失败 diff 视图」整体做更有价值。
+5. 全绿基线现为 **182/182**。shell 权限沿用旧结论：`git` 直接放行；`node`/`npm` 需 `dangerouslyDisableSandbox`（PowerShell 管道形式会被权限层拆分拦截，用 Bash + tail）。
 
 ### 下一轮建议
 
-**首选：候选 B — 断言失败诊断增强（工作台/CLI 失败 diff 视图，含 each 失败元素定位）**
+**首选：候选 A 提取线——`from: "headers"` 配 `path` 大小写不敏感取值**（第 2 轮已论证的真实踩坑点：HTTP/2 响应头全小写，`{ from: "headers", path: "X-Total" }` 取不到值）
 
 理由：
-1. 数组断言面已凑齐（`includes`/`length`/`each`），但 each 失败只显示整个数组 vs 子断言，不知道第几项、哪个子断言错——本轮新能力的诊断收尾，价值直接。
-2. 实现纯展示层 + `AssertionResult` **可选**新字段（如 `detail`/`message`），不动 contract 操作符与引擎语义，风险低、兼容旧消费方；工作台（browser/ui）与 CLI 格式化器同步消费。
-3. 备选：候选 A 提取线——`from: "headers"` 配 `path` 直接路径取值大小写敏感（HTTP/2 小写头真实踩坑点；注意 `extract.header` 经 `headerValue()` 已忽略大小写，两者口径不同，改前先写判别测试锁口径）；或造数线 UUID/时间戳偏移。
+1. 线索已探明：`extract.header` 经 `headerValue()` 已忽略大小写，而 `from: "headers"` 断言/提取走 `getByPath` 精确匹配——两者口径不一致是真缺陷。改前先写判别测试锁口径（headers 对象按 RFC 大小写不敏感）。
+2. 改动面小（`core.js` 的 `assertionActual`/`applyExtract` 中 from:headers 分支），风险低。
+3. 备选：候选 B 收尾——CLI 文本输出/`doctor` 消费 detail 做结构化失败 diff（引擎侧数据已就绪）；或造数线 UUID/时间戳偏移（`now + 8d`）。
+4. 若做 headers 口径修正：涉及既有语义变化（原先精确匹配的行为改变），须在 CHANGELOG 显著说明并在 dts/文档同步，评估是否递增 contractVersion（倾向递增：契约描述的行为口径变化）。
 
 ### 硬边界提醒（对下一轮）
 
 - `dist/` 与 `*.generated.js` 勿手改，改契约后必须 `npm run build`（`npm run check` 已含 build）。
+- contract 操作符 description 不能含 `}` 字符；d.ts 接口体内同样避免嵌套花括号（`[^}]*` 正则扫描雷，第 2、3 轮均按此规避成功）。
 - 版本号不动，CHANGELOG 只用 `## [Unreleased]`；所有提交留本地，不 push。
