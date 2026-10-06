@@ -427,6 +427,9 @@ test("from:headers 配 path：头名大小写不敏感（与 header 简写口径
     // 判别 3：大小写折叠仅限头名——body 路径仍精确匹配（body 键为 code，Code 必须取不到）
     const bodyCase = nodeCore.evaluateAssertion({ path: "Code", exists: true }, response, runtime, ctx);
     assert.equal(bodyCase.passed, false);
+    // 回归：前导点路径（getByPath 接受 .key 形式）在头名折叠后剩余路径定位须正确
+    assert.equal(nodeCore.getHeaderByPath(response.headers, ".x-total"), "42");
+    assert.equal(nodeCore.getHeaderByPath(response.headers, ".X-TOTAL.length"), 2);
 });
 
 test("extract from:headers 配 path：头名大小写不敏感，通用 response 路径仍精确匹配", () => {

@@ -122,7 +122,7 @@ export function getHeaderByPath(headers, valuePath) {
         : token;
     const matched = headerKey(headers, key);
     if (matched === undefined) return undefined;
-    const rest = text.slice(token.length);
+    const rest = text.slice(match.index + token.length);
     return rest ? getByPath(headers[matched], rest) : headers[matched];
 }
 
