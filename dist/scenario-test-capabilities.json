@@ -1,7 +1,7 @@
 {
   "schema": "scenario-test-capabilities",
   "version": "0.5.23",
-  "contractVersion": 2,
+  "contractVersion": 3,
   "assertions": {
     "operators": {
       "exists": {
@@ -27,6 +27,14 @@
       "oneOf": {
         "description": "实际值属于期望候选数组之一（深比较）",
         "valueType": "array"
+      },
+      "startsWith": {
+        "description": "字符串化后的实际值以期望值开头（大小写敏感；null/undefined 实际值视为空串）",
+        "valueType": "string"
+      },
+      "endsWith": {
+        "description": "字符串化后的实际值以期望值结尾（大小写敏感；null/undefined 实际值视为空串）",
+        "valueType": "string"
       },
       "length": {
         "description": "数组元素个数 / 字符串字符数 / 对象键数等于期望值；非容器类型（number/boolean/null）直接失败",

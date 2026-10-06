@@ -85,6 +85,15 @@ const assertionCases = [
     { path: "total", lte: 9 },
     { path: "total", gt: "9" },
     { path: "total", gt: "{{vars.min}}" },
+    // startsWith / endsWith：前缀/后缀（大小写敏感，非字符串实际值先字符串化，null/undefined 视为空串）
+    { path: "code", startsWith: "2" },
+    { path: "code", startsWith: "{{vars.expectedStatus}}" },
+    { path: "code", startsWith: "3" },
+    { header: "content-type", startsWith: "Application" },
+    { path: "total", endsWith: "0" },
+    { path: "code", endsWith: "{{vars.expectedStatus}}" },
+    { path: "total", endsWith: "1" },
+    { path: "missing", startsWith: "" },
     // target / header / from 来源
     { target: "status", equals: 200 },
     { target: "status", equals: 201 },
@@ -144,6 +153,14 @@ const expectedPassed = [
     false, // lte 9
     false, // gt "9" 字符串不参与数值比较
     true,  // gt {{min}}
+    true,  // startsWith "2"（数字 200 字符串化）
+    true,  // startsWith {{expectedStatus}} 模板变量
+    false, // startsWith "3" 前缀不符
+    false, // startsWith "Application" 大小写敏感
+    true,  // endsWith "0"（数字 10 字符串化）
+    true,  // endsWith {{expectedStatus}} 模板变量
+    false, // endsWith "1" 后缀不符
+    true,  // missing 路径 null/undefined 实际值视为空串（与 includes 口径一致）
     true,  // target:status equals 200
     false, // target:status equals 201
     true,  // header X-Total equals "42"

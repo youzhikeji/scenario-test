@@ -228,6 +228,14 @@ export function evaluateAssertion(definition, response, runtime, context) {
         passed = passed && Array.isArray(expected)
             && expected.some((item) => JSON.stringify(item) === JSON.stringify(actual));
     }
+    // startsWith/endsWith：字符串化后比较，口径与 includes 字符串分支一致
+    // （null/undefined 实际值视为空串；大小写敏感，无隐式类型转换放行）
+    for (const op of ["startsWith", "endsWith"]) {
+        if (!Object.prototype.hasOwnProperty.call(definition, op)) continue;
+        expected = resolve(definition[op], runtime);
+        const text = String(actual == null ? "" : actual);
+        passed = passed && (op === "startsWith" ? text.startsWith(String(expected)) : text.endsWith(String(expected)));
+    }
     // length：比较所用实际值为容器长度（数组元素数/字符串字符数/对象键数），
     // 结果里的 actual 也回写为该长度，让断言表直接可读；非容器类型直接失败（与数值操作符口径一致）
     if (Object.prototype.hasOwnProperty.call(definition, "length")) {

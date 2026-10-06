@@ -241,7 +241,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.5.23";
 
 // src/contract.js
-var CONTRACT_VERSION = 2;
+var CONTRACT_VERSION = 3;
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
   runtimeVersion: VERSION,
@@ -278,6 +278,14 @@ var contract = Object.freeze({
       oneOf: Object.freeze({
         description: "\u5B9E\u9645\u503C\u5C5E\u4E8E\u671F\u671B\u5019\u9009\u6570\u7EC4\u4E4B\u4E00\uFF08\u6DF1\u6BD4\u8F83\uFF09",
         valueType: "array"
+      }),
+      startsWith: Object.freeze({
+        description: "\u5B57\u7B26\u4E32\u5316\u540E\u7684\u5B9E\u9645\u503C\u4EE5\u671F\u671B\u503C\u5F00\u5934\uFF08\u5927\u5C0F\u5199\u654F\u611F\uFF1Bnull/undefined \u5B9E\u9645\u503C\u89C6\u4E3A\u7A7A\u4E32\uFF09",
+        valueType: "string"
+      }),
+      endsWith: Object.freeze({
+        description: "\u5B57\u7B26\u4E32\u5316\u540E\u7684\u5B9E\u9645\u503C\u4EE5\u671F\u671B\u503C\u7ED3\u5C3E\uFF08\u5927\u5C0F\u5199\u654F\u611F\uFF1Bnull/undefined \u5B9E\u9645\u503C\u89C6\u4E3A\u7A7A\u4E32\uFF09",
+        valueType: "string"
       }),
       length: Object.freeze({
         description: "\u6570\u7EC4\u5143\u7D20\u4E2A\u6570 / \u5B57\u7B26\u4E32\u5B57\u7B26\u6570 / \u5BF9\u8C61\u952E\u6570\u7B49\u4E8E\u671F\u671B\u503C\uFF1B\u975E\u5BB9\u5668\u7C7B\u578B\uFF08number/boolean/null\uFF09\u76F4\u63A5\u5931\u8D25",
@@ -577,6 +585,12 @@ function evaluateAssertion(definition, response, runtime, context) {
   if (definition.oneOf !== void 0) {
     expected = resolve(definition.oneOf, runtime);
     passed = passed && Array.isArray(expected) && expected.some((item) => JSON.stringify(item) === JSON.stringify(actual));
+  }
+  for (const op of ["startsWith", "endsWith"]) {
+    if (!Object.prototype.hasOwnProperty.call(definition, op)) continue;
+    expected = resolve(definition[op], runtime);
+    const text = String(actual == null ? "" : actual);
+    passed = passed && (op === "startsWith" ? text.startsWith(String(expected)) : text.endsWith(String(expected)));
   }
   if (Object.prototype.hasOwnProperty.call(definition, "length")) {
     expected = resolve(definition.length, runtime);

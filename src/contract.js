@@ -10,7 +10,7 @@
 //   - 不要在本模块手写 runtime 版本，统一复用 version.generated.js 的 VERSION。
 import { VERSION } from "./version.generated.js";
 
-export const CONTRACT_VERSION = 2;
+export const CONTRACT_VERSION = 3;
 
 export const contract = Object.freeze({
     contractVersion: CONTRACT_VERSION,
@@ -50,6 +50,14 @@ export const contract = Object.freeze({
             oneOf: Object.freeze({
                 description: "实际值属于期望候选数组之一（深比较）",
                 valueType: "array"
+            }),
+            startsWith: Object.freeze({
+                description: "字符串化后的实际值以期望值开头（大小写敏感；null/undefined 实际值视为空串）",
+                valueType: "string"
+            }),
+            endsWith: Object.freeze({
+                description: "字符串化后的实际值以期望值结尾（大小写敏感；null/undefined 实际值视为空串）",
+                valueType: "string"
             }),
             length: Object.freeze({
                 description: "数组元素个数 / 字符串字符数 / 对象键数等于期望值；非容器类型（number/boolean/null）直接失败",
