@@ -24,7 +24,7 @@
 2. 与既有 `length`（条数）/`includes`（单项包含）组成完整数组断言面，能力矩阵自然收口。
 3. 实现落点与本轮同构：contract.js 加操作符（`contractVersion` 3 → 4）+ core.js 求值（expected 为断言定义对象或其数组，对每个元素套用子断言）+ parity 极性用例 + 投影自动化。预计与本轮工作量相当，单轮可完成。
 
-备选：候选 A 提取线——响应头大小写不敏感取值（`extract.header` 目前大小写敏感，HTTP/2 小写头是真实踩坑点）。
+备选：候选 A 提取线——`from: "headers"` 配 `path` 的直接路径取值大小写敏感（HTTP/2 小写头是真实踩坑点；注意 `extract.header` 本身经 `headerValue()` 已忽略大小写，两者口径不同）。
 
 ### 硬边界提醒（对下一轮）
 
