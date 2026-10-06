@@ -87,6 +87,9 @@ test("d.ts Assertion/WhenDefinition 接口属性必须覆盖 contract 全部断�
     // valueType → TS 类型抽查：startsWith/endsWith 必须是 string（联合类型有而接口漏声明的回归即在此暴露）
     assert.match(dts, /export interface Assertion \{[^}]*startsWith\?: string;/s);
     assert.match(dts, /export interface WhenDefinition \{[^}]*startsWith\?: string;/s);
+    // valueType → TS 类型抽查：each 的 assertion 映射（valueTypeToTs 表漏 assertion 键时构建即报错，此处锁生成结果形状）
+    assert.match(dts, /export interface Assertion \{[^}]*each\?: Assertion \| Assertion\[\];/s);
+    assert.match(dts, /export interface WhenDefinition \{[^}]*each\?: Assertion \| Assertion\[\];/s);
 });
 
 test("d.ts 声明的公共导出符号（value）必须存在于 ESM 与 CJS 实际导出中（无幻影符号）", () => {

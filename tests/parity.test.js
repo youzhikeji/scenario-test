@@ -24,7 +24,8 @@ const response = {
         empty: "",
         text: "abc",
         nothing: null,
-        nested: { flag: true }
+        nested: { flag: true },
+        matrix: [[1, 2], [3, 4]]
     },
     bodyText: JSON.stringify({ code: 200 })
 };
@@ -129,7 +130,11 @@ const assertionCases = [
     { path: "list", each: { gt: 15 } },
     { path: "list", each: { equals: 10 } },
     { path: "code", each: { gte: 0 } },
-    { path: "missing", each: { exists: true } }
+    { path: "missing", each: { exists: true } },
+    // 嵌套 each：外层数组元素仍是数组，内层逐项断言；matrix=[[1,2],[3,4]]
+    { path: "matrix", each: { each: { lt: 5 } } },
+    // 嵌套 each 判别：内层条件对最后一个元素必失败（内层 some 语义或外层 any 语义均会假绿）
+    { path: "matrix", each: { each: { gt: 3 } } }
 ];
 
 // 每个用例的期望 passed（与 assertionCases 顺序一一对应）。
@@ -209,7 +214,9 @@ const expectedPassed = [
     false, // each {gt:15} 判别 vs includes：some 语义会因 20>15 通过，逐项语义必失败
     false, // each {equals:10} 第二项 20 不等
     false, // each 对非数组实际值（code=200）必失败——判别 vs gte（200>=0 会通过）
-    false  // each 对 missing（undefined 非数组）必失败
+    false, // each 对 missing（undefined 非数组）必失败
+    true,  // 嵌套 each {lt:5} 对 matrix=[[1,2],[3,4]]：全部元素通过
+    false  // 嵌套 each {gt:3} 对 matrix：内层 [1,2] 首元素 1 不满足，判别内外层 any/some 语义假绿
 ];
 
 test("断言求值极性：全部操作符逐条锁定 passed（含 includes/oneOf/exists 假绿回归）", () => {
