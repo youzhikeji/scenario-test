@@ -7,7 +7,7 @@
 - **选题**：候选 B——失败诊断增强（采纳第 2 轮交接的首选建议）：`each` 断言失败时透出失败元素索引与该元素子断言结果。
 - **实现**：
   - `src/core.js` `evaluateAssertion` 的 each 分支由「短路 every」改为「全量遍历收集失败元素」：结果对象仅在**确有失败元素**时挂 `detail` 字段（`[{ index, actual, assertions }]`，index 为 0 基下标，assertions 为该元素上**全部**子断言求值结果、含通过项）；通过时保持既有四字段形状（键都不存在）。嵌套 each 的子结果递归求值、自带各自 detail。非数组/期望值形状非法的失败不产生元素级明细（actual/expected 自身可定位）。passed 语义与旧实现逐点等价（空数组通过、every 语义、非数组 FAIL 不抛异常）。
-  - `scripts/generate-dts.mjs`：`AssertionResult` 新增 `detail?: AssertionEachFailure[]`，新增 `AssertionEachFailure` 接口（`{ index, actual?, assertions: AssertionResult[] }`）。接口体内无花括号字面量，规避 dts.test.js `[^}]*` 块扫描截断雷。**contract.js 未动**（断言结果形状不是 DSL 输入，不在契约投射范围），contractVersion 保持 4。
+  - `scripts/generate-dts.mjs`：`AssertionResult` 新增 `detail?: AssertionEachFailure[]`，新增 `AssertionEachFailure` 接口（`{ index, actual?, assertions: AssertionResult[] }`）。接口体内无花括号字面量（注：第 3 轮审查勘误——dts.test.js 的 `[^}]*` 正则只扫 Assertion/WhenDefinition 两接口，并不扫本接口，此约束实际未生效；保留无花括号写法作习惯性防御，勿再作为理由引用）。**contract.js 未动**（断言结果形状不是 DSL 输入，不在契约投射范围），contractVersion 保持 4。
   - 引擎/CLI 零改动：`engine.js:549` 原样引用 `buildAssertions` 结果，`detail` 随 `stepResult.assertions` 流入场景报告 JSON（CLI `run` 输出、工作台导出摘要 `assertions: item.assertions || []` 均直接引用原数组）。
   - 工作台 `src/browser/ui/ui-view.js` 两处：断言表格失败行下方插入明细子行（「↳ 第 N 项」1 基展示，与 validateAssertion 报错口径一致 + 失败子断言 expected/actual，四列对齐）；Markdown 报告导出在失败断言下逐行「第 N 项失败: 期望 X，实得 Y」。
 - **测试**：`tests/parity.test.js` 新增独立测试块锁形状与极性——失败时 detail 存在且 `{index/actual/assertions}` 形状完整（仅失败元素计入、0 基、含通过子断言、可 JSON 序列化）；**通过时 `!("detail" in ok)` 且 `Object.keys` 恰为四字段**；非数组失败不挂 detail；嵌套 each 外层 detail 指向外层元素下标、内层失败由子结果自身 detail 描述；`buildAssertions` 透传。
