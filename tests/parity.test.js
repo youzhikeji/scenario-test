@@ -22,6 +22,8 @@ const response = {
         list: [10, 20],
         obj: { x: 1 },
         empty: "",
+        text: "abc",
+        nothing: null,
         nested: { flag: true }
     },
     bodyText: JSON.stringify({ code: 200 })
@@ -89,10 +91,23 @@ const assertionCases = [
     { path: "code", startsWith: "2" },
     { path: "code", startsWith: "{{vars.expectedStatus}}" },
     { path: "code", startsWith: "3" },
+    // 判别用例："abc" 含 "b" 但非前缀——startsWith 被误实现为 includes 时此用例必失败
+    { path: "text", startsWith: "b" },
     { header: "content-type", startsWith: "Application" },
+    // 空串期望：空前缀/空后缀恒真
+    { path: "text", startsWith: "" },
+    { path: "text", endsWith: "" },
+    // 缺失模板变量解析为空串 → 空前缀恒真（而非 "undefined" 字样导致失败）
+    { path: "text", startsWith: "{{vars.missing}}" },
+    // 显式 null 实际值：视为空串参与比较
+    { path: "nothing", startsWith: "" },
+    { path: "nothing", startsWith: "x" },
+    { path: "nothing", endsWith: "" },
     { path: "total", endsWith: "0" },
     { path: "code", endsWith: "{{vars.expectedStatus}}" },
     { path: "total", endsWith: "1" },
+    // 大小写敏感：后缀大写 "JSON" 对实际值 "application/json" 必失败
+    { header: "content-type", endsWith: "JSON" },
     { path: "missing", startsWith: "" },
     // target / header / from 来源
     { target: "status", equals: 200 },
@@ -156,10 +171,18 @@ const expectedPassed = [
     true,  // startsWith "2"（数字 200 字符串化）
     true,  // startsWith {{expectedStatus}} 模板变量
     false, // startsWith "3" 前缀不符
+    false, // startsWith "b" 对 "abc"：含但非前缀（判别 startsWith 被顶替为 includes）
     false, // startsWith "Application" 大小写敏感
+    true,  // startsWith "" 空串期望恒真
+    true,  // endsWith "" 空串期望恒真
+    true,  // startsWith {{vars.missing}} 缺失模板变量解析为空串 → 空前缀恒真
+    true,  // null 实际值视为空串，空前缀恒真
+    false, // null 实际值 + 非空前缀必失败
+    true,  // null 实际值 + 空后缀恒真
     true,  // endsWith "0"（数字 10 字符串化）
     true,  // endsWith {{expectedStatus}} 模板变量
     false, // endsWith "1" 后缀不符
+    false, // endsWith "JSON" 大小写敏感失败
     true,  // missing 路径 null/undefined 实际值视为空串（与 includes 口径一致）
     true,  // target:status equals 200
     false, // target:status equals 201
@@ -188,7 +211,7 @@ test("断言求值极性：全部操作符逐条锁定 passed（含 includes/one
     });
 });
 
-test("断言求值深比较语义：includes 数组不字符串化、oneOf 非数组必须失败、exists 空串为不存在", () => {
+test("断言求值深比较语义：includes 数组不字符串化、oneOf 非数组必须失败、exists 空串为不存在、缺失模板变量解析为空串、null 实际值保留原始值", () => {
     // includes 数组深比较：actual=[10,20] 与 expected=2 类型/值均不匹配（历史假绿回归）
     const listIncludes = nodeCore.evaluateAssertion({ path: "list", includes: 2 }, response, runtime);
     assert.equal(listIncludes.passed, false);
@@ -203,6 +226,17 @@ test("断言求值深比较语义：includes 数组不字符串化、oneOf 非�
     const existsEmpty = nodeCore.evaluateAssertion({ path: "empty", exists: false }, response, runtime);
     assert.equal(existsEmpty.passed, true);
     assert.equal(existsEmpty.actual, "");
+
+    // startsWith 缺失模板变量：{{vars.missing}} 解析为空串（而非 "undefined"/"null" 字样），空前缀恒真
+    const missingTemplate = nodeCore.evaluateAssertion({ path: "text", startsWith: "{{vars.missing}}" }, response, runtime);
+    assert.equal(missingTemplate.passed, true);
+    assert.equal(missingTemplate.expected, "");
+    assert.equal(missingTemplate.actual, "abc");
+
+    // 显式 null 实际值：按空串参与前缀比较，结果里保留原始 null（不偷换为字符串化结果）
+    const nullActual = nodeCore.evaluateAssertion({ path: "nothing", startsWith: "x" }, response, runtime);
+    assert.equal(nullActual.passed, false);
+    assert.equal(nullActual.actual, null);
 });
 
 test("buildAssertions 契约：step.status 简写与默认 2xx 注入", () => {

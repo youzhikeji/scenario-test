@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file.
 
 - 断言新增 `startsWith` / `endsWith` 操作符：前缀/后缀精确断言（如 `{ path: "data.token", startsWith: "Bearer " }`、`{ header: "Content-Disposition", endsWith: ".pdf" }`）。此前前缀/后缀只能用 `matches` 写正则，转义负担大且可读性差。大小写敏感；非字符串实际值先字符串化再比较，null/undefined 实际值视为空串（与 `includes` 字符串分支口径一致）；期望值支持 `{{vars.*}}` 模板变量。
 - 契约 `contractVersion` 2 → 3（新增能力，保留旧字段）：capabilities JSON、`scenario-test.d.ts`、AI 提示词与场景模式文档同步投影新操作符。
+- 修复 d.ts 投射缺漏：`Assertion`/`WhenDefinition` 接口属性现由 contract 操作符表自动投影（此前手写，新增 `startsWith`/`endsWith` 时漏更导致 TS2353）；`generate-dts.mjs` 不再维护第二份操作符名单，新增测试锁定接口属性与 contract 全量一致。
 
 ## [0.5.23] - 2026-10-05
 

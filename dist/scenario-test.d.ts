@@ -68,17 +68,31 @@ export interface Assertion {
     target?: "status" | "duration";
     header?: string;
     implicit?: boolean;
+    /** 字段存在且非 null/空串（exists: true），或不存在（exists: false） */
     exists?: boolean;
+    /** 实际值与期望值 JSON 深比较相等 */
     equals?: unknown;
+    /** 实际值与期望值 JSON 深比较后取反 */
     notEquals?: unknown;
+    /** 数组包含期望项，或字符串包含期望子串 */
     includes?: unknown;
+    /** 正则表达式匹配字符串化后的实际值 */
     matches?: string;
+    /** 实际值属于期望候选数组之一（深比较） */
     oneOf?: unknown[];
-    /** 数组元素数 / 字符串字符数 / 对象键数等于期望值 */
+    /** 字符串化后的实际值以期望值开头（大小写敏感；null/undefined 实际值视为空串） */
+    startsWith?: string;
+    /** 字符串化后的实际值以期望值结尾（大小写敏感；null/undefined 实际值视为空串） */
+    endsWith?: string;
+    /** 数组元素个数 / 字符串字符数 / 对象键数等于期望值；非容器类型（number/boolean/null）直接失败 */
     length?: number;
+    /** 实际值大于期望值 */
     gt?: number;
+    /** 实际值大于等于期望值 */
     gte?: number;
+    /** 实际值小于期望值 */
     lt?: number;
+    /** 实际值小于等于期望值 */
     lte?: number;
 }
 
@@ -94,17 +108,31 @@ export interface ExtractDefinition {
 export interface WhenDefinition {
     from: WhenSource;
     path?: string;
+    /** 字段存在且非 null/空串（exists: true），或不存在（exists: false） */
     exists?: boolean;
+    /** 实际值与期望值 JSON 深比较相等 */
     equals?: unknown;
+    /** 实际值与期望值 JSON 深比较后取反 */
     notEquals?: unknown;
+    /** 数组包含期望项，或字符串包含期望子串 */
     includes?: unknown;
+    /** 正则表达式匹配字符串化后的实际值 */
     matches?: string;
+    /** 实际值属于期望候选数组之一（深比较） */
     oneOf?: unknown[];
-    /** 数组元素数 / 字符串字符数 / 对象键数等于期望值 */
+    /** 字符串化后的实际值以期望值开头（大小写敏感；null/undefined 实际值视为空串） */
+    startsWith?: string;
+    /** 字符串化后的实际值以期望值结尾（大小写敏感；null/undefined 实际值视为空串） */
+    endsWith?: string;
+    /** 数组元素个数 / 字符串字符数 / 对象键数等于期望值；非容器类型（number/boolean/null）直接失败 */
     length?: number;
+    /** 实际值大于期望值 */
     gt?: number;
+    /** 实际值大于等于期望值 */
     gte?: number;
+    /** 实际值小于期望值 */
     lt?: number;
+    /** 实际值小于等于期望值 */
     lte?: number;
 }
 
