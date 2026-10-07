@@ -1,30 +1,28 @@
 # NEXT_STEPS — 优化迭代交接点
 
-## 第 4 轮（2026-10-06）· 计划内最后一轮
+## 第 5 轮（2026-10-07）· 计划外加轮（用户要求继续）
 
 ### 本轮完成
 
-- **选题**：候选 A 提取线（第 3 轮交接首选）——`from: "headers"` 配 `path` 的直接路径取值由大小写敏感改为**头名大小写不敏感**。
-- **动机**：HTTP 头名按 RFC 不区分大小写，HTTP/2 响应头更是一律小写；旧实现走 `getByPath` 精确键匹配，`path: "X-Total"` 遇到 `x-total` 头取不到值，而 `header` 简写 / `extract.header` 经 `headerValue` 早已忽略大小写——两套口径不一致是真缺陷（第 2 轮已论证的真实踩坑点）。
-- **实现**（`src/core.js`，引擎/CLI/工作台零改动——三层都叠在 core 上）：
-  - `headerValue` 抽出内部 `headerKey`（大小写不敏感找键），行为不变；
-  - 新增导出 `getHeaderByPath(headers, valuePath)`：path **首段**按头名大小写不敏感匹配，首段之后的子路径维持 `getByPath` 既有语义（在头值上取子路径，如 `"X-TOTAL.length"` → 2）；退化 path（无 token）回落 `getByPath` 保持旧口径；
-  - `assertionActual`（断言）与 `applyExtract`（提取）的 `from: "headers"` 分支切换至新口径。
-- **边界（刻意保持不变，判别测试锁定）**：body 路径仍大小写敏感；通用路径导航 `from: "response"` 配 `headers.*` 与模板 `{{lastResponse.headers.*}}` 仍精确匹配（专用入口是 `from: "headers"` / `header` 简写）。
-- **contractVersion 决策：维持 4 不递增**。理由：这是既有能力的行为口径修正（缺陷修复），非新增能力——contract 字段面零变化，`capabilities.json` / `d.ts` 投射自然不变（构建后 git 亦确认无 diff）。契约列表与描述本就未提及大小写语义，无陈旧文案需要更正。breaking 评估已写入 CHANGELOG：仅依赖「换大小写头名取不到值」这一缺陷行为的场景（如对换大小写头名断言 `exists: false`）结果会翻转。
-- **测试**（`tests/parity.test.js` 新增 2 块，判别用例齐备）：断言侧 `x-total`/`X-TOTAL` 命中 + `x-missing` 不误命中 + body `Code` 必 miss（防过度折叠）+ `from:"response"` 边界不泄漏；提取侧小写/混合大小写命中、头值深路径、缺失告警数、`response` 路径仍精确。
-- **验证**：`npm run check` 一次通过，**184/184**（182 基线 + 本轮 2 块）。
+- **选题**：R3 遗留清单三项一次收口——同属「R3 each 元素级明细（`detail`）消费补全」一条线，互不重叠、单轮可完成；R4 交接的价值排序也将「CLI 消费 detail」列为首位。按主题拆 3 个原子提交：
+  1. **fix(report)**：Markdown 诊断报告值拼接补转义（R3 审查建议）。`mdInline` 助手：反斜杠先行转义、换行折叠为字面量 `\n`、非字符串值紧凑 JSON 单行；覆盖明细行/失败原因/警告三类拼接点。含换行/列表标记的响应值不再拆行、伪造嵌套列表。
+  2. **feat(diag)**：工作台断言表与 Markdown 报告**递归展开**嵌套 each 明细（R3 遗留：引擎数据已递归、展示只一层）。抽出递归助手 `eachDetailRows`（HTML 表）/ `pushEachDetailLines`（Markdown），路径「 › 」串联（「第 1 项 › 第 2 项」），Markdown 缩进逐层加深；通过的子断言不产生行；扁平场景输出不变。
+  3. **feat(cli)**：CLI `run` 失败输出单列 detail 行（R3 遗留：JSON 已透出、文本输出未展示）。失败断言行下 `      ↳ 第 N 项 <子断言名>: expected=… actual=…`，嵌套递归同口径；值走 `JSON.stringify` 换行天然转义。
+- **测试接缝**（新开 `tests/report.test.js`）：`buildMarkdownReport` / `eachDetailRows` 自 ui-view.js 具名导出（浏览器默认导出形状不变），Node 侧直接消费——ui-view.js 模块级无 DOM 触碰，可直接 import。CLI 测试沿用 spawn `src/cli.js` 先例（三场景：each 失败/单值失败/each 通过，避开「默认失败停止」截断后续步骤）。
+- **判别用例齐备**（教训 3）：转义「未实现必以真实换行出现」反断言 + 反斜杠翻倍锁歧义修复；明细「失败时存在/通过时无」极性；`eachDetailRows` 通过子断言行数计数 + undefined 空串；CLI `↳` 总行数锁定为 2（通过 each 与非 each 失败均不产生）。
+- **contractVersion 决策：无涉及**——纯展示/输出层改动，契约零变化；`capabilities.json`/`d.ts` 无 diff（构建后 git status 确认仅 4 个 dist bundle 变化，无 tailwind（未新增 class 名））。
+- **验证**：`npm run check` 一次通过，**190/190**（184 基线 + 本轮 6：report 5 + cli 1）。提交序列：8ec5da6（转义）→ dbc2dab（递归展示）→ 55a5df3（CLI 明细行）→ 3f33800（dist 再生成），全部留本地未 push。
 
 ### 本轮遗留事项
 
-1. **取证 16 次，超软闸 1 次，自报**：git log / 定位 `from:"headers"` 全部消费点（core 断言 + 提取、engine `when` 走 `evaluateAssertion` 复用同路径）/ 契约描述确认 / 测试风格取证 15 次后，追加 `npm run check`（验收必需）与 `git status`（提交前核对 dist 再生成清单，第 3 轮教训 5 的落实）各 1 次。无冗余复跑（check 一次通过）。另有 1 次 PowerShell 管道形式 `git status` 被权限层拦截（非执行动作，按第 3 轮结论换 Bash 直行成功）。
-2. `docs/AI_SCENARIO_PROMPT.md` / `README.md` 未核对是否需要补「头名大小写不敏感」使用说明（取证预算考虑）；CHANGELOG 已承载语义说明，若文档有 headers 提取章节可下轮顺带补一句。
-3. 模板 `{{lastResponse.headers.X-Total}}` 与 `from:"response"` 配 `headers.*` 仍精确匹配——若实际项目经此入口踩坑，可评估是否同样走 `getHeaderByPath`（涉及 `evalExpression`，改动面与测试面更大）。
-4. 计划 3-4 轮已到终点。若 Hermes 决定加轮，价值排序建议：CLI 结构化失败 diff（消费第 3 轮 `detail`，引擎侧数据已就绪）> 造数线 UUID / 时间戳偏移（`now + 8d`）> 嵌套 each 明细在工作台/Markdown 的递归展开展示（第 3 轮遗留，UI 目前只展开一层）。
-5. 全绿基线现为 **184/184**。
+1. **取证 19 次，超软闸 4 次，自报**：宪法恢复（brief/NEXT_STEPS/git log）3 次 + 三候选的代码定位与渲染现状取证 9 次 + 测试接缝确认（cli.test spawn 模式、ui-view 模块头/导出、断言块精确文本）4 次 + CHANGELOG 头部读取（Edit 前置必需）1 次 + 2 次分主题定点测试复跑（report/cli 各 1，提交前快反馈）——按 R4 口径计入取证 19。无冗余复跑（`npm run check` 终验一次通过）。理由：三项并一轮，每处读取均为编辑锚点或测试接缝的必需确认，砍任何一处都会以盲改风险换预算。
+2. `docs/AI_SCENARIO_PROMPT.md` / `README.md` 的 headers 大小写说明仍未核对（R4 遗留 2 原样继承）；本轮 CLI/工作台明细行属输出层，文档无对应章节需要补。
+3. Markdown 报告的响应代码块（\`\`\` 围栏）若响应体本身含 \`\`\` 仍会破坏围栏——本轮只修了值拼接点（R3 审查建议范围），围栏转义可作后续小修。
+4. 若再加轮，价值排序建议：造数线 UUID / 时间戳偏移（`now + 8d`）> 断言失败 diff 视图（工作台 expected vs actual 结构化对比）> 上条围栏转义小修。
+5. 全绿基线现为 **190/190**。
 
 ### 硬边界提醒（若继续迭代）
 
-- `dist/` 与 `*.generated.js` 勿手改，改源后 `npm run check`（含 build）再生，提交时一并 add。
-- contract 操作符 description 不能含 `}` 字符；新增能力才递增 `contractVersion`（行为修正勿递增，参考本轮决策）。
+- `dist/` 与 `*.generated.js` 勿手改，改源后 `npm run check`（含 build）再生，提交时一并 add（本轮 4 个 bundle 已随 build 提交核对）。
+- contract 操作符 description 不能含 `}` 字符；新增能力才递增 `contractVersion`（行为修正勿递增，参考 R4 决策）。
 - 版本号不动，CHANGELOG 只用 `## [Unreleased]`；所有提交留本地，不 push，由人工统一过目后决定。
