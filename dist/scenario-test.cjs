@@ -3542,7 +3542,7 @@ var workbenchView = function() {
     lines.push("");
     (report.steps || []).forEach(function(step) {
       var icon = step.skipped ? "\u23ED\uFE0F" : step.passed ? "\u2705" : "\u274C";
-      lines.push("### " + icon + " \u6B65\u9AA4 " + step.stepNo + ": " + step.name);
+      lines.push("### " + icon + " \u6B65\u9AA4 " + step.stepNo + ": " + mdInline(step.name));
       lines.push("- **\u8BF7\u6C42**: `" + step.method + " " + step.path + "`");
       lines.push("- **\u72B6\u6001**: " + step.status + " | **\u8017\u65F6**: " + step.durationFmt);
       if (step.error) lines.push("- **\u5931\u8D25\u539F\u56E0**: " + mdInline(step.error));
@@ -3552,7 +3552,7 @@ var workbenchView = function() {
       if (step.assertions && step.assertions.length) {
         lines.push("- **\u65AD\u8A00\u7ED3\u679C**:");
         step.assertions.forEach(function(a) {
-          lines.push("  - [" + (a.passed ? "x" : " ") + "] " + a.name);
+          lines.push("  - [" + (a.passed ? "x" : " ") + "] " + mdInline(a.name));
           pushEachDetailLines(lines, a.detail, "", 1);
         });
       }

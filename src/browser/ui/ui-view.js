@@ -1100,7 +1100,7 @@ const workbenchView = (function () {
 
         (report.steps || []).forEach(function (step) {
             var icon = step.skipped ? '⏭️' : (step.passed ? '✅' : '❌');
-            lines.push('### ' + icon + ' 步骤 ' + step.stepNo + ': ' + step.name);
+            lines.push('### ' + icon + ' 步骤 ' + step.stepNo + ': ' + mdInline(step.name));
             lines.push('- **请求**: `' + step.method + ' ' + step.path + '`');
             lines.push('- **状态**: ' + step.status + ' | **耗时**: ' + step.durationFmt);
             if (step.error) lines.push('- **失败原因**: ' + mdInline(step.error));
@@ -1110,7 +1110,7 @@ const workbenchView = (function () {
             if (step.assertions && step.assertions.length) {
                 lines.push('- **断言结果**:');
                 step.assertions.forEach(function (a) {
-                    lines.push('  - [' + (a.passed ? 'x' : ' ') + '] ' + a.name);
+                    lines.push('  - [' + (a.passed ? 'x' : ' ') + '] ' + mdInline(a.name));
                     // each 失败明细：逐行列出失败元素（序号 1 基）与失败子断言的期望/实际值；
                     // 嵌套 each 经 pushEachDetailLines 递归展开（路径「 › 」串联），值经 mdInline 转义
                     pushEachDetailLines(lines, a.detail, '', 1);
