@@ -241,7 +241,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.5.23";
 
 // src/contract.js
-var CONTRACT_VERSION = 4;
+var CONTRACT_VERSION = 5;
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
   runtimeVersion: VERSION,
@@ -330,8 +330,8 @@ var contract = Object.freeze({
   // 运行时自动生成的保留变量：禁止在 vars/envVars/generatedVars/extract 中声明或覆盖
   reservedVars: Object.freeze(["runId", "runNo"]),
   generatedVars: Object.freeze({
-    types: Object.freeze(["timestamp", "uuidHex", "md5", "signature", "idcard", "luhn", "phone", "uscc"]),
-    note: "\u8BC1\u4EF6/\u5361\u53F7/\u53F7\u7801\u7C7B\u6D4B\u8BD5\u9020\u6570\uFF08\u987A\u5E8F\u7801\u4E0E\u4E2D\u95F4\u6570\u5B57\u5747\u7531 runId \u4E0E\u53D8\u91CF\u540D\u786E\u5B9A\u6027\u6D3E\u751F\uFF1A\u6BCF\u8F6E\u53D8\u5316\u3001\u8F6E\u5185\u4E0D\u540C\u540D\u53D8\u91CF\u4E92\u5F02\uFF0C\u649E\u4E1A\u52A1\u552F\u4E00\u7EA6\u675F\u65F6\u91CD\u8DD1\u5373\u6362\u53F7\uFF09\u3002 idcard\uFF1A\u4E2D\u56FD\u5927\u9646 18 \u4F4D\u8EAB\u4EFD\u8BC1\u53F7\uFF0CbirthDate \u5FC5\u586B\uFF08YYYY-MM-DD \u5408\u6CD5\u65E5\u5386\u65E5\u671F\uFF09\u3001gender \u53EF\u9009\uFF08MALE/FEMALE\uFF0C\u9ED8\u8BA4 MALE\uFF09\u3001regionCode \u53EF\u9009\uFF086 \u4F4D\u6570\u5B57\uFF0C\u7F3A\u7701\u4ECE\u771F\u5B9E\u6D4B\u8BD5\u533A\u5212\u6C60\u6309\u8F6E\u6B21\u6D3E\u751F\uFF09\uFF0C\u6821\u9A8C\u4F4D\u6309 GB 11643 \u8BA1\u7B97\u3002 luhn\uFF1A\u94F6\u884C\u5361\u53F7\uFF0Clength \u53EF\u9009\uFF0812-19\uFF0C\u9ED8\u8BA4 16\uFF09\u3001prefix \u53EF\u9009\uFF08\u6570\u5B57\u5361\u5934\uFF0C\u9ED8\u8BA4 62\uFF09\uFF0C\u672B\u4F4D\u6309 Luhn \u7B97\u6CD5\u6821\u9A8C\u3002 phone\uFF1A\u5927\u9646\u624B\u673A\u53F7\uFF081[3-9] \u5F00\u5934 11 \u4F4D\uFF09\uFF0Cprefix \u53EF\u9009\uFF083 \u4F4D\u53F7\u6BB5\uFF0C\u7F3A\u7701\u4ECE\u6D4B\u8BD5\u53F7\u6BB5\u6C60\u6309\u8F6E\u6B21\u6D3E\u751F\uFF09\u3002 uscc\uFF1A\u7EDF\u4E00\u793E\u4F1A\u4FE1\u7528\u4EE3\u7801\uFF0818 \u4F4D\uFF09\uFF0CregionCode \u53EF\u9009\uFF086 \u4F4D\u6570\u5B57\uFF0C\u9ED8\u8BA4 110100\uFF09\uFF0C\u767B\u8BB0\u7BA1\u7406/\u673A\u6784\u7C7B\u522B\u56FA\u5B9A 91\uFF08\u4F01\u4E1A\u6CD5\u4EBA\uFF09\uFF0C\u6821\u9A8C\u4F4D\u6309 GB 32100-2015 \u8BA1\u7B97"
+    types: Object.freeze(["timestamp", "uuidHex", "md5", "signature", "idcard", "luhn", "phone", "uscc", "uuid"]),
+    note: "\u8BC1\u4EF6/\u5361\u53F7/\u53F7\u7801\u7C7B\u6D4B\u8BD5\u9020\u6570\uFF08\u987A\u5E8F\u7801\u4E0E\u4E2D\u95F4\u6570\u5B57\u5747\u7531 runId \u4E0E\u53D8\u91CF\u540D\u786E\u5B9A\u6027\u6D3E\u751F\uFF1A\u6BCF\u8F6E\u53D8\u5316\u3001\u8F6E\u5185\u4E0D\u540C\u540D\u53D8\u91CF\u4E92\u5F02\uFF0C\u649E\u4E1A\u52A1\u552F\u4E00\u7EA6\u675F\u65F6\u91CD\u8DD1\u5373\u6362\u53F7\uFF09\u3002 idcard\uFF1A\u4E2D\u56FD\u5927\u9646 18 \u4F4D\u8EAB\u4EFD\u8BC1\u53F7\uFF0CbirthDate \u5FC5\u586B\uFF08YYYY-MM-DD \u5408\u6CD5\u65E5\u5386\u65E5\u671F\uFF09\u3001gender \u53EF\u9009\uFF08MALE/FEMALE\uFF0C\u9ED8\u8BA4 MALE\uFF09\u3001regionCode \u53EF\u9009\uFF086 \u4F4D\u6570\u5B57\uFF0C\u7F3A\u7701\u4ECE\u771F\u5B9E\u6D4B\u8BD5\u533A\u5212\u6C60\u6309\u8F6E\u6B21\u6D3E\u751F\uFF09\uFF0C\u6821\u9A8C\u4F4D\u6309 GB 11643 \u8BA1\u7B97\u3002 luhn\uFF1A\u94F6\u884C\u5361\u53F7\uFF0Clength \u53EF\u9009\uFF0812-19\uFF0C\u9ED8\u8BA4 16\uFF09\u3001prefix \u53EF\u9009\uFF08\u6570\u5B57\u5361\u5934\uFF0C\u9ED8\u8BA4 62\uFF09\uFF0C\u672B\u4F4D\u6309 Luhn \u7B97\u6CD5\u6821\u9A8C\u3002 phone\uFF1A\u5927\u9646\u624B\u673A\u53F7\uFF081[3-9] \u5F00\u5934 11 \u4F4D\uFF09\uFF0Cprefix \u53EF\u9009\uFF083 \u4F4D\u53F7\u6BB5\uFF0C\u7F3A\u7701\u4ECE\u6D4B\u8BD5\u53F7\u6BB5\u6C60\u6309\u8F6E\u6B21\u6D3E\u751F\uFF09\u3002 uscc\uFF1A\u7EDF\u4E00\u793E\u4F1A\u4FE1\u7528\u4EE3\u7801\uFF0818 \u4F4D\uFF09\uFF0CregionCode \u53EF\u9009\uFF086 \u4F4D\u6570\u5B57\uFF0C\u9ED8\u8BA4 110100\uFF09\uFF0C\u767B\u8BB0\u7BA1\u7406/\u673A\u6784\u7C7B\u522B\u56FA\u5B9A 91\uFF08\u4F01\u4E1A\u6CD5\u4EBA\uFF09\uFF0C\u6821\u9A8C\u4F4D\u6309 GB 32100-2015 \u8BA1\u7B97\u3002 timestamp\uFF1A\u53EF\u9009 offset\uFF08\u76F8\u5BF9\u5F53\u524D\u65F6\u95F4\u7684\u504F\u79FB\uFF0C\u5982 -7d/+8d/30m\uFF0C\u6570\u5B57+\u5355\u4F4D ms/s/m/h/d/w\uFF09\u3001unit\uFF08ms \u9ED8\u8BA4/s\uFF0C\u6570\u503C\u7C92\u5EA6\uFF09\u6216 format\uFF08\u672C\u5730\u65F6\u95F4 token \u7EC4\u5408 YYYY/MM/DD/HH/mm/ss\uFF0C\u5982 YYYY-MM-DD HH:mm:ss\uFF0C\u8F93\u51FA\u5B57\u7B26\u4E32\uFF0C\u4E0E unit \u4E92\u65A5\uFF09\uFF0C\u65F6\u95F4\u7A97\u4E0E\u8FC7\u671F\u7C7B\u53C2\u6570\u65E0\u9700\u5916\u90E8\u62FC\u503C\u3002 uuid\uFF1A\u5E26\u8FDE\u5B57\u7B26 UUID v4\uFF08uuidHex \u4E3A 32 \u4F4D\u65E0\u8FDE\u5B57\u7B26\u5341\u516D\u8FDB\u5236\uFF09\uFF0C\u9002\u914D\u4EE5 UUID \u4E3A\u4E1A\u52A1\u4E3B\u952E\u7684\u63A5\u53E3"
   }),
   globals: Object.freeze({
     // 全局参数类型：追加到每个请求的 header / cookie / query
@@ -1122,6 +1122,28 @@ function createRunIdentifiers() {
     runNo: `${timestamp.slice(-6)}-${random.slice(0, 4)}`
   };
 }
+var TIMESTAMP_OFFSET_UNITS = Object.freeze({ ms: 1, s: 1e3, m: 6e4, h: 36e5, d: 864e5, w: 6048e5 });
+var TIMESTAMP_FORMAT_PATTERN = /^(?:YYYY|MM|DD|HH|mm|ss|[^YMDHms])*$/;
+function parseTimestampOffset(offset) {
+  const match = /^([+-]?\d+)(ms|s|m|h|d|w)$/.exec(String(offset));
+  if (!match) {
+    throw new Error(`generatedVars timestamp \u7684 offset \u5FC5\u987B\u5F62\u5982 "-7d"/"+8d"/"30m"\uFF08\u6570\u5B57+\u5355\u4F4D ms/s/m/h/d/w\uFF09: ${offset}`);
+  }
+  return Number(match[1]) * TIMESTAMP_OFFSET_UNITS[match[2]];
+}
+function formatTimestamp(ms, format) {
+  const date = new Date(ms);
+  const pad = (value) => String(value).padStart(2, "0");
+  const tokens = {
+    YYYY: String(date.getFullYear()).padStart(4, "0"),
+    MM: pad(date.getMonth() + 1),
+    DD: pad(date.getDate()),
+    HH: pad(date.getHours()),
+    mm: pad(date.getMinutes()),
+    ss: pad(date.getSeconds())
+  };
+  return String(format).replace(/YYYY|MM|DD|HH|mm|ss/g, (token) => tokens[token]);
+}
 function buildGeneratedVars(scenario, baseVars, environmentVariables, options = {}) {
   const identifiers = createRunIdentifiers();
   assertNoReservedVars(scenario.vars, "\u573A\u666F vars");
@@ -1154,8 +1176,28 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables, options = 
     if (!contract.generatedVars.types.includes(definition.type)) {
       throw new Error(`\u4E0D\u652F\u6301\u7684 generatedVars \u7C7B\u578B: ${definition.type}`);
     }
-    if (definition.type === "timestamp") vars[definition.name] = Date.now();
-    else if (definition.type === "uuidHex") {
+    if (definition.type === "timestamp") {
+      const base = Date.now() + (definition.offset == null ? 0 : parseTimestampOffset(definition.offset));
+      if (definition.format != null) {
+        if (definition.unit != null) {
+          throw new Error(`generatedVars timestamp \u7684 format \u4E0E unit \u4E92\u65A5\uFF0C\u53EA\u80FD\u58F0\u660E\u5176\u4E00: ${definition.name}`);
+        }
+        if (!/(?:YYYY|MM|DD|HH|mm|ss)/.test(definition.format) || !TIMESTAMP_FORMAT_PATTERN.test(definition.format)) {
+          throw new Error(`generatedVars timestamp \u7684 format \u4EC5\u652F\u6301 YYYY/MM/DD/HH/mm/ss \u7684\u672C\u5730\u65F6\u95F4\u7EC4\u5408\uFF08\u5982 YYYY-MM-DD HH:mm:ss\uFF09: ${definition.format}`);
+        }
+        vars[definition.name] = formatTimestamp(base, definition.format);
+      } else if (definition.unit != null && definition.unit !== "ms") {
+        if (definition.unit !== "s") {
+          throw new Error(`generatedVars timestamp \u7684 unit \u53EA\u652F\u6301 ms\uFF08\u9ED8\u8BA4\uFF09/s: ${definition.unit}`);
+        }
+        vars[definition.name] = Math.floor(base / 1e3);
+      } else {
+        vars[definition.name] = base;
+      }
+    } else if (definition.type === "uuid") {
+      if (!globalThis.crypto?.randomUUID) throw new Error("\u5F53\u524D\u73AF\u5883\u4E0D\u652F\u6301 crypto.randomUUID");
+      vars[definition.name] = globalThis.crypto.randomUUID();
+    } else if (definition.type === "uuidHex") {
       if (!globalThis.crypto?.randomUUID) throw new Error("\u5F53\u524D\u73AF\u5883\u4E0D\u652F\u6301 crypto.randomUUID");
       vars[definition.name] = globalThis.crypto.randomUUID().replace(/-/g, "");
     } else if (definition.type === "idcard") {
@@ -4203,6 +4245,32 @@ function createWorkbenchRuntime(options) {
       runNo: timestamp.slice(-6) + "-" + random.slice(0, 4)
     };
   }
+  var TIMESTAMP_OFFSET_UNITS2 = { ms: 1, s: 1e3, m: 6e4, h: 36e5, d: 864e5, w: 6048e5 };
+  var TIMESTAMP_FORMAT_PATTERN2 = /^(?:YYYY|MM|DD|HH|mm|ss|[^YMDHms])*$/;
+  function parseTimestampOffset2(offset) {
+    var match = /^([+-]?\d+)(ms|s|m|h|d|w)$/.exec(String(offset));
+    if (!match) {
+      throw new Error('generatedVars timestamp \u7684 offset \u5FC5\u987B\u5F62\u5982 "-7d"/"+8d"/"30m"\uFF08\u6570\u5B57+\u5355\u4F4D ms/s/m/h/d/w\uFF09: ' + offset);
+    }
+    return Number(match[1]) * TIMESTAMP_OFFSET_UNITS2[match[2]];
+  }
+  function formatTimestamp2(ms, format) {
+    var date = new Date(ms);
+    var pad = function(n) {
+      return n < 10 ? "0" + n : String(n);
+    };
+    var tokens = {
+      YYYY: String(date.getFullYear()).padStart(4, "0"),
+      MM: pad(date.getMonth() + 1),
+      DD: pad(date.getDate()),
+      HH: pad(date.getHours()),
+      mm: pad(date.getMinutes()),
+      ss: pad(date.getSeconds())
+    };
+    return String(format).replace(/YYYY|MM|DD|HH|mm|ss/g, function(token) {
+      return tokens[token];
+    });
+  }
   function buildScenarioRuntimeVars() {
     var cfg = appConfig;
     var scenario = state.scenario || {};
@@ -4224,7 +4292,30 @@ function createWorkbenchRuntime(options) {
       if (!def || !def.name) return;
       assertNotReservedVar2(def.name, "generatedVars");
       if (def.type === "timestamp") {
-        vars[def.name] = Date.now();
+        var base = Date.now() + (def.offset == null ? 0 : parseTimestampOffset2(def.offset));
+        if (def.format != null) {
+          if (def.unit != null) {
+            throw new Error("generatedVars timestamp \u7684 format \u4E0E unit \u4E92\u65A5\uFF0C\u53EA\u80FD\u58F0\u660E\u5176\u4E00: " + def.name);
+          }
+          if (!/(?:YYYY|MM|DD|HH|mm|ss)/.test(def.format) || !TIMESTAMP_FORMAT_PATTERN2.test(def.format)) {
+            throw new Error("generatedVars timestamp \u7684 format \u4EC5\u652F\u6301 YYYY/MM/DD/HH/mm/ss \u7684\u672C\u5730\u65F6\u95F4\u7EC4\u5408\uFF08\u5982 YYYY-MM-DD HH:mm:ss\uFF09: " + def.format);
+          }
+          vars[def.name] = formatTimestamp2(base, def.format);
+        } else if (def.unit != null && def.unit !== "ms") {
+          if (def.unit !== "s") {
+            throw new Error("generatedVars timestamp \u7684 unit \u53EA\u652F\u6301 ms\uFF08\u9ED8\u8BA4\uFF09/s: " + def.unit);
+          }
+          vars[def.name] = Math.floor(base / 1e3);
+        } else {
+          vars[def.name] = base;
+        }
+        return;
+      }
+      if (def.type === "uuid") {
+        if (!(window.crypto && window.crypto.randomUUID)) {
+          throw new Error("\u5F53\u524D\u73AF\u5883\u4E0D\u652F\u6301 crypto.randomUUID");
+        }
+        vars[def.name] = window.crypto.randomUUID();
         return;
       }
       if (def.type === "uuidHex") {
