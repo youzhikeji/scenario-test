@@ -1195,7 +1195,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     };
   }
   var TIMESTAMP_OFFSET_UNITS = Object.freeze({ ms: 1, s: 1e3, m: 6e4, h: 36e5, d: 864e5, w: 6048e5 });
-  var TIMESTAMP_FORMAT_PATTERN = /^(?:YYYY|MM|DD|HH|mm|ss|[^YMDHms])*$/;
+  var TIMESTAMP_FORMAT_PATTERN = /^(?:YYYY|MM|DD|HH|mm|ss|[^A-Za-z])*$/;
   function parseTimestampOffset(offset) {
     const match = /^([+-]?\d+)(ms|s|m|h|d|w)$/.exec(String(offset));
     if (!match) {
@@ -4318,7 +4318,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       };
     }
     var TIMESTAMP_OFFSET_UNITS2 = { ms: 1, s: 1e3, m: 6e4, h: 36e5, d: 864e5, w: 6048e5 };
-    var TIMESTAMP_FORMAT_PATTERN2 = /^(?:YYYY|MM|DD|HH|mm|ss|[^YMDHms])*$/;
+    var TIMESTAMP_FORMAT_PATTERN2 = /^(?:YYYY|MM|DD|HH|mm|ss|[^A-Za-z])*$/;
     function parseTimestampOffset2(offset) {
       var match = /^([+-]?\d+)(ms|s|m|h|d|w)$/.exec(String(offset));
       if (!match) {

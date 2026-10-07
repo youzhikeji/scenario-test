@@ -100,9 +100,9 @@ function createRunIdentifiers() {
 
 // timestamp 造数 offset 的单位 → 毫秒；只提供固定跨度单位，不引入月/年等日历单位（月末歧义）
 const TIMESTAMP_OFFSET_UNITS = Object.freeze({ ms: 1, s: 1000, m: 60000, h: 3600000, d: 86400000, w: 604800000 });
-// format 的合法形态：token（YYYY/MM/DD/HH/mm/ss）与任意非 token 字母字符自由组合，
-// 残缺片段（如 "M"、"YYYYY"）整体不匹配，直接拒绝而不是输出字面量
-const TIMESTAMP_FORMAT_PATTERN = /^(?:YYYY|MM|DD|HH|mm|ss|[^YMDHms])*$/;
+// format 的合法形态：token（YYYY/MM/DD/HH/mm/ss）与任意非字母字符自由组合；
+// 任何字母序列必须恰好构成合法 token——残缺/近似片段（"M"、"yyyy"、"dd"）整体拒绝而不是输出字面量
+const TIMESTAMP_FORMAT_PATTERN = /^(?:YYYY|MM|DD|HH|mm|ss|[^A-Za-z])*$/;
 
 function parseTimestampOffset(offset) {
     const match = /^([+-]?\d+)(ms|s|m|h|d|w)$/.exec(String(offset));

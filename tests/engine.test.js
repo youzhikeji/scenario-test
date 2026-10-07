@@ -909,6 +909,10 @@ test("generatedVars timestamp：非法 offset/unit/format 与 format+unit 互斥
     await assert.rejects(run([{ name: "a", type: "timestamp", format: "YYYY-MM-DD", unit: "s" }]), /互斥/);
     await assert.rejects(run([{ name: "a", type: "timestamp", format: "abc" }]), /format/);
     await assert.rejects(run([{ name: "a", type: "timestamp", format: "Y-M-D" }]), /format/);
+    // 判别（R6 审查阻塞）：合法 token 混残缺小写 token（"yyyy"/"dd"）必须整体拒绝，
+    // 修复前这些字母溜过校验被原样留在输出里（静默字面量）
+    await assert.rejects(run([{ name: "a", type: "timestamp", format: "yyyy-MM-dd HH:mm:ss" }]), /format/);
+    await assert.rejects(run([{ name: "a", type: "timestamp", format: "YYYY-MM-DD HH:mm:ss [Y}" }]), /format/);
 });
 
 test("generatedVars uuid：带连字符 UUID v4；uuidHex 保持 32 位无连字符（极性锁定）", async () => {

@@ -366,7 +366,7 @@ export function createWorkbenchRuntime(options) {
 
     // 与 Node engine 的 timestamp 造数语义保持一致：offset 单位表 / format token 校验与展开
     var TIMESTAMP_OFFSET_UNITS = { ms: 1, s: 1000, m: 60000, h: 3600000, d: 86400000, w: 604800000 };
-    var TIMESTAMP_FORMAT_PATTERN = /^(?:YYYY|MM|DD|HH|mm|ss|[^YMDHms])*$/;
+    var TIMESTAMP_FORMAT_PATTERN = /^(?:YYYY|MM|DD|HH|mm|ss|[^A-Za-z])*$/;
 
     function parseTimestampOffset(offset) {
         var match = /^([+-]?\d+)(ms|s|m|h|d|w)$/.exec(String(offset));
