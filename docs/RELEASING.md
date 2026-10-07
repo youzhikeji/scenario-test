@@ -32,6 +32,20 @@
    npm publish --access public
    ```
 
+   > **npm 认证（2026-10 起生效）**：npm 政策要求发包账号开启 2FA，或使用带 **bypass 2FA** 权限的 Granular Access Token。`duyiliu` 账号当前未开 2FA，直接 publish 会 403。流程：
+   >
+   > 1. 到 https://www.npmjs.com/settings/duyiliu/tokens/create 生成 Granular Access Token：权限 Read and write、勾选 bypass 2FA、包范围限定 `@yc_yzkj/scenario-test`；
+   > 2. 写入认证（用完即删，token 不落仓库）：
+   >
+   >    ```bash
+   >    printf '//registry.npmjs.org/:_authToken=npm_xxx\n' >> ~/.npmrc
+   >    npm whoami   # 应输出 duyiliu
+   >    ```
+   >
+   > 3. publish 成功后立即撤销该 token 并从 `~/.npmrc` 删除对应行（`sed -i '/_authToken/d' ~/.npmrc`）。
+   >
+   > 注意：npm 官方已宣布 2027-01 起 bypass 2FA token 的直接 publish 权限将废止，届时迁移 Trusted Publishing（CI OIDC 免 token 方案）。
+
    `files` 必须包含 `dist`、`scripts/install.ps1`、`scripts/install.sh` 与 `scripts/start-scenario-test.ps1`；`bin` 指向 `dist/scenario-test-cli.cjs`（带 shebang，支持 `npx @yc_yzkj/scenario-test`）。安装脚本依赖 npm tarball 中的完整 `dist/`，发布前需用 `npm pack --dry-run` 核对。
 
    Windows 浏览器工作台也可直接使用发行版中的启动脚本。脚本默认读取业务项目根目录下的 `scenario-test/scenario.config.js`，默认只启动服务；传入 `-OpenBrowser` 才会自动打开浏览器：
