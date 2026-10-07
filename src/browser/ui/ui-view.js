@@ -17,6 +17,40 @@ const workbenchView = (function () {
         return text.replace(/\\/g, '\\\\').replace(/\r?\n/g, '\\n');
     }
 
+    // each 失败明细行（断言表）：失败断言下逐行列出失败元素（序号 1 基，与断言报错口径一致）
+    // 与该元素上失败子断言的期望/实际值；嵌套 each 递归展开（子断言自带各自的 detail），
+    // 路径用「 › 」串联定位「第几项的第几项」；通过的子断言不产生行
+    function eachDetailRows(detail, prefix) {
+        var html = '';
+        (Array.isArray(detail) ? detail : []).forEach(function (d) {
+            var label = (prefix ? prefix + ' › ' : '') + '第 ' + (d.index + 1) + ' 项';
+            d.assertions.forEach(function (sub) {
+                if (sub.passed) return;
+                html += '<tr class="bg-rose-50/40">' +
+                    '<td class="px-3.5 py-1.5 font-mono text-[11px] whitespace-nowrap text-rose-600">↳ ' + label + '</td>' +
+                    '<td class="px-3.5 py-1.5 font-mono text-[11px] text-rose-700">' + esc(stringify(sub.expected)) + '</td>' +
+                    '<td class="px-3.5 py-1.5 font-mono text-[11px] text-rose-900">' + esc(stringify(sub.actual)) + '</td>' +
+                    '<td class="px-3.5 py-1.5"></td>' +
+                '</tr>';
+                html += eachDetailRows(sub.detail, label);
+            });
+        });
+        return html;
+    }
+
+    // each 失败明细行（Markdown 诊断报告）：与 eachDetailRows 同口径；
+    // depth 为列表嵌套深度（1 级 4 空格缩进，与既有明细行一致），值经 mdInline 转义
+    function pushEachDetailLines(lines, detail, prefix, depth) {
+        (Array.isArray(detail) ? detail : []).forEach(function (d) {
+            var label = (prefix ? prefix + ' › ' : '') + '第 ' + (d.index + 1) + ' 项';
+            d.assertions.forEach(function (sub) {
+                if (sub.passed) return;
+                lines.push('    '.repeat(depth) + '- ' + label + '失败: 期望 ' + mdInline(sub.expected) + ',实得 ' + mdInline(sub.actual));
+                pushEachDetailLines(lines, sub.detail, label, depth + 1);
+            });
+        });
+    }
+
     function formatReportPayload(value, options) {
         var text = stringify(value);
         if (!text) return '(空)';
@@ -834,20 +868,8 @@ const workbenchView = (function () {
                     ? '<span class="text-emerald-600 font-bold flex items-center gap-1"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg> 通过</span>'
                     : '<span class="text-rose-600 font-bold flex items-center gap-1"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"></path></svg> 失败</span>';
                 // each 失败明细：失败断言下逐行列出失败元素（序号 1 基，与断言报错口径一致）
-                // 与该元素上失败子断言的期望/实际值，定位「第几项、哪个子断言错」
-                var detailRows = '';
-                if (!rowOk && Array.isArray(a.detail)) {
-                    detailRows = a.detail.map(function (d) {
-                        return d.assertions.filter(function (sub) { return !sub.passed; }).map(function (sub) {
-                            return '<tr class="bg-rose-50/40">' +
-                                '<td class="px-3.5 py-1.5 font-mono text-[11px] whitespace-nowrap text-rose-600">↳ 第 ' + (d.index + 1) + ' 项</td>' +
-                                '<td class="px-3.5 py-1.5 font-mono text-[11px] text-rose-700">' + esc(stringify(sub.expected)) + '</td>' +
-                                '<td class="px-3.5 py-1.5 font-mono text-[11px] text-rose-900">' + esc(stringify(sub.actual)) + '</td>' +
-                                '<td class="px-3.5 py-1.5"></td>' +
-                            '</tr>';
-                        }).join('');
-                    }).join('');
-                }
+                // 与该元素上失败子断言的期望/实际值；嵌套 each 经 eachDetailRows 递归展开
+                var detailRows = !rowOk && Array.isArray(a.detail) ? eachDetailRows(a.detail, '') : '';
                 return '<tr class="' + rowCls + ' transition-colors">' +
                     '<td class="px-3.5 py-2 font-medium ' + (rowOk ? 'text-slate-700' : 'text-rose-800 font-bold') + '">' + esc(a.name) + '</td>' +
                     '<td class="px-3.5 py-2 font-mono text-[11px] ' + (rowOk ? 'text-slate-600' : 'text-rose-700') + '">' + esc(stringify(a.expected)) + '</td>' +
@@ -1090,13 +1112,8 @@ const workbenchView = (function () {
                 step.assertions.forEach(function (a) {
                     lines.push('  - [' + (a.passed ? 'x' : ' ') + '] ' + a.name);
                     // each 失败明细：逐行列出失败元素（序号 1 基）与失败子断言的期望/实际值；
-                    // 值经 mdInline 转义，含换行/列表标记的响应值不再拆行破坏排版
-                    (a.detail || []).forEach(function (d) {
-                        d.assertions.forEach(function (sub) {
-                            if (sub.passed) return;
-                            lines.push('    - 第 ' + (d.index + 1) + ' 项失败: 期望 ' + mdInline(sub.expected) + ',实得 ' + mdInline(sub.actual));
-                        });
-                    });
+                    // 嵌套 each 经 pushEachDetailLines 递归展开（路径「 › 」串联），值经 mdInline 转义
+                    pushEachDetailLines(lines, a.detail, '', 1);
                 });
             }
             var response = step.response || {};
@@ -1216,6 +1233,7 @@ const workbenchView = (function () {
         appendStepResult: appendStepResult,
         buildOverallReport: buildOverallReport,
         buildMarkdownReport: buildMarkdownReport,
+        eachDetailRows: eachDetailRows,
         renderReportPanel: renderReportPanel
     };
 })();
@@ -1223,3 +1241,4 @@ const workbenchView = (function () {
 export default workbenchView;
 // 具名导出供 Node 侧单测直接消费（浏览器入口仍走默认导出，形状不变）
 export const buildMarkdownReport = workbenchView.buildMarkdownReport;
+export const eachDetailRows = workbenchView.eachDetailRows;
