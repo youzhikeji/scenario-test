@@ -831,6 +831,101 @@ test("generatedVars idcard：非法参数拒绝", async () => {
     await assert.rejects(run([{ name: "a", type: "idcard", birthDate: "2026-08-15", regionCode: "1101" }]), /6 位数字/);
 });
 
+// ==================== generatedVars timestamp 增强（offset/unit/format）与 uuid ====================
+
+function generatedVarEngine() {
+    return createEngine({ baseUrl: "https://mock.local", fetch: async () => jsonResponse({}) });
+}
+
+test("generatedVars timestamp：offset 六种单位与正负号相对当前时间偏移", async () => {
+    const before = Date.now();
+    const report = await generatedVarEngine().runScenario(defineScenario({
+        name: "timestamp 偏移",
+        generatedVars: [
+            { name: "halfSecAgo", type: "timestamp", offset: "-500ms" },
+            { name: "halfMinAgo", type: "timestamp", offset: "-30s" },
+            { name: "fiveMinLater", type: "timestamp", offset: "+5m" },
+            { name: "twoHoursAgo", type: "timestamp", offset: "-2h" },
+            { name: "weekLater", type: "timestamp", offset: "+8d" },
+            { name: "plainWeek", type: "timestamp", offset: "1w" }
+        ],
+        steps: [{ name: "s", path: "x" }]
+    }));
+    assert.equal(report.status, "PASSED");
+    // 容差 2s 覆盖测试执行耗时；极性判别：忽略/误解析 offset 的实现偏差为偏移量本身
+    // （500ms ~ 7 天），远超容差，必然失败
+    const near = (value, delta) => typeof value === "number" && Math.abs(value - (before + delta)) < 2000;
+    assert.ok(near(report.vars.halfSecAgo, -500), "-500ms");
+    assert.ok(near(report.vars.halfMinAgo, -30000), "-30s");
+    assert.ok(near(report.vars.fiveMinLater, 300000), "+5m");
+    assert.ok(near(report.vars.twoHoursAgo, -7200000), "-2h");
+    assert.ok(near(report.vars.weekLater, 691200000), "+8d");
+    assert.ok(near(report.vars.plainWeek, 604800000), "1w 缺省正号");
+});
+
+test("generatedVars timestamp：unit s 输出秒级数值，缺省毫秒保持向后兼容", async () => {
+    const before = Date.now();
+    const report = await generatedVarEngine().runScenario(defineScenario({
+        name: "timestamp 粒度",
+        generatedVars: [
+            { name: "msVar", type: "timestamp" },
+            { name: "sVar", type: "timestamp", unit: "s" }
+        ],
+        steps: [{ name: "s", path: "x" }]
+    }));
+    assert.ok(Math.abs(report.vars.msVar - before) < 2000, "缺省输出毫秒（旧行为不变）");
+    assert.ok(Math.abs(report.vars.sVar * 1000 - before) < 2000, "秒级数值（极性：误按毫秒输出则乘 1000 后偏差 1000 倍）");
+    assert.ok(Math.abs(report.vars.sVar - report.vars.msVar) > 1000, "秒值与毫秒值不同数量级");
+});
+
+test("generatedVars timestamp：format 输出本地时间字符串，可与 offset 组合", async () => {
+    const before = Date.now();
+    const report = await generatedVarEngine().runScenario(defineScenario({
+        name: "timestamp 格式化",
+        generatedVars: [
+            { name: "weekAgoText", type: "timestamp", offset: "-7d", format: "YYYY-MM-DD HH:mm:ss" },
+            { name: "dayPath", type: "timestamp", format: "YYYY/MM/DD" }
+        ],
+        steps: [{ name: "s", path: "x" }]
+    }));
+    assert.equal(typeof report.vars.weekAgoText, "string", "极性：误输出数值必失败");
+    const parts = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/.exec(report.vars.weekAgoText);
+    assert.ok(parts, `完整时间格式: ${report.vars.weekAgoText}`);
+    const parsed = new Date(
+        Number(parts[1]), Number(parts[2]) - 1, Number(parts[3]),
+        Number(parts[4]), Number(parts[5]), Number(parts[6])
+    ).getTime();
+    assert.ok(Math.abs(parsed - (before - 604800000)) < 5000, "解析回本地时间 ≈ now-7d（极性：误用 UTC token 偏差整时区）");
+    assert.match(report.vars.dayPath, /^\d{4}\/\d{2}\/\d{2}$/, "日期片段格式");
+});
+
+test("generatedVars timestamp：非法 offset/unit/format 与 format+unit 互斥拒绝", async () => {
+    const run = (generatedVars) => generatedVarEngine().runScenario(
+        defineScenario({ name: "timestamp 非法参数", generatedVars, steps: [{ name: "s", path: "x" }] }));
+    await assert.rejects(run([{ name: "a", type: "timestamp", offset: "7x" }]), /offset/);
+    await assert.rejects(run([{ name: "a", type: "timestamp", offset: "-d" }]), /offset/);
+    await assert.rejects(run([{ name: "a", type: "timestamp", offset: "-7D" }]), /offset/);
+    await assert.rejects(run([{ name: "a", type: "timestamp", unit: "us" }]), /unit/);
+    await assert.rejects(run([{ name: "a", type: "timestamp", format: "YYYY-MM-DD", unit: "s" }]), /互斥/);
+    await assert.rejects(run([{ name: "a", type: "timestamp", format: "abc" }]), /format/);
+    await assert.rejects(run([{ name: "a", type: "timestamp", format: "Y-M-D" }]), /format/);
+});
+
+test("generatedVars uuid：带连字符 UUID v4；uuidHex 保持 32 位无连字符（极性锁定）", async () => {
+    const report = await generatedVarEngine().runScenario(defineScenario({
+        name: "uuid 形态",
+        generatedVars: [
+            { name: "dashed", type: "uuid" },
+            { name: "hex", type: "uuidHex" }
+        ],
+        steps: [{ name: "s", path: "x" }]
+    }));
+    assert.equal(report.status, "PASSED");
+    assert.match(report.vars.dashed, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, "标准带连字符形态");
+    assert.match(report.vars.hex, /^[0-9a-f]{32}$/, "uuidHex 仍为 32 位十六进制");
+    assert.ok(!report.vars.hex.includes("-"), "uuidHex 不带连字符（两个类型不可互相误实现）");
+});
+
 test("请求体：对象 JSON 序列化并补默认 Content-Type，字符串直传，GET 不携带 body", async () => {
     const seen = [];
     const engine = createEngine({

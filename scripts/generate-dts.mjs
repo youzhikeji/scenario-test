@@ -136,6 +136,12 @@ export interface GeneratedVarDefinition {
     length?: number;
     /** luhn 专用：数字卡头（默认 "62"）；phone 专用：3 位号段 1[3-9]x（缺省从测试号段池按轮次派生） */
     prefix?: string;
+    /** timestamp 专用：相对当前时间的偏移，如 "-7d"/"+8d"（数字+单位 ms/s/m/h/d/w） */
+    offset?: string;
+    /** timestamp 专用：数值粒度 ms（默认）/s；与 format 互斥 */
+    unit?: "ms" | "s";
+    /** timestamp 专用：本地时间格式化 token 组合（YYYY/MM/DD/HH/mm/ss），输出字符串；与 unit 互斥 */
+    format?: string;
 }
 
 export interface RetryUntil {

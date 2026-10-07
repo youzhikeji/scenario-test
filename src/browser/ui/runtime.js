@@ -364,6 +364,32 @@ export function createWorkbenchRuntime(options) {
         };
     }
 
+    // 与 Node engine 的 timestamp 造数语义保持一致：offset 单位表 / format token 校验与展开
+    var TIMESTAMP_OFFSET_UNITS = { ms: 1, s: 1000, m: 60000, h: 3600000, d: 86400000, w: 604800000 };
+    var TIMESTAMP_FORMAT_PATTERN = /^(?:YYYY|MM|DD|HH|mm|ss|[^YMDHms])*$/;
+
+    function parseTimestampOffset(offset) {
+        var match = /^([+-]?\d+)(ms|s|m|h|d|w)$/.exec(String(offset));
+        if (!match) {
+            throw new Error('generatedVars timestamp 的 offset 必须形如 "-7d"/"+8d"/"30m"（数字+单位 ms/s/m/h/d/w）: ' + offset);
+        }
+        return Number(match[1]) * TIMESTAMP_OFFSET_UNITS[match[2]];
+    }
+
+    function formatTimestamp(ms, format) {
+        var date = new Date(ms);
+        var pad = function (n) { return n < 10 ? '0' + n : String(n); };
+        var tokens = {
+            YYYY: String(date.getFullYear()).padStart(4, '0'),
+            MM: pad(date.getMonth() + 1),
+            DD: pad(date.getDate()),
+            HH: pad(date.getHours()),
+            mm: pad(date.getMinutes()),
+            ss: pad(date.getSeconds())
+        };
+        return String(format).replace(/YYYY|MM|DD|HH|mm|ss/g, function (token) { return tokens[token]; });
+    }
+
     function buildScenarioRuntimeVars() {
         var cfg = appConfig;
         var scenario = state.scenario || {};
@@ -384,7 +410,31 @@ export function createWorkbenchRuntime(options) {
             if (!def || !def.name) return;
             assertNotReservedVar(def.name, 'generatedVars');
             if (def.type === 'timestamp') {
-                vars[def.name] = Date.now();
+                // 与 Node engine 一致：offset 偏移 / unit 数值粒度 / format 字符串（与 unit 互斥）
+                var base = Date.now() + (def.offset == null ? 0 : parseTimestampOffset(def.offset));
+                if (def.format != null) {
+                    if (def.unit != null) {
+                        throw new Error('generatedVars timestamp 的 format 与 unit 互斥，只能声明其一: ' + def.name);
+                    }
+                    if (!/(?:YYYY|MM|DD|HH|mm|ss)/.test(def.format) || !TIMESTAMP_FORMAT_PATTERN.test(def.format)) {
+                        throw new Error('generatedVars timestamp 的 format 仅支持 YYYY/MM/DD/HH/mm/ss 的本地时间组合（如 YYYY-MM-DD HH:mm:ss）: ' + def.format);
+                    }
+                    vars[def.name] = formatTimestamp(base, def.format);
+                } else if (def.unit != null && def.unit !== 'ms') {
+                    if (def.unit !== 's') {
+                        throw new Error('generatedVars timestamp 的 unit 只支持 ms（默认）/s: ' + def.unit);
+                    }
+                    vars[def.name] = Math.floor(base / 1000);
+                } else {
+                    vars[def.name] = base;
+                }
+                return;
+            }
+            if (def.type === 'uuid') {
+                if (!(window.crypto && window.crypto.randomUUID)) {
+                    throw new Error('当前环境不支持 crypto.randomUUID');
+                }
+                vars[def.name] = window.crypto.randomUUID();
                 return;
             }
             if (def.type === 'uuidHex') {

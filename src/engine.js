@@ -98,6 +98,35 @@ function createRunIdentifiers() {
     };
 }
 
+// timestamp 造数 offset 的单位 → 毫秒；只提供固定跨度单位，不引入月/年等日历单位（月末歧义）
+const TIMESTAMP_OFFSET_UNITS = Object.freeze({ ms: 1, s: 1000, m: 60000, h: 3600000, d: 86400000, w: 604800000 });
+// format 的合法形态：token（YYYY/MM/DD/HH/mm/ss）与任意非 token 字母字符自由组合，
+// 残缺片段（如 "M"、"YYYYY"）整体不匹配，直接拒绝而不是输出字面量
+const TIMESTAMP_FORMAT_PATTERN = /^(?:YYYY|MM|DD|HH|mm|ss|[^YMDHms])*$/;
+
+function parseTimestampOffset(offset) {
+    const match = /^([+-]?\d+)(ms|s|m|h|d|w)$/.exec(String(offset));
+    if (!match) {
+        throw new Error(`generatedVars timestamp 的 offset 必须形如 "-7d"/"+8d"/"30m"（数字+单位 ms/s/m/h/d/w）: ${offset}`);
+    }
+    return Number(match[1]) * TIMESTAMP_OFFSET_UNITS[match[2]];
+}
+
+// 按本地时间展开 format token（mm 为分钟、MM 为月份，大小写敏感）
+function formatTimestamp(ms, format) {
+    const date = new Date(ms);
+    const pad = (value) => String(value).padStart(2, "0");
+    const tokens = {
+        YYYY: String(date.getFullYear()).padStart(4, "0"),
+        MM: pad(date.getMonth() + 1),
+        DD: pad(date.getDate()),
+        HH: pad(date.getHours()),
+        mm: pad(date.getMinutes()),
+        ss: pad(date.getSeconds())
+    };
+    return String(format).replace(/YYYY|MM|DD|HH|mm|ss/g, (token) => tokens[token]);
+}
+
 function buildGeneratedVars(scenario, baseVars, environmentVariables, options = {}) {
     const identifiers = createRunIdentifiers();
     // 保留变量冲突在使用前尽早报错：config/options vars 不得声明 runId/runNo
@@ -138,8 +167,31 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables, options = 
         if (!contract.generatedVars.types.includes(definition.type)) {
             throw new Error(`不支持的 generatedVars 类型: ${definition.type}`);
         }
-        if (definition.type === "timestamp") vars[definition.name] = Date.now();
-        else if (definition.type === "uuidHex") {
+        if (definition.type === "timestamp") {
+            // 时间戳造数：offset 相对当前时间偏移（如 "-7d"/"+8d"）；unit 决定数值粒度
+            // （ms 默认向后兼容 / s 秒级）；format（本地时间 token）输出字符串，与 unit 互斥。
+            const base = Date.now() + (definition.offset == null ? 0 : parseTimestampOffset(definition.offset));
+            if (definition.format != null) {
+                if (definition.unit != null) {
+                    throw new Error(`generatedVars timestamp 的 format 与 unit 互斥，只能声明其一: ${definition.name}`);
+                }
+                if (!/(?:YYYY|MM|DD|HH|mm|ss)/.test(definition.format) || !TIMESTAMP_FORMAT_PATTERN.test(definition.format)) {
+                    throw new Error(`generatedVars timestamp 的 format 仅支持 YYYY/MM/DD/HH/mm/ss 的本地时间组合（如 YYYY-MM-DD HH:mm:ss）: ${definition.format}`);
+                }
+                vars[definition.name] = formatTimestamp(base, definition.format);
+            } else if (definition.unit != null && definition.unit !== "ms") {
+                if (definition.unit !== "s") {
+                    throw new Error(`generatedVars timestamp 的 unit 只支持 ms（默认）/s: ${definition.unit}`);
+                }
+                vars[definition.name] = Math.floor(base / 1000);
+            } else {
+                vars[definition.name] = base;
+            }
+        } else if (definition.type === "uuid") {
+            // 标准带连字符 UUID v4（uuidHex 为 32 位无连字符形式），适配以 UUID 为业务主键的接口
+            if (!globalThis.crypto?.randomUUID) throw new Error("当前环境不支持 crypto.randomUUID");
+            vars[definition.name] = globalThis.crypto.randomUUID();
+        } else if (definition.type === "uuidHex") {
             if (!globalThis.crypto?.randomUUID) throw new Error("当前环境不支持 crypto.randomUUID");
             vars[definition.name] = globalThis.crypto.randomUUID().replace(/-/g, "");
         } else if (definition.type === "idcard") {
