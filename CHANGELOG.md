@@ -2,7 +2,8 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+
+## [0.5.24] - 2026-10-07
 
 ### ✨ DSL / Engine
 
