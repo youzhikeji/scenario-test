@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### ✨ DSL / Engine
 
+- 造数增强：`generatedVars` 的 `timestamp` 类型新增 `offset` / `unit` / `format` 三个可选参数，并新增 `uuid` 类型（`contractVersion` 4 → 5，保留全部旧字段）：
+  - `offset`：相对当前时间的偏移（如 `{ name: "startTime", type: "timestamp", offset: "-7d" }`），数字 + 单位（`ms`/`s`/`m`/`h`/`d`/`w`，正负号可选、缺省为正；只提供固定跨度单位，不引入月/年等日历单位避免月末歧义）。时间窗查询（`startTime=now-7d`）、过期时间（`expiredAt=now+30d`）类参数此前只能写死时间戳或外部脚本拼值，现场景内自足表达且每次执行随当前时间移动。
+  - `unit`：数值粒度 `ms`（默认，行为不变向后兼容）/ `s`（秒级，适配按秒传参的接口）。
+  - `format`：本地时间格式化输出（token：`YYYY`/`MM`/`DD`/`HH`/`mm`/`ss`，如 `format: "YYYY-MM-DD HH:mm:ss"` 或 `"YYYY/MM/DD"`），输出字符串，与 `unit` 互斥；残缺 token 片段（如 `"Y-M-D"`）或不含任何 token 的 format 直接报错，不静默输出字面量。
+  - `uuid`：标准带连字符 UUID v4（`{ name: "orderId", type: "uuid" }`），适配以 UUID 为业务主键的接口；既有 `uuidHex` 保持 32 位无连字符形态不变。模板层无字符串变换能力，此前带连字符形态无法在 DSL 内生成。
+  - 浏览器工作台运行时同口径镜像（工作台与 CLI 继续可跑同一套场景）；init 生成的 AI 提示词与场景模式补对应造数指引；d.ts `GeneratedVarDefinition` 补 `offset`/`unit`/`format` 属性。
 - CLI `run` 失败输出补 `each` 元素级明细行：失败断言行下方逐行列出失败元素（1 基序号）与失败子断言的期望/实际值，嵌套 `each` 递归展开、路径「 › 」串联（如「第 1 项 › 第 2 项」）——此前明细只在 JSON 报告里，终端排查需翻 JSON 才能定位「第几项、哪个子断言错」。值经 `JSON.stringify` 输出，含换行的响应值转义为字面量不拆行。
 - 工作台断言表与「复制诊断报告 (Markdown)」对嵌套 `each` 失败明细**递归展开**：此前引擎数据已递归携带各层 `detail`，但两处展示只展开一层，两层以上嵌套（如「列表 › 明细 › 字段」逐项校验）只能看到外层失败。现多层失败路径逐行列出（Markdown 侧缩进逐层加深），通过的子断言不产生行；扁平场景输出格式不变。
 - 修复 Markdown 诊断报告值拼接排版破坏：失败明细/失败原因/警告中的响应值现经转义拼接（反斜杠先行转义、换行折叠为字面量 `\n`，非字符串值用紧凑 JSON 单行）——含换行或 `- ` 等列表标记的响应值此前会把列表项拆行、伪造嵌套列表，报告喂给 AI 排查时结构失真。

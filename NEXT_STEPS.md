@@ -1,28 +1,29 @@
 # NEXT_STEPS — 优化迭代交接点
 
-## 第 5 轮（2026-10-07）· 计划外加轮（用户要求继续）
+## 第 6 轮（2026-10-07）
 
 ### 本轮完成
 
-- **选题**：R3 遗留清单三项一次收口——同属「R3 each 元素级明细（`detail`）消费补全」一条线，互不重叠、单轮可完成；R4 交接的价值排序也将「CLI 消费 detail」列为首位。按主题拆 3 个原子提交：
-  1. **fix(report)**：Markdown 诊断报告值拼接补转义（R3 审查建议）。`mdInline` 助手：反斜杠先行转义、换行折叠为字面量 `\n`、非字符串值紧凑 JSON 单行；覆盖明细行/失败原因/警告三类拼接点。含换行/列表标记的响应值不再拆行、伪造嵌套列表。
-  2. **feat(diag)**：工作台断言表与 Markdown 报告**递归展开**嵌套 each 明细（R3 遗留：引擎数据已递归、展示只一层）。抽出递归助手 `eachDetailRows`（HTML 表）/ `pushEachDetailLines`（Markdown），路径「 › 」串联（「第 1 项 › 第 2 项」），Markdown 缩进逐层加深；通过的子断言不产生行；扁平场景输出不变。
-  3. **feat(cli)**：CLI `run` 失败输出单列 detail 行（R3 遗留：JSON 已透出、文本输出未展示）。失败断言行下 `      ↳ 第 N 项 <子断言名>: expected=… actual=…`，嵌套递归同口径；值走 `JSON.stringify` 换行天然转义。
-- **测试接缝**（新开 `tests/report.test.js`）：`buildMarkdownReport` / `eachDetailRows` 自 ui-view.js 具名导出（浏览器默认导出形状不变），Node 侧直接消费——ui-view.js 模块级无 DOM 触碰，可直接 import。CLI 测试沿用 spawn `src/cli.js` 先例（三场景：each 失败/单值失败/each 通过，避开「默认失败停止」截断后续步骤）。
-- **判别用例齐备**（教训 3）：转义「未实现必以真实换行出现」反断言 + 反斜杠翻倍锁歧义修复；明细「失败时存在/通过时无」极性；`eachDetailRows` 通过子断言行数计数 + undefined 空串；CLI `↳` 总行数锁定为 2（通过 each 与非 each 失败均不产生）。
-- **contractVersion 决策：无涉及**——纯展示/输出层改动，契约零变化；`capabilities.json`/`d.ts` 无 diff（构建后 git status 确认仅 4 个 dist bundle 变化，无 tailwind（未新增 class 名））。
-- **验证**：`npm run check` 一次通过，**190/190**（184 基线 + 本轮 6：report 5 + cli 1）。提交序列：8ec5da6（转义）→ dbc2dab（递归展示）→ 55a5df3（CLI 明细行）→ 3f33800（dist 再生成），全部留本地未 push。
+- **选题**：NEXT_STEPS 交接首位建议——造数线 `timestamp` 偏移/格式化 + 标准 `uuid` 类型。选题理由：`timestamp` 此前只输出裸 `Date.now()`、`uuidHex` 只有无连字符形态，模板层又没有任何字符串变换能力，导致两类最高频造数需求（时间窗参数、UUID 业务主键）在 DSL 内**无法表达**，AI 接入者只能写死值或退到外部脚本拼值。同属造数线、共享全部触点，按一条主题做一轮（吸取 R5 三题并轮教训，未再混入 diff 视图等其他方向）。
+- **改动**（3 个原子提交：`77c2b1d` feat → `c72e0b8` build → docs）：
+  1. **feat(dsl)**：`timestamp` 新增可选 `offset`（数字+单位 `ms/s/m/h/d/w`，正负号可选；只含固定跨度，不引入月/年日历单位）、`unit`（`ms` 默认向后兼容 / `s` 秒级数值）、`format`（本地时间 token `YYYY/MM/DD/HH/mm/ss` 输出字符串，与 `unit` 互斥；残缺 token 片段如 `Y-M-D` 与无 token 的 format 直接报错不静默输出字面量）；新增 `uuid` 类型（带连字符 UUID v4，`uuidHex` 形态不变）。contractVersion **4→5**（只追加不改旧字段，types 名单尾部追加 `uuid`）。
+  2. 浏览器工作台 `browser/ui/runtime.js` 同口径镜像（timestamp/uuid 分支 + `parseTimestampOffset`/`formatTimestamp` 助手，沿用该文件 ES5 风格与既有重复实现惯例——idcard/luhn/phone/uscc 本就只在 Node engine 实现，parity 测试不覆盖 generatedVars，浏览器侧本轮对齐到 timestamp/uuidHex/md5/signature+uuid 集合）。
+  3. 投射同步：`generate-dts.mjs` 的 `GeneratedVarDefinition` 补 `offset?`/`unit?: "ms" | "s"`/`format?`；`init-templates.js` AI 提示词与场景模式两处补时间窗/UUID 造数指引（含「禁止写死时间戳/日期字符串」负向规则）；`contract.test.js` 与 `cli.test.js` 的 types 名单锁定断言同步（后者是本轮跑 check 才暴露的第二份名单，一致性锁起效）。
+- **测试 +5（全在 engine.test.js idcard 段后）**：六单位偏移极性（容差 2s，误忽略/误解析 offset 必偏差偏移量本身而失败）；秒粒度数量级（`sVar*1000 ≈ now`，误按毫秒输出偏差 1000 倍）；format 字符串正则 + 解析回本地时间 `≈ now-7d`（误输出数值、误用 UTC token 均失败——注：UTC 时区机器上 UTC 判别不生效，仅数值判别恒成立）；非法 offset/unit/format 与 format+unit 互斥共 7 条 rejects；uuid/uuidHex 形态互斥锁定（两个类型不可互相误实现）。
+- **验证**：`npm run check` 两次运行（第一次暴露 cli.test.js:318 名单未同步，修正后）**195/195 全绿**（190 基线 + 5）。工作区干净（仅 `docs/OPTIMIZATION_BRIEF.md` 的 CRLF 幻影改动，见遗留 1）。全部提交留本地未 push。
 
 ### 本轮遗留事项
 
-1. **取证 19 次，超软闸 4 次，自报**：宪法恢复（brief/NEXT_STEPS/git log）3 次 + 三候选的代码定位与渲染现状取证 9 次 + 测试接缝确认（cli.test spawn 模式、ui-view 模块头/导出、断言块精确文本）4 次 + CHANGELOG 头部读取（Edit 前置必需）1 次 + 2 次分主题定点测试复跑（report/cli 各 1，提交前快反馈）——按 R4 口径计入取证 19。无冗余复跑（`npm run check` 终验一次通过）。理由：三项并一轮，每处读取均为编辑锚点或测试接缝的必需确认，砍任何一处都会以盲改风险换预算。
-2. `docs/AI_SCENARIO_PROMPT.md` / `README.md` 的 headers 大小写说明仍未核对（R4 遗留 2 原样继承）；本轮 CLI/工作台明细行属输出层，文档无对应章节需要补。
-3. Markdown 报告的响应代码块（\`\`\` 围栏）若响应体本身含 \`\`\` 仍会破坏围栏——本轮只修了值拼接点（R3 审查建议范围），围栏转义可作后续小修。
-4. 若再加轮，价值排序建议：造数线 UUID / 时间戳偏移（`now + 8d`）> 断言失败 diff 视图（工作台 expected vs actual 结构化对比）> 上条围栏转义小修。
-5. 全绿基线现为 **190/190**。
+1. **`docs/OPTIMIZATION_BRIEF.md` 存在 CRLF 幻影改动**（`git status` 显示 M 但 `git diff` 与 `git diff --ignore-cr-at-eol` 均为空，内容与 HEAD 完全一致；非本轮所为，本轮开始前已在工作区）。未纳入任何提交，建议人工 `git checkout -- docs/OPTIMIZATION_BRIEF.md` 或统一仓库 EOL 策略后消除。
+2. **取证计数（最严口径如实上报）**：宪法恢复（brief/NEXT_STEPS/git log）3 + 契约/引擎/浏览器副本/测试落点/dts 投射/文档提及取证 7 + check 首跑（暴露 cli.test 名单）与验收终验 2 + cli.test 接缝读取 1 + brief 幻影改动排查（diff×2）2 = **15 次，恰在软闸 ≤15 内**；总动作 27 ≤ 40。两次 check 均为必需（首跑暴露第二份名单锁、终验为宪法验收动作），无冗余复跑。
+3. **`npm run test:browser` 未跑**（宪法验收口径为 `npm run check`；浏览器侧改动为纯镜像、沿用既有模式，无 DOM 交互变化）。发布前按惯例应补跑一次。
+4. `docs/AI_SCENARIO_PROMPT.md` / `README.md` 的既有遗留（headers 大小写说明核对等）原样继承；本轮 grep 确认两文件均未提及 generatedVars/uuidHex/timestamp，无本轮需同步的文档面。
+5. **时间冻结类测试未做**：format/offset 测试用容差断言而非假时钟，秒边界抖动理论存在但容差（2s/5s）覆盖；若未来出现 flaky 再引入注入时钟。
+6. 若再加轮，价值排序建议：**CLI 失败 diff 视图**（expected vs actual 结构化并排对比，R5 遗留候选仍有效）> Markdown 报告围栏转义小修（响应体含 ``` 破坏围栏）> 枚举随机（带权重）造数。
+7. 全绿基线现为 **195/195**；contractVersion 现为 **5**（发版时 CHANGELOG 中「4 → 5」表述随定版落档）。
 
 ### 硬边界提醒（若继续迭代）
 
-- `dist/` 与 `*.generated.js` 勿手改，改源后 `npm run check`（含 build）再生，提交时一并 add（本轮 4 个 bundle 已随 build 提交核对）。
-- contract 操作符 description 不能含 `}` 字符；新增能力才递增 `contractVersion`（行为修正勿递增，参考 R4 决策）。
+- `dist/` 与 `*.generated.js` 勿手改，改源后 `npm run check`（含 build）再生，提交时一并 add（本轮 6 个 dist 产物已随 build 提交核对，无 tailwind 变化——未新增 class 名）。
+- contract 操作符/类型 description 与 note 文本不能含 `}` 字符；新增能力才递增 `contractVersion`（行为修正勿递增，参考 R4 决策）；**types 名单锁存在第二份副本在 `tests/cli.test.js`（capabilities JSON 断言）**，改 `generatedVars.types` 需两处同步。
 - 版本号不动，CHANGELOG 只用 `## [Unreleased]`；所有提交留本地，不 push，由人工统一过目后决定。
