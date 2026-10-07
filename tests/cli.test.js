@@ -36,6 +36,49 @@ test("CLI 从公共 JS 配置执行场景", async () => {
     }
 });
 
+test("CLI run 失败输出单列 each 元素级明细行（嵌套递归）", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-cli-each-"));
+    const server = http.createServer((request, response) => {
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ list: [{ items: [{ qty: 1 }, { qty: 9 }] }, { items: [{ qty: 2 }] }], note: "a\nb" }));
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+        const port = server.address().port;
+        fs.mkdirSync(path.join(directory, "scenarios"));
+        fs.writeFileSync(path.join(directory, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1:${port}"}],scenarios:[{id:"eachfail",name:"EachFail",url:"scenarios/eachfail.js"},{id:"notefail",name:"NoteFail",url:"scenarios/notefail.js"},{id:"passall",name:"PassAll",url:"scenarios/passall.js"}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/eachfail.js"), `ScenarioTest.registerScenario("eachfail",ScenarioTest.defineScenario({name:"EachFail",steps:[{name:"批量校验",path:"batch",assertions:[{path:"list",each:{path:"items",each:{path:"qty",lte:5}}}]}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/notefail.js"), `ScenarioTest.registerScenario("notefail",ScenarioTest.defineScenario({name:"NoteFail",steps:[{name:"单值校验",path:"batch",assertions:[{path:"note",equals:"ok"}]}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/passall.js"), `ScenarioTest.registerScenario("passall",ScenarioTest.defineScenario({name:"PassAll",steps:[{name:"通过项",path:"batch",assertions:[{path:"list",each:{path:"items",each:{path:"qty",lte:10}}}]}]}));`, "utf8");
+        const cli = path.resolve(import.meta.dirname, "../src/cli.js");
+        const result = await new Promise((resolve) => {
+            const child = spawn(process.execPath, [cli, "--config", path.join(directory, "scenario.config.js"), "--all"], { stdio: ["ignore", "pipe", "pipe"] });
+            let stdout = "";
+            let stderr = "";
+            child.stdout.setEncoding("utf8");
+            child.stderr.setEncoding("utf8");
+            child.stdout.on("data", (chunk) => { stdout += chunk; });
+            child.stderr.on("data", (chunk) => { stderr += chunk; });
+            child.on("close", (code) => resolve({ code, stdout, stderr }));
+        });
+        assert.notEqual(result.code, 0, "存在失败场景，退出码应非 0");
+        assert.match(result.stdout, /\[FAIL\] 批量校验/);
+        assert.match(result.stdout, /\[FAIL\] 单值校验/);
+        assert.match(result.stdout, /\[PASS\] 通过项/);
+        // 一层明细：失败元素序号 1 基 + 子断言名（each 定义无 name 时回落 path「items」）
+        assert.match(result.stdout, /↳ 第 1 项 items: expected=/);
+        // 嵌套层：外层第 1 项的内层第 2 项（qty 9 违反 lte 5），路径「 › 」串联
+        assert.match(result.stdout, /↳ 第 1 项 › 第 2 项 qty: expected=5 actual=9/);
+        // 极性判别：仅失败 each 产生明细行（一层 + 嵌套共 2 行），通过 each 与非 each 失败均不产生
+        assert.equal(result.stdout.split("↳").length - 1, 2);
+        // 非 each 失败的值含换行时经 JSON.stringify 透出为字面量 \n，不拆行
+        assert.match(result.stdout, /- note: expected="ok" actual="a\\nb"/);
+    } finally {
+        server.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
 test("CLI 拒绝旧 window 全局配置与场景格式", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-legacy-"));
     const cli = path.resolve(import.meta.dirname, "../dist/scenario-test-cli.cjs");

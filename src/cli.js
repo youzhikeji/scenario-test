@@ -483,8 +483,21 @@ async function runCommand(args) {
                 for (const warning of result.warnings || []) {
                     console.log(`  [WARN] ${warning}`);
                 }
+                // each 失败明细：失败断言下逐行列出失败元素（序号 1 基）与失败子断言的期望/实际值；
+                // 嵌套 each 递归展开，路径用「 › 」串联定位「第几项的第几项」（JSON 报告同口径已透出）
+                const printEachDetail = (detail, prefix) => {
+                    for (const item of detail || []) {
+                        const label = `${prefix}第 ${item.index + 1} 项`;
+                        for (const sub of item.assertions) {
+                            if (sub.passed) continue;
+                            console.log(`      ↳ ${label} ${sub.name}: expected=${JSON.stringify(sub.expected)} actual=${JSON.stringify(sub.actual)}`);
+                            printEachDetail(sub.detail, `${label} › `);
+                        }
+                    }
+                };
                 for (const assertion of result.assertions.filter((item) => !item.passed)) {
                     console.log(`  - ${assertion.name}: expected=${JSON.stringify(assertion.expected)} actual=${JSON.stringify(assertion.actual)}`);
+                    printEachDetail(assertion.detail, "");
                 }
             }
         });
