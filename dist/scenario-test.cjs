@@ -566,7 +566,7 @@ function getHeaderByPath(headers, valuePath) {
   const key = token.startsWith("[") ? token.slice(1, -1).replace(/^['"]|['"]$/g, "") : token;
   const matched = headerKey(headers, key);
   if (matched === void 0) return void 0;
-  const rest = text.slice(token.length);
+  const rest = text.slice(match.index + token.length);
   return rest ? getByPath(headers[matched], rest) : headers[matched];
 }
 function hasHeader(headers, name) {
@@ -2754,6 +2754,33 @@ var workbenchView = function() {
     if (value === void 0 || value === null || value === "") return "";
     return typeof value === "string" ? value : JSON.stringify(value, null, 2);
   }
+  function mdInline(value) {
+    var text = typeof value === "string" ? value : JSON.stringify(value);
+    if (text === void 0 || text === null || text === "") return "";
+    return text.replace(/\\/g, "\\\\").replace(/\r?\n/g, "\\n");
+  }
+  function eachDetailRows2(detail, prefix) {
+    var html = "";
+    (Array.isArray(detail) ? detail : []).forEach(function(d) {
+      var label = (prefix ? prefix + " \u203A " : "") + "\u7B2C " + (d.index + 1) + " \u9879";
+      d.assertions.forEach(function(sub) {
+        if (sub.passed) return;
+        html += '<tr class="bg-rose-50/40"><td class="px-3.5 py-1.5 font-mono text-[11px] whitespace-nowrap text-rose-600">\u21B3 ' + label + '</td><td class="px-3.5 py-1.5 font-mono text-[11px] text-rose-700">' + esc(stringify(sub.expected)) + '</td><td class="px-3.5 py-1.5 font-mono text-[11px] text-rose-900">' + esc(stringify(sub.actual)) + '</td><td class="px-3.5 py-1.5"></td></tr>';
+        html += eachDetailRows2(sub.detail, label);
+      });
+    });
+    return html;
+  }
+  function pushEachDetailLines(lines, detail, prefix, depth) {
+    (Array.isArray(detail) ? detail : []).forEach(function(d) {
+      var label = (prefix ? prefix + " \u203A " : "") + "\u7B2C " + (d.index + 1) + " \u9879";
+      d.assertions.forEach(function(sub) {
+        if (sub.passed) return;
+        lines.push("    ".repeat(depth) + "- " + label + "\u5931\u8D25: \u671F\u671B " + mdInline(sub.expected) + ",\u5B9E\u5F97 " + mdInline(sub.actual));
+        pushEachDetailLines(lines, sub.detail, label, depth + 1);
+      });
+    });
+  }
   function formatReportPayload(value, options) {
     var text = stringify(value);
     if (!text) return "(\u7A7A)";
@@ -3388,16 +3415,7 @@ var workbenchView = function() {
         var rowOk = a.passed;
         var rowCls = rowOk ? "hover:bg-slate-50/60" : "bg-rose-50/80 border-rose-100 text-rose-900";
         var resLabel = rowOk ? '<span class="text-emerald-600 font-bold flex items-center gap-1"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg> \u901A\u8FC7</span>' : '<span class="text-rose-600 font-bold flex items-center gap-1"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"></path></svg> \u5931\u8D25</span>';
-        var detailRows = "";
-        if (!rowOk && Array.isArray(a.detail)) {
-          detailRows = a.detail.map(function(d) {
-            return d.assertions.filter(function(sub) {
-              return !sub.passed;
-            }).map(function(sub) {
-              return '<tr class="bg-rose-50/40"><td class="px-3.5 py-1.5 font-mono text-[11px] whitespace-nowrap text-rose-600">\u21B3 \u7B2C ' + (d.index + 1) + ' \u9879</td><td class="px-3.5 py-1.5 font-mono text-[11px] text-rose-700">' + esc(stringify(sub.expected)) + '</td><td class="px-3.5 py-1.5 font-mono text-[11px] text-rose-900">' + esc(stringify(sub.actual)) + '</td><td class="px-3.5 py-1.5"></td></tr>';
-            }).join("");
-          }).join("");
-        }
+        var detailRows = !rowOk && Array.isArray(a.detail) ? eachDetailRows2(a.detail, "") : "";
         return '<tr class="' + rowCls + ' transition-colors"><td class="px-3.5 py-2 font-medium ' + (rowOk ? "text-slate-700" : "text-rose-800 font-bold") + '">' + esc(a.name) + '</td><td class="px-3.5 py-2 font-mono text-[11px] ' + (rowOk ? "text-slate-600" : "text-rose-700") + '">' + esc(stringify(a.expected)) + '</td><td class="px-3.5 py-2 font-mono text-[11px] ' + (rowOk ? "text-slate-600" : "text-rose-900 font-bold") + '">' + esc(stringify(a.actual)) + '</td><td class="px-3.5 py-2 text-xs">' + resLabel + "</td></tr>" + detailRows;
       }).join("");
       assertHtml = '<div class="mt-4 pt-3.5 border-t border-slate-200/80"><div class="flex items-center gap-2 mb-2"><span class="text-xs font-bold text-slate-800">\u65AD\u8A00 (Assertions)</span><span class="text-xs font-mono font-bold ' + (failedCount ? "text-rose-600" : "text-emerald-600") + '">' + passedCount + " / " + s.assertions.length + '</span></div><div class="border border-slate-200/80 rounded-lg overflow-hidden bg-white shadow-2xs"><table class="w-full text-left text-xs"><thead class="bg-slate-50 text-[10.5px] text-slate-500 font-semibold border-b border-slate-200/70 uppercase tracking-wider"><tr><th class="px-3.5 py-2">\u65AD\u8A00\u9879</th><th class="px-3.5 py-2">\u9884\u671F\u503C (EXPECTED)</th><th class="px-3.5 py-2">\u5B9E\u9645\u503C (ACTUAL)</th><th class="px-3.5 py-2 w-24">\u7ED3\u679C</th></tr></thead><tbody class="divide-y divide-slate-100">' + assertRows + "</tbody></table></div></div>";
@@ -3505,7 +3523,7 @@ var workbenchView = function() {
       })
     };
   }
-  function buildMarkdownReport(report) {
+  function buildMarkdownReport2(report) {
     if (!report) return "";
     var summary = report.summary || {};
     var lines = [];
@@ -3527,20 +3545,15 @@ var workbenchView = function() {
       lines.push("### " + icon + " \u6B65\u9AA4 " + step.stepNo + ": " + step.name);
       lines.push("- **\u8BF7\u6C42**: `" + step.method + " " + step.path + "`");
       lines.push("- **\u72B6\u6001**: " + step.status + " | **\u8017\u65F6**: " + step.durationFmt);
-      if (step.error) lines.push("- **\u5931\u8D25\u539F\u56E0**: " + step.error);
+      if (step.error) lines.push("- **\u5931\u8D25\u539F\u56E0**: " + mdInline(step.error));
       (step.warnings || []).forEach(function(warning) {
-        lines.push("- **\u8B66\u544A**: " + warning);
+        lines.push("- **\u8B66\u544A**: " + mdInline(warning));
       });
       if (step.assertions && step.assertions.length) {
         lines.push("- **\u65AD\u8A00\u7ED3\u679C**:");
         step.assertions.forEach(function(a) {
           lines.push("  - [" + (a.passed ? "x" : " ") + "] " + a.name);
-          (a.detail || []).forEach(function(d) {
-            d.assertions.forEach(function(sub) {
-              if (sub.passed) return;
-              lines.push("    - \u7B2C " + (d.index + 1) + " \u9879\u5931\u8D25: \u671F\u671B " + stringify(sub.expected) + ",\u5B9E\u5F97 " + stringify(sub.actual));
-            });
-          });
+          pushEachDetailLines(lines, a.detail, "", 1);
         });
       }
       var response = step.response || {};
@@ -3619,11 +3632,14 @@ var workbenchView = function() {
     renderStepsAll,
     appendStepResult,
     buildOverallReport,
-    buildMarkdownReport,
+    buildMarkdownReport: buildMarkdownReport2,
+    eachDetailRows: eachDetailRows2,
     renderReportPanel
   };
 }();
 var ui_view_default = workbenchView;
+var buildMarkdownReport = workbenchView.buildMarkdownReport;
+var eachDetailRows = workbenchView.eachDetailRows;
 
 // src/browser/ui/ui-adhoc.js
 var workbenchAdhoc = function() {
