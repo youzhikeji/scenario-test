@@ -8,6 +8,15 @@ const workbenchView = (function () {
         return typeof value === 'string' ? value : JSON.stringify(value, null, 2);
     }
 
+    // Markdown 报告内的值拼接转义：反斜杠先行转义、换行折叠为字面量 \n，
+    // 防止含换行/列表标记的响应值把列表项拆行、伪造嵌套列表破坏报告排版
+    // （非字符串值用紧凑 JSON 单行呈现，完整多行内容仍在响应代码块中）
+    function mdInline(value) {
+        var text = typeof value === 'string' ? value : JSON.stringify(value);
+        if (text === undefined || text === null || text === '') return '';
+        return text.replace(/\\/g, '\\\\').replace(/\r?\n/g, '\\n');
+    }
+
     function formatReportPayload(value, options) {
         var text = stringify(value);
         if (!text) return '(空)';
@@ -1072,19 +1081,20 @@ const workbenchView = (function () {
             lines.push('### ' + icon + ' 步骤 ' + step.stepNo + ': ' + step.name);
             lines.push('- **请求**: `' + step.method + ' ' + step.path + '`');
             lines.push('- **状态**: ' + step.status + ' | **耗时**: ' + step.durationFmt);
-            if (step.error) lines.push('- **失败原因**: ' + step.error);
+            if (step.error) lines.push('- **失败原因**: ' + mdInline(step.error));
             (step.warnings || []).forEach(function (warning) {
-                lines.push('- **警告**: ' + warning);
+                lines.push('- **警告**: ' + mdInline(warning));
             });
             if (step.assertions && step.assertions.length) {
                 lines.push('- **断言结果**:');
                 step.assertions.forEach(function (a) {
                     lines.push('  - [' + (a.passed ? 'x' : ' ') + '] ' + a.name);
-                    // each 失败明细：逐行列出失败元素（序号 1 基）与失败子断言的期望/实际值
+                    // each 失败明细：逐行列出失败元素（序号 1 基）与失败子断言的期望/实际值；
+                    // 值经 mdInline 转义，含换行/列表标记的响应值不再拆行破坏排版
                     (a.detail || []).forEach(function (d) {
                         d.assertions.forEach(function (sub) {
                             if (sub.passed) return;
-                            lines.push('    - 第 ' + (d.index + 1) + ' 项失败: 期望 ' + stringify(sub.expected) + ',实得 ' + stringify(sub.actual));
+                            lines.push('    - 第 ' + (d.index + 1) + ' 项失败: 期望 ' + mdInline(sub.expected) + ',实得 ' + mdInline(sub.actual));
                         });
                     });
                 });
@@ -1211,3 +1221,5 @@ const workbenchView = (function () {
 })();
 
 export default workbenchView;
+// 具名导出供 Node 侧单测直接消费（浏览器入口仍走默认导出，形状不变）
+export const buildMarkdownReport = workbenchView.buildMarkdownReport;
