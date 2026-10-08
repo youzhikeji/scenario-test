@@ -35,7 +35,8 @@ let browser;
 try {
     await waitForServer();
     browser = await chromium.launch({ channel: "chrome", headless: true });
-    for (const viewport of [{ width: 1440, height: 900, name: "desktop" }, { width: 390, height: 844, name: "mobile" }]) {
+    // 仅桌面视口：工作台面向桌面浏览器，无移动端使用场景（2026-10-09 决策移除 mobile 视口）
+    for (const viewport of [{ width: 1440, height: 900, name: "desktop" }]) {
         const page = await browser.newPage({ viewport });
         await page.route(`http://127.0.0.1:${port}/health?*`, (route) => route.fulfill({
             status: 200,
