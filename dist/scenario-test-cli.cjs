@@ -6869,6 +6869,91 @@ function renderDoctorText(report) {
   return lines.join("\n");
 }
 
+// src/utils/failure-diff.js
+var SHORT_VALUE_LIMIT = 80;
+var MAX_LINES = 20;
+var CONTEXT_RADIUS = 40;
+function isShortValue(value) {
+  if (value === void 0) return true;
+  if (value === null || typeof value !== "object") return JSON.stringify(value ?? null).length <= SHORT_VALUE_LIMIT;
+  return JSON.stringify(value).length <= SHORT_VALUE_LIMIT;
+}
+function splitStringLines(text, prefix) {
+  const raw = String(text).split(/\r\n|\n|\r/);
+  const width = String(raw.length).length;
+  return raw.map((line, index) => `${prefix}${String(index + 1).padStart(width)} | ${JSON.stringify(line).slice(1, -1)}`);
+}
+function prettyLines(value) {
+  let text;
+  try {
+    text = JSON.stringify(value, null, 2) ?? String(value);
+  } catch {
+    text = String(value);
+  }
+  const lines = text.split("\n");
+  if (lines.length > MAX_LINES) {
+    return [
+      ...lines.slice(0, MAX_LINES),
+      `\u2026\uFF08\u5171 ${lines.length} \u884C\uFF0C\u5DF2\u622A\u65AD\uFF09`
+    ];
+  }
+  return lines;
+}
+function firstDifferenceLines(expected, actual, prefix) {
+  if (typeof expected !== "string" || typeof actual !== "string" || expected === actual) return [];
+  const common = [];
+  const maxLength = Math.max(expected.length, actual.length);
+  let index = 0;
+  while (index < maxLength && expected[index] === actual[index]) {
+    common.push(expected[index]);
+    index += 1;
+  }
+  const window2 = (text) => {
+    const start = Math.max(0, index - CONTEXT_RADIUS);
+    const end = Math.min(text.length, index + CONTEXT_RADIUS);
+    const head = start > 0 ? "\u2026" : "";
+    const tail = end < text.length ? "\u2026" : "";
+    const escape = (part) => JSON.stringify(part).slice(1, -1);
+    return `${head}${escape(text.slice(start, index))}\xAB${escape(text.slice(index, index + 1))}\xBB${escape(text.slice(index + 1, end))}${tail}`;
+  };
+  return [
+    `${prefix}\u2191 \u9996\u4E2A\u5DEE\u5F02\u5728\u7B2C ${index + 1} \u4E2A\u5B57\u7B26\uFF08\u957F\u5EA6 ${expected.length} vs ${actual.length}\uFF09\uFF1A`,
+    `${prefix}\u2191 \u671F\u671B ${window2(expected)}`,
+    `${prefix}\u2191 \u5B9E\u9645 ${window2(actual)}`
+  ];
+}
+function failureDiffLines(expected, actual, prefix = "") {
+  if (isShortValue(expected) && isShortValue(actual)) return [];
+  const lines = [];
+  if (!isShortValue(expected)) {
+    lines.push(`${prefix}  \u671F\u671B\u503C\uFF08expected\uFF09:`);
+    lines.push(...expandValueLines(expected, `${prefix}    `));
+  }
+  if (!isShortValue(actual)) {
+    lines.push(`${prefix}  \u5B9E\u9645\u503C\uFF08actual\uFF09:`);
+    lines.push(...expandValueLines(actual, `${prefix}    `));
+  }
+  lines.push(...firstDifferenceLines(
+    typeof expected === "string" ? expected : void 0,
+    typeof actual === "string" ? actual : void 0,
+    `${prefix}  `
+  ));
+  return lines;
+}
+function expandValueLines(value, prefix) {
+  if (typeof value === "string") {
+    const lines = splitStringLines(value, `${prefix}| `);
+    if (lines.length > MAX_LINES) {
+      return [
+        ...lines.slice(0, MAX_LINES),
+        `${prefix}\u2026\uFF08\u5171 ${lines.length} \u884C\uFF0C\u5DF2\u622A\u65AD\uFF09`
+      ];
+    }
+    return lines;
+  }
+  return prettyLines(value).map((line) => `${prefix}${line}`);
+}
+
 // src/cli.js
 var CliUsageError = class extends Error {
   constructor(message, hint) {
@@ -7386,12 +7471,18 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
             for (const sub of item.assertions) {
               if (sub.passed) continue;
               console.log(`      \u21B3 ${label} ${sub.name}: expected=${JSON.stringify(sub.expected)} actual=${JSON.stringify(sub.actual)}`);
+              for (const line of failureDiffLines(sub.expected, sub.actual, "        ")) {
+                console.log(line);
+              }
               printEachDetail(sub.detail, `${label} \u203A `);
             }
           }
         };
         for (const assertion of result.assertions.filter((item) => !item.passed)) {
           console.log(`  - ${assertion.name}: expected=${JSON.stringify(assertion.expected)} actual=${JSON.stringify(assertion.actual)}`);
+          for (const line of failureDiffLines(assertion.expected, assertion.actual, "    ")) {
+            console.log(line);
+          }
           printEachDetail(assertion.detail, "");
         }
       }
