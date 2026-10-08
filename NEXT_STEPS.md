@@ -18,10 +18,11 @@
 1. **取证计数（最严口径如实上报）**：宪法恢复（AGENTS.md/NEXT_STEPS/CHANGELOG/git log）4 + diff 审阅与落点核查（cli/browser/dts/capabilities/tailwind 结构化对比/contract 投射/二义扫描）9 + check 首跑与验收 2 + test:browser 三跑（首跑暴露遮挡缺陷、修复后验收、再终验）3 + 幻影文件还原 3 轮 3 + 实测 CLI 行为（help/--hel/--confg/结论行等 6 组命令）6 = **27 次，超软闸 15**（半成品审查比新开选题需要更多取证：既要核对已有改动的正确性，又要验证修复）；总动作约 60，超 40。超出部分主要为缺陷验证与三跑浏览器测试，均为必需，无冗余复跑。
 2. **CLI 失败 diff 视图仍未做**（R5 遗留候选、R6 首选、R8 继续顺延）：expected vs actual 结构化并排对比。当前 `55a5df3` 已有单行 `expected=... actual=...` 输出与 each 递归明细，diff 视图是锦上添花而非补缺。
 3. 其余价值排序（继承 R6）：Markdown 报告围栏转义小修（响应体含 ``` 破坏围栏）> 枚举随机（带权重）造数。
-4. **时间冻结类测试未做**（继承 R6）：结论行测试断言文案而非时间值，无 flaky 面。
-5. `docs/OPTIMIZATION_BRIEF.md` 的 CRLF 幻影改动（R6 遗留 1）未处理，建议人工 `git checkout --` 或统一仓库 EOL 策略；本轮 build/check 曾使 `dist/scenario-test-capabilities.json`、`dist/scenario-test.d.ts`、`src/version.generated.js` 出现同款 CRLF 幻影（`git diff` 为空），已 `git checkout --` 还原 3 个文件，提交内容不受影响。
-6. 全绿基线现为 **199/199**；contractVersion 仍为 **5**（本轮无 DSL 能力变化，纯展示层）；版本号不动，CHANGELOG 用 `## [Unreleased]`。
-7. 硬边界提醒不变：`dist/` 与 `*.generated.js` 勿手改；contract 投射文本不能含 `}`；types 名单锁第二份副本在 `tests/cli.test.js`；所有提交留本地不 push。
+4. **移动端视口已移除**（2026-10-09 用户决策：无移动端使用场景）：`tests/browser.test.mjs` 只跑 desktop 1440px，浏览器测试耗时减半；CSS 响应式断点保留（窄桌面窗口仍有意义），R7 修复的筛选摘要遮挡代码保留。
+5. **时间冻结类测试未做**（继承 R6）：结论行测试断言文案而非时间值，无 flaky 面。
+6. `docs/OPTIMIZATION_BRIEF.md` 的 CRLF 幻影改动（R6 遗留 1）未处理，建议人工 `git checkout --` 或统一仓库 EOL 策略；本轮 build/check 曾使 `dist/scenario-test-capabilities.json`、`dist/scenario-test.d.ts`、`src/version.generated.js` 出现同款 CRLF 幻影（`git diff` 为空），已 `git checkout --` 还原 3 个文件，提交内容不受影响。
+7. 全绿基线现为 **199/199**；contractVersion 仍为 **5**（本轮无 DSL 能力变化，纯展示层）；版本号不动，CHANGELOG 用 `## [Unreleased]`。
+8. 硬边界提醒不变：`dist/` 与 `*.generated.js` 勿手改；contract 投射文本不能含 `}`；types 名单锁第二份副本在 `tests/cli.test.js`；所有提交留本地不 push。
 
 ## 第 6 轮（2026-10-07）
 
