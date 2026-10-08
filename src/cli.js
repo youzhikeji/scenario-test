@@ -15,9 +15,19 @@ import { validatePath } from "./utils/path-validator.js";
 import { mergeGlobals } from "./core.js";
 import { FRAMEWORK_FILES, resolveProjectLayout } from "./project-layout.js";
 
+class CliUsageError extends Error {
+    constructor(message, hint) {
+        super(message);
+        this.name = "CliUsageError";
+        this.hint = hint || "运行 node scenario-test-cli.cjs --help 查看用法。";
+    }
+}
+
 function argumentValue(argv, index, option) {
     const value = argv[index + 1];
-    if (!value || value.startsWith("--")) throw new Error(`${option} 缺少参数值`);
+    if (!value || value.startsWith("--")) {
+        throw new CliUsageError(`${option} 缺少参数值`, `请为 ${option} 提供一个值，再重新运行。`);
+    }
     return value;
 }
 
@@ -32,6 +42,38 @@ for (const [name, spec] of Object.entries(contract.cli.options)) {
         VALUE_OPTIONS.set(target, { prop: spec.prop, spec });
         for (const alias of spec.aliases || []) VALUE_OPTIONS.set(`--${alias}`, { prop: spec.prop, spec });
     }
+}
+
+function optionEditDistance(left, right) {
+    const rows = Array.from({ length: left.length + 1 }, () => []);
+    for (let row = 0; row <= left.length; row += 1) rows[row][0] = row;
+    for (let column = 0; column <= right.length; column += 1) rows[0][column] = column;
+    for (let row = 1; row <= left.length; row += 1) {
+        for (let column = 1; column <= right.length; column += 1) {
+            const replacement = left[row - 1] === right[column - 1] ? 0 : 1;
+            rows[row][column] = Math.min(
+                rows[row - 1][column] + 1,
+                rows[row][column - 1] + 1,
+                rows[row - 1][column - 1] + replacement
+            );
+        }
+    }
+    return rows[left.length][right.length];
+}
+
+function suggestOption(input) {
+    // --help/-h 是真实可用选项（parseArgs 内联处理，不进 contract.cli.options），
+    // 拼写建议名单需补上它，否则 --hel 这类输入得不到修复建议
+    const knownOptions = new Set([...FLAG_OPTIONS.keys(), ...VALUE_OPTIONS.keys(), "--help"]);
+    const ranked = Array.from(knownOptions).map((option) => ({
+        option,
+        distance: optionEditDistance(input, option)
+    })).sort((left, right) => left.distance - right.distance || left.option.localeCompare(right.option));
+    if (!ranked.length) return null;
+    const best = ranked[0];
+    const threshold = Math.max(1, Math.floor(Math.max(input.length, best.option.length) * 0.18));
+    if (best.distance > threshold || (ranked[1] && ranked[1].distance === best.distance)) return null;
+    return best.option;
 }
 
 function parseArgs(argv) {
@@ -52,20 +94,30 @@ function parseArgs(argv) {
         }
         const flagProp = FLAG_OPTIONS.get(item);
         if (flagProp) { args[flagProp] = true; continue; }
-        if (item.startsWith("-")) throw new Error(`未知参数: ${item}`);
+        if (item.startsWith("-")) {
+            const suggestion = suggestOption(item);
+            throw new CliUsageError(
+                `未知参数: ${item}`,
+                suggestion
+                    ? `是否想使用 ${suggestion}？运行 node scenario-test-cli.cjs --help 查看全部选项。`
+                    : "运行 node scenario-test-cli.cjs --help 查看支持的参数。"
+            );
+        }
         else if (start === 0 && contract.cli.commands.includes(item)) {
             // 命令必须紧跟脚本名；命令出现在参数位置（argv[0] 非命令）时是写反了，
             // 与其静默当成 run 的场景名报"未找到场景"，不如直接给出正确写法
-            throw new Error(
-                `命令 ${item} 必须放在第一个参数位置，正确示例: ${item} --config scenario.config.js\n` +
-                `若确需执行同名场景，请使用 --scenario ${item}`
+            throw new CliUsageError(
+                `命令 ${item} 必须放在第一个参数位置`,
+                `正确示例：node scenario-test-cli.cjs ${item} --config scenario.config.js；若确需执行同名场景，请使用 --scenario "${item}"。`
             );
         }
         else if (!args.scenario && args.command === "run") args.scenario = item;
-        else throw new Error(`无法识别的参数: ${item}`);
+        else throw new CliUsageError(`无法识别的参数: ${item}`, "请运行 node scenario-test-cli.cjs --help 查看命令与参数用法。");
     }
-    if (args.all && args.scenario) throw new Error("--all 与 --scenario 不能同时使用");
-    if (!Number.isInteger(args.port) || args.port < 1 || args.port > 65535) throw new Error("--port 必须是 1-65535 的整数");
+    if (args.all && args.scenario) throw new CliUsageError("--all 与 --scenario 不能同时使用", "请移除其中一个选项后重试。");
+    if (!Number.isInteger(args.port) || args.port < 1 || args.port > 65535) {
+        throw new CliUsageError("--port 必须是 1-65535 的整数", "请为 --port 选择 1 到 65535 之间的整数。");
+    }
 
     // ✅ 环境变量优先于命令行参数
     if (process.env.SCENARIO_AUTH) {
@@ -94,41 +146,49 @@ function parseGlobalsEnv() {
     try {
         parsed = JSON.parse(raw);
     } catch {
-        throw new Error("SCENARIO_GLOBALS 必须是合法的 JSON 数组，例如 [{\"type\":\"header\",\"name\":\"X-Token\",\"value\":\"abc\"}]");
+        throw new CliUsageError("SCENARIO_GLOBALS 必须是合法的 JSON 数组", "请检查变量值格式，例如 [{\"type\":\"header\",\"name\":\"X-Token\",\"value\":\"abc\"}]。");
     }
-    if (!Array.isArray(parsed)) throw new Error("SCENARIO_GLOBALS 必须是 JSON 数组");
+    if (!Array.isArray(parsed)) throw new CliUsageError("SCENARIO_GLOBALS 必须是 JSON 数组");
     const types = contract.globals.types;
     return parsed.map((item, index) => {
         if (!item || typeof item !== "object" || !types.includes(item.type)
             || typeof item.name !== "string" || !item.name.trim()) {
-            throw new Error(`SCENARIO_GLOBALS 第 ${index + 1} 项无效，格式应为 { type: "${types.join("|")}", name, value }`);
+            throw new CliUsageError(`SCENARIO_GLOBALS 第 ${index + 1} 项无效，格式应为 { type: "${types.join("|")}", name, value }`);
         }
         return { type: item.type, name: item.name, value: item.value == null ? "" : String(item.value) };
     });
 }
 
 function printHelp() {
+    const optionEntries = Object.entries(contract.cli.options).map(([name, spec]) => {
+        const optionNames = [`--${name}`, ...(spec.aliases || []).map((alias) => `--${alias}`)].join(", ");
+        const valueName = spec.kind === "value" ? ` <${spec.parse === "number" ? "number" : "value"}>` : "";
+        return { label: `${optionNames}${valueName}`, description: spec.description };
+    });
+    const labelWidth = Math.max(...optionEntries.map((item) => item.label.length));
+    const optionHelp = optionEntries
+        .map((item) => `  ${item.label.padEnd(labelWidth)}  ${item.description}`)
+        .join("\n");
+    const commandList = contract.cli.commands.map((command) => `  ${command}`).join("\n");
+
     console.log(`scenario-test ${VERSION}
 
 Usage:
-  node scenario-test-cli.cjs --config ./scenario.config.js --env local --all
-  node scenario-test-cli.cjs run --config ./scenario.config.js --scenario health
-  node scenario-test-cli.cjs serve --config ./scenario.config.js --port 4300
-  node scenario-test-cli.cjs init --project D:\\project
-  node scenario-test-cli.cjs capabilities [--json]
-  node scenario-test-cli.cjs doctor --config ./scenario.config.js [--json]
+  node scenario-test-cli.cjs [run] [options]
+  node scenario-test-cli.cjs <command> [options]
+
+Commands:
+${commandList}
+
+帮助:
+  在任一命令后追加 --help 或 -h 查看用法，例如 node scenario-test-cli.cjs run --help。
 
 Options:
-  --config <file>       场景配置文件
-  --env <key>           配置中的环境 key
-  --base-url <url>      临时覆盖 Base URL
-  --scenario <id>       执行指定场景（可执行 manual:true 场景）
-  --all                 执行配置中的全部自动场景（默认排除 manual:true；
-                        未指定 --all/--scenario 时仅执行清单第一个场景）
-  --fail-on-skip        存在任何 SKIP 步骤时最终退出码为 1（默认 false）
-  --port <number>       浏览器服务端口，默认 4300
-  --allow-external-plugins  允许加载外部插件（有安全风险）
-  --json                capabilities/doctor 输出机器可读 JSON（stdout 纯净）
+${optionHelp}
+
+运行说明:
+  默认 run 未指定 --all/--scenario 时仅执行清单第一个场景。
+  --all 执行配置中的全部自动场景；manual:true 场景须通过 --scenario 显式选择。
 
 能力发现命令:
   capabilities          输出 DSL 能力清单（人类文本；--json 输出机器可读 JSON，
@@ -137,28 +197,23 @@ Options:
                         与 AI 规则就绪检查；有 FAIL 时退出码 1
 
 认证选项:
-  环境变量 SCENARIO_AUTH       推荐方式，设置授权令牌
-  --authorization <v>          （已弃用，仍兼容）命令行传递令牌
+  环境变量 SCENARIO_AUTH       推荐方式，设置授权令牌；避免令牌进入进程参数。
 
 全局参数选项（追加到每个请求）:
   环境变量 SCENARIO_GLOBALS    JSON 数组，如 [{"type":"header","name":"X-Token","value":"abc"}]
                                支持 header / cookie / query 三种类型，覆盖配置中的同名参数
 
-初始化选项:
-  --project <path>      项目根目录
-  --dir <name>          场景测试目录名
-  --force               强制覆盖已有文件
-  --no-input            非交互：目标目录已存在时保留配置与场景，仅刷新 AI 规则和运行时副本
-  --library-url <url>   init 运行时副本下载目录（CLI/UMD/d.ts/capabilities，默认 GitHub Tag dist）
+初始化说明:
+  目标目录已存在时，交互模式可选择覆盖、保留或取消；非交互模式默认保留现有配置与场景。
 
 示例:
-  # 推荐: 使用环境变量
+  # Bash
   export SCENARIO_AUTH="Bearer your-token"
   node scenario-test-cli.cjs --config scenario.config.js --all
 
-  # 或从 .env 文件加载
-  export $(cat .env | xargs)
-  node scenario-test-cli.cjs --config scenario.config.js --all`);
+  # PowerShell
+  $env:SCENARIO_AUTH = "Bearer your-token"
+  node scenario-test-cli.cjs --config "./scenario.config.js" --all`);
 }
 
 function writeProjectFile(projectRoot, relativePath, content, force) {
@@ -358,7 +413,15 @@ async function initCommand(args) {
 
 function resolveConfigPath(value) {
     const candidate = path.resolve(value || "scenario.config.js");
-    if (!fs.existsSync(candidate)) throw new Error(`配置文件不存在: ${candidate}`);
+    if (!fs.existsSync(candidate)) {
+        throw new CliUsageError(
+            `${value ? "配置文件不存在" : "未找到默认配置文件"}：${candidate}`,
+            [
+                `使用 --config "<实际配置文件路径>" 指向已有配置，例如：node scenario-test-cli.cjs run --config "<实际配置文件路径>"`,
+                `初始化项目模板：node scenario-test-cli.cjs init --project "."`
+            ].join("\n  ")
+        );
+    }
     return candidate;
 }
 
@@ -404,7 +467,13 @@ function selectEnvironment(config, key) {
     if (!config.envs.length) return { key: "default", name: "默认", baseUrl: config.baseUrl || "" };
     const selectedKey = key || config.defaultEnvKey;
     const environment = config.envs.find((item) => item.key === selectedKey);
-    if (!environment) throw new Error(`未找到环境 ${selectedKey}，可用值: ${config.envs.map((item) => item.key).join(", ")}`);
+    if (!environment) {
+        const keys = config.envs.map((item) => item.key);
+        throw new CliUsageError(
+            `未找到环境 ${selectedKey}，可用值: ${keys.join(", ")}`,
+            "请将 --env 设置为上面列出的环境 key 后重试。"
+        );
+    }
     return environment;
 }
 
@@ -416,7 +485,10 @@ function configVariables(config) {
         if (value !== undefined) values[definition.name] = value;
         else if (values[definition.name] === undefined && definition.defaultValue !== undefined) values[definition.name] = definition.defaultValue;
         if (definition.required && (values[definition.name] === undefined || values[definition.name] === "")) {
-            throw new Error(`缺少变量 ${definition.name}${environmentName ? `，请设置环境变量 ${environmentName}` : ""}`);
+            throw new CliUsageError(
+                `缺少变量 ${definition.name}${environmentName ? `，请设置环境变量 ${environmentName}` : ""}`,
+                environmentName ? `设置 ${environmentName} 后重新运行。` : "请在配置的 vars 或 variables.defaultValue 中提供该变量。"
+            );
         }
     }
     return values;
@@ -433,9 +505,28 @@ async function runCommand(args) {
         : config.scenarios.filter((item) => [item.id, item.name, item.url].includes(args.scenario || config.scenarios[0]?.id));
     if (!entries.length) {
         if (args.all && config.scenarios.length > 0 && config.scenarios.every((item) => item.manual)) {
-            throw new Error("配置中的场景全部标记为 manual:true，--all 默认排除手动场景；请使用 --scenario <id> 显式执行");
+            throw new CliUsageError(
+                "配置中的场景全部标记为 manual:true，--all 默认排除手动场景",
+                "请先确认数据已准备好，再通过 --scenario <id> 显式选择要执行的手动场景。"
+            );
         }
-        throw new Error(args.scenario ? `未找到场景: ${args.scenario}` : "配置中没有可自动执行的场景");
+        if (args.scenario) {
+            const limit = 12;
+            const choices = config.scenarios.slice(0, limit).map((item) => {
+                const name = item.name && item.name !== item.id ? ` — ${item.name}` : "";
+                return `  - ${item.id || "(无 id)"}${name}${item.manual ? "（manual:true）" : ""}`;
+            });
+            const remaining = config.scenarios.length - choices.length;
+            const hasManualScenarios = config.scenarios.some((item) => item.manual);
+            const list = config.scenarios.length
+                ? `可用场景（显示 ${choices.length}/${config.scenarios.length} 项）：\n${choices.join("\n")}${remaining > 0 ? `\n  … 其余 ${remaining} 项未显示。` : ""}${hasManualScenarios ? "\nmanual:true 场景需通过 --scenario <id> 显式选择。" : ""}`
+                : "配置中没有可选场景，请检查 scenarios 列表。";
+            throw new CliUsageError(`未找到场景: ${args.scenario}`, list);
+        }
+        throw new CliUsageError(
+            "配置中没有可自动执行的场景",
+            "请检查配置中的 scenarios 列表；如场景均为 manual:true，请确认数据准备完成后用 --scenario <id> 显式选择。"
+        );
     }
     const plugins = await loadPlugins(config, configDir, { allowExternalPlugins: args.allowExternalPlugins });
     const adapters = {};
@@ -451,11 +542,18 @@ async function runCommand(args) {
         io: ScenarioTest.createNodeIo(configDir),
         adapters
     };
-    if (!baseOptions.baseUrl) throw new Error("缺少 Base URL，请配置环境或传入 --base-url");
+    if (!baseOptions.baseUrl) {
+        throw new CliUsageError(
+            "缺少 Base URL",
+            "请在配置环境中设置 baseUrl，或使用 --base-url \"https://api.example.com\" 临时指定。"
+        );
+    }
     let total = 0;
     let passedTotal = 0;
     let failedTotal = 0;
+    let actualFailedTotal = 0;
     let skippedTotal = 0;
+    let stoppedUnexecutedTotal = 0;
     for (const entry of entries) {
         if (!entry.url) throw new Error(`场景 ${entry.id} 缺少 url`);
         // 与 doctor 一致：相对路径必须位于配置目录内（防路径遍历），绝对路径保持兼容
@@ -507,7 +605,10 @@ async function runCommand(args) {
         total += report.planned;
         passedTotal += report.passedSteps;
         // 因 failurePolicy:stop 未执行到位的步骤按失败统计；SKIP 步骤单独计数不并入失败
-        failedTotal += report.failed + (report.planned - report.executed - report.skipped);
+        const stoppedUnexecuted = report.planned - report.executed - report.skipped;
+        actualFailedTotal += report.failed;
+        stoppedUnexecutedTotal += stoppedUnexecuted;
+        failedTotal += report.failed + stoppedUnexecuted;
         skippedTotal += report.skipped;
         console.log(`Summary: passed=${report.passedSteps} failed=${report.failed} skipped=${report.skipped} executed=${report.executed}/${report.planned} planned (状态 ${report.status})`);
     }
@@ -516,6 +617,18 @@ async function runCommand(args) {
     if (args.failOnSkip && skippedTotal > 0) {
         console.log(`\n--fail-on-skip 已开启，存在 ${skippedTotal} 个 SKIP 步骤，退出码置为 1`);
         process.exitCode = 1;
+    }
+
+    const countSummary = `通过 ${passedTotal} 步，实际失败 ${actualFailedTotal} 步，条件跳过 ${skippedTotal} 步，因 stop 策略未执行 ${stoppedUnexecutedTotal} 步`;
+    if (actualFailedTotal > 0) {
+        console.log(`\n结论：执行失败。${countSummary}；未执行步骤不计入通过。`);
+    } else if (passedTotal === 0 && skippedTotal > 0) {
+        const exitText = args.failOnSkip ? "因 --fail-on-skip 开启，退出码为 1" : "按默认策略退出码为 0";
+        console.log(`\n结论：全部跳过，未发起请求。${countSummary}；${exitText}。`);
+    } else if (stoppedUnexecutedTotal > 0) {
+        console.log(`\n结论：执行未完成。${countSummary}。`);
+    } else {
+        console.log(`\n结论：执行完成。${countSummary}${skippedTotal > 0 ? "；条件跳过的步骤未发起请求" : ""}。`);
     }
 }
 
@@ -781,6 +894,11 @@ async function main() {
 }
 
 main().catch((error) => {
-    console.error(error?.stack || error);
+    if (error instanceof CliUsageError) {
+        console.error(`错误：${error.message}`);
+        if (error.hint) console.error(`提示：${error.hint}`);
+    } else {
+        console.error(error?.stack || error);
+    }
     process.exitCode = 1;
 });

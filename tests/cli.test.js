@@ -304,6 +304,40 @@ test("CLI --help 列出全部子命令与关键选项", async () => {
     }
 });
 
+test("CLI --help 选项清单从 contract 投射：每个契约选项均出现，无孤儿选项行", async () => {
+    const { contract } = await import("../src/index.js");
+    const result = await runCli(["--help"]);
+    assert.equal(result.code, 0);
+    // 正向：contract.cli.options 的每个选项名与别名都必须出现在 help 中
+    for (const [name, spec] of Object.entries(contract.cli.options)) {
+        assert.match(result.stdout, new RegExp(`--${name.replace(/[-]/g, "\\-")}`), `help 应包含 --${name}`);
+        for (const alias of spec.aliases || []) {
+            assert.match(result.stdout, new RegExp(`--${alias.replace(/[-]/g, "\\-")}`), `help 应包含 --${alias}`);
+        }
+    }
+    // value 型选项标注取值占位（number 解析的标 <number>，其余标 <value>）
+    assert.match(result.stdout, /--port <number>/);
+    assert.match(result.stdout, /--config <value>/);
+    // 极性：非契约手写选项不得混入（防回退成手写名单第二份副本）
+    assert.doesNotMatch(result.stdout, /--verbose/);
+});
+
+test("CLI 未知参数给拼写建议，无近似候选时只提示 --help", async () => {
+    // 近距拼写错误：给出唯一候选建议
+    const suggestion = await runCli(["--confg", "x"]);
+    assert.equal(suggestion.code, 1);
+    assert.match(suggestion.stderr, /未知参数: --confg/);
+    assert.match(suggestion.stderr, /是否想使用 --config/);
+    // --help 自身也在建议名单内（真实可用选项，不在 contract.cli.options）
+    const helpSuggestion = await runCli(["--hel"]);
+    assert.match(helpSuggestion.stderr, /是否想使用 --help/);
+    // 远距无关输入：不给猜测建议，直接指引 --help
+    const noSuggestion = await runCli(["--xyzzy"]);
+    assert.equal(noSuggestion.code, 1);
+    assert.doesNotMatch(noSuggestion.stderr, /是否想使用/);
+    assert.match(noSuggestion.stderr, /--help/);
+});
+
 test("CLI capabilities 文本模式输出可读清单，--json 输出纯 JSON", async () => {
     const text = await runCli(["capabilities"]);
     assert.equal(text.code, 0);
@@ -366,3 +400,82 @@ test("CLI run --base-url 临时覆盖环境地址且 SCENARIO_AUTH 注入 Author
         fs.rmSync(directory, { recursive: true, force: true });
     }
 });
+
+test("CLI --scenario 未命中时列出可用场景候选，manual 场景带显式选择提示", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-cli-candidates-"));
+    try {
+        fs.writeFileSync(path.join(directory, "scenario.config.js"),
+            `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1:1"}],scenarios:[
+                {id:"health",name:"健康检查",url:"scenarios/health.js"},
+                {id:"audit",name:"审计",url:"scenarios/audit.js",manual:true}
+            ]}));`, "utf8");
+        fs.mkdirSync(path.join(directory, "scenarios"), { recursive: true });
+        fs.writeFileSync(path.join(directory, "scenarios/health.js"),
+            `ScenarioTest.registerScenario("health",ScenarioTest.defineScenario({name:"健康检查",steps:[{name:"h",path:"health",status:200}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/audit.js"),
+            `ScenarioTest.registerScenario("audit",ScenarioTest.defineScenario({name:"审计",steps:[{name:"a",path:"audit",status:200}]}));`, "utf8");
+        const result = await runCli(["--config", path.join(directory, "scenario.config.js"), "--scenario", "nope"]);
+        assert.equal(result.code, 1);
+        assert.match(result.stderr, /未找到场景: nope/);
+        // 候选清单：id + name 同列，manual 场景带（manual:true）标注
+        assert.match(result.stderr, /可用场景（显示 2\/2 项）/);
+        assert.match(result.stderr, /- health — 健康检查/);
+        assert.match(result.stderr, /- audit — 审计（manual:true）/);
+        assert.match(result.stderr, /manual:true 场景需通过 --scenario <id> 显式选择/);
+    } finally {
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
+test("CLI run 结束输出结论行：失败/全部跳过/完成三态口径可判别", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-cli-verdict-"));
+    const server = http.createServer((request, response) => {
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ status: "UP" }));
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+        const port = server.address().port;
+        fs.mkdirSync(path.join(directory, "scenarios"));
+        fs.writeFileSync(path.join(directory, "scenario.config.js"),
+            `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1:${port}"}],scenarios:[
+                {id:"failing",name:"Failing",url:"scenarios/failing.js"},
+                {id:"allskip",name:"AllSkip",url:"scenarios/allskip.js"},
+                {id:"passing",name:"Passing",url:"scenarios/passing.js"}
+            ]}));`, "utf8");
+        // 失败：断言必败；全部跳过：when 恒不满足；通过：隐式 2xx
+        fs.writeFileSync(path.join(directory, "scenarios/failing.js"),
+            `ScenarioTest.registerScenario("failing",ScenarioTest.defineScenario({name:"Failing",steps:[{name:"f",path:"api",status:200,assertions:[{path:"status",equals:"DOWN"}]}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/allskip.js"),
+            `ScenarioTest.registerScenario("allskip",ScenarioTest.defineScenario({name:"AllSkip",steps:[{name:"s",path:"api",status:200,when:{from:"vars",path:"missing",exists:true}}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/passing.js"),
+            `ScenarioTest.registerScenario("passing",ScenarioTest.defineScenario({name:"Passing",steps:[{name:"p",path:"api",status:200}]}));`, "utf8");
+
+        const verdictOf = (result) => {
+            const lines = result.stdout.split("\n").filter((line) => line.includes("结论："));
+            assert.equal(lines.length, 1, `应恰好一行结论，实际: ${lines.join(" | ")}`);
+            return lines[0];
+        };
+
+        // 失败态：实际失败 1 步，退出码 1
+        const failed = await runCli(["--config", path.join(directory, "scenario.config.js"), "--scenario", "failing"]);
+        assert.equal(failed.code, 1);
+        assert.match(verdictOf(failed), /结论：执行失败。通过 0 步，实际失败 1 步/);
+        assert.match(verdictOf(failed), /未执行步骤不计入通过/);
+
+        // 全部跳过态：0 通过 1 跳过，默认退出码 0
+        const skipped = await runCli(["--config", path.join(directory, "scenario.config.js"), "--scenario", "allskip"]);
+        assert.equal(skipped.code, 0);
+        assert.match(verdictOf(skipped), /结论：全部跳过，未发起请求。通过 0 步，实际失败 0 步，条件跳过 1 步/);
+        assert.match(verdictOf(skipped), /按默认策略退出码为 0/);
+
+        // 完成态：1 通过
+        const passed = await runCli(["--config", path.join(directory, "scenario.config.js"), "--scenario", "passing"]);
+        assert.equal(passed.code, 0);
+        assert.match(verdictOf(passed), /结论：执行完成。通过 1 步，实际失败 0 步，条件跳过 0 步，因 stop 策略未执行 0 步/);
+    } finally {
+        server.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
