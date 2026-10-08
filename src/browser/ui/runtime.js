@@ -33,6 +33,7 @@ export function createWorkbenchRuntime(options) {
 
     // 动态 datalist 的全局唯一 id 计数器
     var globalValueListSeq = 0;
+    var locatedStepHighlightTimer = null;
 
     var appConfig = options.config || {};
     var getRegisteredScenario = options.getScenario || function () { return null; };
@@ -52,6 +53,7 @@ export function createWorkbenchRuntime(options) {
         // 保持过滤按钮的高亮激活状态
         document.querySelectorAll('.filter-btn').forEach(function (b) {
             var active = b.dataset.f === type;
+            b.setAttribute('aria-pressed', active ? 'true' : 'false');
             if (active) {
                 b.className = 'filter-btn px-2.5 py-1 text-xs font-bold text-slate-900 bg-white rounded-md shadow-2xs transition-all';
             } else {
@@ -60,7 +62,9 @@ export function createWorkbenchRuntime(options) {
         });
 
         // 复合过滤步骤列表项
-        document.querySelectorAll('#stepsList li').forEach(function (li) {
+        var stepItems = Array.from(document.querySelectorAll('#stepsList li[data-step-idx]'));
+        var visibleCount = 0;
+        stepItems.forEach(function (li) {
             var searchData = String(li.dataset.search || '').toLowerCase();
             var matchSearch = !keyword || searchData.indexOf(keyword) >= 0;
 
@@ -78,8 +82,26 @@ export function createWorkbenchRuntime(options) {
                 matchFilter = skipped;
             }
 
-            li.style.display = (matchSearch && matchFilter) ? '' : 'none';
+            var visible = matchSearch && matchFilter;
+            li.style.display = visible ? '' : 'none';
+            if (visible) visibleCount += 1;
         });
+
+        var summary = document.getElementById('stepFilterSummary');
+        if (summary) summary.textContent = '显示 ' + visibleCount + ' / ' + stepItems.length + ' 个步骤';
+        var resetButton = document.getElementById('resetStepFiltersBtn');
+        if (resetButton) resetButton.hidden = type === 'all' && !stepsFilterState.keyword;
+
+        var stepsList = document.getElementById('stepsList');
+        var emptyState = document.getElementById('stepsFilterEmpty');
+        var hasNoMatches = stepItems.length > 0 && visibleCount === 0;
+        if (stepsList) stepsList.style.display = hasNoMatches ? 'none' : '';
+        if (emptyState) {
+            emptyState.style.display = hasNoMatches ? 'flex' : 'none';
+            emptyState.innerHTML = hasNoMatches
+                ? '<span>没有匹配的步骤</span><button type="button" onclick="window.__R.resetFilters()">清除搜索和筛选</button>'
+                : '';
+        }
     }
 
     // ===== 全局交互桥接（挂载至 window.__R 供 DOM 内联 onclick 调用）=====
@@ -112,6 +134,16 @@ export function createWorkbenchRuntime(options) {
         search: function (q) {
             stepsFilterState.keyword = q;
             applyStepsFilter();
+        },
+        resetFilters: function () {
+            stepsFilterState.type = 'all';
+            stepsFilterState.keyword = '';
+            var searchInput = document.getElementById('stepSearchInput');
+            if (searchInput) {
+                searchInput.value = '';
+            }
+            applyStepsFilter();
+            if (searchInput) searchInput.focus();
         },
         getFilterState: function () {
             return stepsFilterState;
@@ -475,6 +507,15 @@ export function createWorkbenchRuntime(options) {
         uiView.renderScenarioSelect(state.discoveredFiles, state.scenarioFile, state.scenarioSearch, getPinnedScenarioFiles());
     }
 
+    function clearScenarioSearch() {
+        var input = document.getElementById('scenarioSearchInput');
+        if (!input) return;
+        input.value = '';
+        state.scenarioSearch = '';
+        renderScenarioSelect();
+        input.focus();
+    }
+
     function formatTime(date) {
         if (!date) return '-';
         var d = new Date(date);
@@ -816,6 +857,44 @@ export function createWorkbenchRuntime(options) {
         var chevron = stepNode.querySelector('.chevron');
         if (panel) panel.classList.add('open');
         if (chevron) chevron.classList.add('rotate-180');
+        var header = stepNode.querySelector('[role="button"][tabindex]');
+        if (header) header.setAttribute('aria-expanded', 'true');
+    }
+
+    function locateScenarioStep(stepIndex) {
+        if (!Number.isInteger(stepIndex) || stepIndex < 0) return;
+        stepsFilterState.type = 'all';
+        stepsFilterState.keyword = '';
+        var searchInput = document.getElementById('stepSearchInput');
+        if (searchInput) searchInput.value = '';
+        applyStepsFilter();
+
+        var ul = document.getElementById('stepsList');
+        var stepNode = ul && ul.querySelector('li[data-step-idx="' + stepIndex + '"]');
+        if (!ul || !stepNode) return;
+        expandStepDetails(stepIndex);
+
+        ul.querySelectorAll('.scenario-step--located').forEach(function (node) {
+            node.classList.remove('scenario-step--located');
+        });
+        stepNode.classList.add('scenario-step--located');
+        if (locatedStepHighlightTimer) window.clearTimeout(locatedStepHighlightTimer);
+        locatedStepHighlightTimer = window.setTimeout(function () {
+            stepNode.classList.remove('scenario-step--located');
+            locatedStepHighlightTimer = null;
+        }, 2400);
+
+        var listRect = ul.getBoundingClientRect();
+        var stepRect = stepNode.getBoundingClientRect();
+        var top = ul.scrollTop + stepRect.top - listRect.top - Math.max(0, (ul.clientHeight - stepNode.offsetHeight) / 2);
+        var reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (typeof ul.scrollTo === 'function') {
+            ul.scrollTo({ top: Math.max(0, top), behavior: reducedMotion ? 'auto' : 'smooth' });
+        } else {
+            ul.scrollTop = Math.max(0, top);
+        }
+        var stepHeader = stepNode.querySelector('[role="button"][tabindex]');
+        if (stepHeader) stepHeader.focus({ preventScroll: true });
     }
 
     async function runScenario() {
@@ -1707,6 +1786,17 @@ export function createWorkbenchRuntime(options) {
         updateHeader();
         renderScenarioSelect();
 
+        var reportPanel = document.getElementById('reportPanel');
+        if (reportPanel) {
+            reportPanel.addEventListener('click', function (event) {
+                var target = event.target.closest('[data-locate-step-index]');
+                if (!target) return;
+                var stepIndex = Number(target.dataset.locateStepIndex);
+                if (!Number.isInteger(stepIndex) || stepIndex < 0) return;
+                locateScenarioStep(stepIndex);
+            });
+        }
+
         var stepsList = document.getElementById('stepsList');
         stepsList.addEventListener('click', function (event) {
             var target = event.target.closest('[data-step-action]');
@@ -1719,6 +1809,10 @@ export function createWorkbenchRuntime(options) {
 
         var scenarioList = document.getElementById('scenarioList');
         scenarioList.addEventListener('click', function (event) {
+            if (event.target.closest('[data-clear-scenario-search]')) {
+                clearScenarioSearch();
+                return;
+            }
             var pinTarget = event.target.closest('[data-pin-file]');
             if (pinTarget) {
                 toggleScenarioPin(pinTarget.dataset.pinFile);
@@ -1733,10 +1827,19 @@ export function createWorkbenchRuntime(options) {
             });
         });
 
-        document.getElementById('scenarioSearchInput').addEventListener('input', function (event) {
+        var scenarioSearchInput = document.getElementById('scenarioSearchInput');
+        scenarioSearchInput.addEventListener('input', function (event) {
             state.scenarioSearch = event.target.value;
             renderScenarioSelect();
         });
+        scenarioSearchInput.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape' && scenarioSearchInput.value) {
+                event.preventDefault();
+                clearScenarioSearch();
+            }
+        });
+        var scenarioSearchClearButton = document.getElementById('scenarioSearchClearBtn');
+        if (scenarioSearchClearButton) scenarioSearchClearButton.addEventListener('click', clearScenarioSearch);
 
         // 凭据变量明文/掩码切换（容器 innerHTML 会被重绘，监听挂在容器自身）
         var varsInputContainer = document.getElementById('scenarioVarsInput');

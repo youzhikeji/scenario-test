@@ -86,6 +86,34 @@ try {
         await page.waitForFunction(() => !document.querySelector("#runBtn").disabled && document.querySelector('#stepsList li[data-passed="false"]'));
         assert.equal(await page.locator('#stepsList li[data-passed="false"]').count(), 1);
 
+        // 步骤筛选：失败态下按结果筛选计数正确，清除筛选按钮随筛选状态显隐
+        assert.equal(await page.locator("#filterBar #resetStepFiltersBtn").isVisible(), false, "无筛选时应隐藏清除按钮");
+        await page.locator('#filterBar [data-f="fail"]').click();
+        assert.equal(await page.locator("#stepsList li:visible").count(), 1, "失败筛选应只显示失败步骤");
+        assert.equal(await page.locator('#filterBar [data-f="fail"]').getAttribute("aria-pressed"), "true", "激活的筛选按钮应带 aria-pressed=true");
+        assert.equal(await page.locator("#resetStepFiltersBtn").isVisible(), true, "筛选后应显示清除按钮");
+        assert.match(await page.locator("#stepFilterSummary").textContent(), /显示 1 \/ 1 个步骤/);
+        // 步骤搜索：无匹配时出现空态，一键清除恢复
+        await page.locator("#stepSearchInput").fill("不存在的步骤xyz");
+        await page.waitForFunction(() => document.querySelector("#stepsFilterEmpty").style.display !== "none");
+        assert.equal(await page.locator("#stepsList li:visible").count(), 0, "无匹配搜索应隐藏全部步骤");
+        assert.match(await page.locator("#stepsFilterEmpty").textContent(), /没有匹配的步骤/);
+        await page.locator("#stepsFilterEmpty button").click();
+        await page.waitForFunction(() => document.querySelector("#stepSearchInput").value === "");
+        assert.equal(await page.locator("#stepsList li:visible").count(), 1, "清除筛选后应恢复显示步骤");
+
+        // 失败报告「定位步骤」：失败运行后自动切到报告页，点击定位应展开并高亮对应步骤
+        assert.match(await page.locator("#reportPanel").textContent(), /失败诊断/, "失败运行后报告面板应为失败诊断");
+        const locateButton = page.locator("#reportPanel [data-locate-step-index]").first();
+        assert.equal(await locateButton.count(), 1, "失败诊断应提供定位步骤按钮");
+        assert.equal(await locateButton.getAttribute("data-locate-step-index"), "0", "单步场景失败应定位到零基索引 0");
+        await locateButton.click();
+        await page.waitForFunction(() => {
+            const node = document.querySelector('#stepsList li[data-step-idx="0"]');
+            return node && node.classList.contains("scenario-step--located") && node.querySelector(".details-panel").classList.contains("open");
+        }, undefined, { timeout: 3000 });
+        assert.match(await page.locator('#stepsList li[data-step-idx="0"] .details-panel').textContent(), /DOWN/, "定位展开的失败步骤详情应包含期望值");
+
         await page.locator("#configToggleBtn").click();
         await page.locator("#clearSettingsBtn").click();
         assert.match(await page.locator("#settingsNotice").textContent(), /已恢复配置值/);

@@ -177,7 +177,10 @@ const workbenchView = (function () {
                         </div>
                         <div class="relative mt-2">
                             <svg class="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-slate-400" style="top:50%;transform:translateY(-50%)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                            <input id="scenarioSearchInput" type="text" placeholder="搜索场景名称或路径..." class="w-full pl-8 pr-2.5 py-1.5 rounded-md border border-slate-200 bg-white text-xs text-slate-700 placeholder-slate-400 outline-none transition-all focus:border-slate-800 focus:ring-1 focus:ring-slate-800">
+                            <input id="scenarioSearchInput" type="text" aria-label="搜索场景名称或路径" aria-controls="scenarioList" placeholder="搜索场景名称或路径..." class="w-full pl-8 pr-8 py-1.5 rounded-md border border-slate-200 bg-white text-xs text-slate-700 placeholder-slate-400 outline-none transition-all focus:border-slate-800 focus:ring-1 focus:ring-slate-800">
+                            <button id="scenarioSearchClearBtn" type="button" class="scenario-search-clear" aria-label="清除场景搜索" title="清除搜索" hidden>
+                                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15" stroke-linecap="round"/></svg>
+                            </button>
                         </div>
                     </div>
                     <div id="scenarioList" class="p-2 space-y-1 overflow-y-auto flex-1 min-h-0"></div>
@@ -196,6 +199,7 @@ const workbenchView = (function () {
                         <div class="text-xs text-slate-400 py-1">未加载场景</div>
                     </div>
                     <ul id="stepsList" class="divide-y divide-slate-100 bg-white flex-1 overflow-y-auto min-h-0"></ul>
+                    <div id="stepsFilterEmpty" class="steps-filter-empty" role="status" aria-live="polite" style="display:none"></div>
                     <div id="executionFooter" class="px-4 py-2 bg-slate-50/70 border-t border-slate-100 text-xs text-slate-500 flex flex-wrap items-center gap-4 sm:gap-6 font-mono text-[11px] flex-shrink-0">
                         <div class="flex items-center gap-1.5">
                             <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
@@ -543,16 +547,21 @@ const workbenchView = (function () {
         var list = document.getElementById('scenarioList');
         if (!list) return;
         pinOrder = pinOrder || {};
+        var normalizedKeyword = String(keyword || '').trim().toLowerCase();
+        var clearSearchButton = document.getElementById('scenarioSearchClearBtn');
+        if (clearSearchButton) clearSearchButton.hidden = !normalizedKeyword;
         var items = (discoveredFiles || []).filter(function (item) {
             var text = ((item.name || '') + ' ' + (item.file || '')).toLowerCase();
-            return !keyword || text.indexOf(keyword) >= 0;
+            return !normalizedKeyword || text.indexOf(normalizedKeyword) >= 0;
         }).sort(function (left, right) {
             var leftOrder = Object.prototype.hasOwnProperty.call(pinOrder, left.file) ? pinOrder[left.file] : Number.MAX_SAFE_INTEGER;
             var rightOrder = Object.prototype.hasOwnProperty.call(pinOrder, right.file) ? pinOrder[right.file] : Number.MAX_SAFE_INTEGER;
             return leftOrder - rightOrder;
         });
         if (!items.length) {
-            list.innerHTML = '<div class="p-3 text-xs text-slate-400 text-center">' + (keyword ? '未找到匹配场景' : '暂无可用场景') + '</div>';
+            list.innerHTML = normalizedKeyword
+                ? '<div class="scenario-search-empty" role="status"><span>未找到匹配场景</span><button type="button" data-clear-scenario-search>清除搜索</button></div>'
+                : '<div class="p-3 text-xs text-slate-400 text-center" role="status">暂无可用场景</div>';
             return;
         }
         list.innerHTML = items.map(function (item) {
@@ -737,6 +746,13 @@ const workbenchView = (function () {
         if (!filterBar) return;
         if (!steps.length && !scenarioSteps.length) {
             filterBar.innerHTML = '<div class="text-xs text-slate-400 py-1">未加载场景</div>';
+            var stepsList = document.getElementById('stepsList');
+            var emptyState = document.getElementById('stepsFilterEmpty');
+            if (stepsList) stepsList.style.display = '';
+            if (emptyState) {
+                emptyState.style.display = 'none';
+                emptyState.innerHTML = '';
+            }
             return;
         }
         var filterState = (window.__R && window.__R.getFilterState) ? window.__R.getFilterState() : { type: 'all', keyword: '' };
@@ -753,15 +769,21 @@ const workbenchView = (function () {
                 : 'filter-btn px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-white/60 rounded-md transition-all';
         }
 
+        function filterButton(type, label, count) {
+            return '<button type="button" data-f="' + type + '" aria-pressed="' + (curType === type ? 'true' : 'false') + '" onclick="window.__R.filter(\'' + type + '\')" class="' + btnCls(type) + '">' + label + ' (' + count + ')</button>';
+        }
+
         filterBar.innerHTML = `
-            <div class="flex items-center gap-1 bg-slate-200/50 p-0.5 rounded-lg border border-slate-200/60">
-                <button data-f="all" onclick="window.__R.filter('all')" class="${btnCls('all')}">全部 (${total})</button>
-                <button data-f="pass" onclick="window.__R.filter('pass')" class="${btnCls('pass')}">成功 (${passed})</button>
-                <button data-f="fail" onclick="window.__R.filter('fail')" class="${btnCls('fail')}">失败 (${failed})</button>
-                ${skipped ? `<button data-f="skip" onclick="window.__R.filter('skip')" class="${btnCls('skip')}">跳过 (${skipped})</button>` : ''}
+            <div class="step-filter-options" role="group" aria-label="按执行结果筛选步骤">
+                ${filterButton('all', '全部', total)}
+                ${filterButton('pass', '成功', passed)}
+                ${filterButton('fail', '失败', failed)}
+                ${skipped ? filterButton('skip', '跳过', skipped) : ''}
             </div>
-            <div class="flex items-center space-x-2">
-                <input type="search" value="${esc(curKw)}" placeholder="搜索步骤/路径..." oninput="window.__R.search(this.value)" class="px-2.5 py-1 rounded-md border border-slate-200 text-xs bg-white focus:outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all w-40">
+            <div class="step-filter-tools">
+                <span id="stepFilterSummary" class="step-filter-summary" aria-live="off"></span>
+                <input id="stepSearchInput" type="search" value="${esc(curKw)}" aria-label="搜索步骤名称、请求方法或路径" placeholder="搜索步骤/路径..." oninput="window.__R.search(this.value)" class="px-2.5 py-1 rounded-md border border-slate-200 text-xs bg-white focus:outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all w-40">
+                <button id="resetStepFiltersBtn" type="button" class="step-filter-reset" onclick="window.__R.resetFilters()" ${curType === 'all' && !curKw ? 'hidden' : ''}>清除筛选</button>
             </div>
         `;
         if (window.__R && window.__R.applyFilter) {
@@ -1166,6 +1188,9 @@ const workbenchView = (function () {
         var stepHtml = reportSteps.map(function (step) {
             var method = String(step.method || 'GET').toUpperCase();
             var methodClass = 'report-method--' + method.toLowerCase();
+            // 报告保留场景中的一基 stepNo；列表用零基 data-step-idx，因此按原始编号转换。
+            var stepIndex = Number(step.stepNo) - 1;
+            var canLocateStep = Number.isInteger(stepIndex) && stepIndex >= 0;
             var failedAssertions = (step.assertions || []).filter(function (assertion) { return !assertion.passed; });
             var issue = step.error || (failedAssertions[0] && failedAssertions[0].name) || '';
             var response = step.response || {};
@@ -1183,6 +1208,7 @@ const workbenchView = (function () {
                 '<div class="report-step__content">' +
                     '<div class="report-step__heading"><span class="report-step__number">步骤 ' + step.stepNo + '</span><span class="report-step__name" title="' + esc(step.name || '') + '">' + esc(step.name || '未命名步骤') + '</span></div>' +
                     '<div class="report-step__request"><span class="report-method ' + methodClass + '">' + esc(method) + '</span><span class="report-step__path" title="' + esc(step.path || '') + '">' + esc(step.path || '-') + '</span></div>' +
+                    (canLocateStep ? '<button type="button" class="report-step__locate" data-locate-step-index="' + stepIndex + '" aria-label="' + esc('定位到步骤 ' + step.stepNo + '：' + (step.name || '未命名步骤')) + '">定位步骤</button>' : '') +
                     (issue ? '<div class="report-step__issue">' + esc(issue) + '</div>' : '') +
                     responseHtml +
                 '</div>' +
