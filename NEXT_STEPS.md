@@ -1,5 +1,25 @@
 # NEXT_STEPS — 优化迭代交接点
 
+## 第 8 轮（2026-10-09）
+
+### 本轮完成
+
+- **选题**：R5 遗留候选、R6 首选、R7 顺延的 **CLI 失败 diff 视图**（expected vs actual 结构化对比）。改动主题单一，本轮一次做完。注意：上一会话（同为 R8 范畴）已完成实现与测试，因 --max-turns 截停未提交；本轮为收尾（提交 + 交接），未扩大改动范围。
+- **改动**（2 个原子提交 + docs：`0fe3c5b` feat(cli) → `357c3f9` build → docs）：
+  1. **feat(cli)**：新增 `src/utils/failure-diff.js` 纯格式化模块（无 I/O），`cli.js` run 失败输出接入。规则：`expected`/`actual` 任一序列化超 80 字符（`SHORT_VALUE_LIMIT`）即展开分块——多行字符串按真实换行拆行（行号 1 基右对齐 + `|` 前缀，行内容 JSON 转义，CR/控制字符以字面量透出，防 CRLF 打乱终端对齐、让「看起来一样其实含 `\r`」的差异可见）；对象/数组两空格缩进 pretty JSON、超 20 行截断（循环引用回落 `String`，格式化本身永不抛错）；仅字符串对额外定位首个差异字符（1 基）+ 前后 40 字符上下文窗口，差异字符 `«»` 高亮（三段分别转义再拼接，避免整体转义使高亮偏移漂移）。短值（≤80 字符）保持 `55a5df3` 既有单行 `expected=... actual=...` 口径不变；`each` 递归明细同口径（缩进对齐）。完整值仍可经编程接口 `runScenario` 返回的断言结果获取。
+  2. **build**：`dist/scenario-test-cli.cjs` 再生（+91 行，与源码改动对应）。无 tailwind 变化（纯 CLI 输出层，不触工作台）。
+- **测试 +8**：`tests/failure-diff.test.js` 单元 7 条（短值返回空数组/仅超限一侧展开/多行拆行行号对齐+JSON 转义/末尾 `\r` 差异可见/首个差异定位三行结构与窗口截断/复杂结构展开+20 行截断/each prefix 缩进）；`tests/cli.test.js` 集成 1 条（真实 HTTP mock 长值分块 + 短值单行 + 分块标题极性守卫只出现一次）。
+- **验证**：`npm test` **207/207 全绿**（199 基线 + 8；委派方独立复跑与本轮复跑一致）。纯 CLI 输出层改动，不触 `browser/` 展示层与引擎语义，按 R7 惯例**免跑 `npm run test:browser`**（无 DOM/工作台变化，parity 无缺口）。contractVersion 仍为 **5**、版本号不动 0.5.24（无 DSL 能力变化，纯输出层）。全部提交留本地未 push。
+
+### 本轮遗留事项
+
+1. **取证计数（最严口径如实上报）**：宪法恢复（AGENTS.md/NEXT_STEPS/git log）3 + 改动核查（cli diff/failure-diff 源码/测试 diff）3 + 验证跑（failure-diff 单文件 + npm test 全量）2 + 幻影改动检查 1 + CHANGELOG 编辑与核验（含一次误删冒号即改回）3 = **12 次，软闸 ≤15 内**；总动作约 25 ≤ 40。误删冒号为 Edit 工具操作失误，同轮发现即修复，diff 复核确认最终只新增一条。
+2. **CRLF 幻影改动**：本轮开工时 `git status` 干净（仅本主题改动），`dist/scenario-test-capabilities.json`、`dist/scenario-test.d.ts`、`src/version.generated.js`、`docs/OPTIMIZATION_BRIEF.md` 均无幻影改动，无需还原。R6 遗留的 EOL 策略统一建议仍有效（根治手段，未做）。
+3. **diff 视图当前为整值展开**，不做行级对齐 diff（类似 diff 工具的逐行比对）：多行字符串长且仅少数行有差异时，输出行数偏多（20 行截断兜底）。若现场反馈噪音大，后续可升级为「仅展开差异行 ±2 行上下文」。
+4. 其余价值排序（继承 R7）：Markdown 报告围栏转义小修（响应体含 ``` 破坏围栏）> 枚举随机（带权重）造数。
+5. **发布前按惯例补跑一次 `npm run test:browser`**（R7 免跑理由延续：本轮无工作台改动，但发版流程要求全绿浏览器测试）。
+6. 硬边界提醒不变：`dist/` 与 `*.generated.js` 勿手改；contract 投射文本不能含 `}`；所有提交留本地不 push；中文文案。
+
 ## 第 7 轮（2026-10-09）
 
 ### 本轮完成

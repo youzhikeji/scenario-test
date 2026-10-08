@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 
 ### 🛠 CLI
 
+- `run` 失败断言的长值降级为结构化 diff 分块：`expected`/`actual` 序列化超 80 字符时展开为可读分块——多行字符串按真实换行拆行（行号 1 基 + `|` 前缀，行内容 JSON 转义，CRLF/不可见字符以字面量透出，「看起来一样其实含 `\r`」的差异可见）、对象/数组两空格缩进展开、超 20 行截断；字符串值额外定位首个差异字符（1 基）并给前后 40 字符上下文窗口，差异字符 `«»` 高亮。短值保持既有单行 `expected=... actual=...` 口径不变；`each` 递归明细同口径。完整值仍可经编程接口 `runScenario` 返回的断言结果获取。
 - `--help` 选项清单改为从 `contract.cli.options` 投射（含别名与取值占位，`--port <number>` 等），消除手写第二份名单；新增运行说明/初始化说明分节与 PowerShell 认证示例。
 - CLI 报错统一为「错误 + 提示」两段式：缺配置文件、未知环境、缺 Base URL、缺变量、`--all`/`--scenario` 冲突、`--port` 越界、全部 manual 场景等使用错误，提示行直接给出下一步动作（如「使用 --config "<路径>" 指向已有配置」）。
 - 未知参数按编辑距离给拼写建议（如 `--confg` → 「是否想使用 --config？」）；仅唯一近距候选才建议，等距二义或远距输入不猜，直接指引 `--help`。`--help`/`-h` 虽由 parseArgs 内联处理（不进 contract），也纳入建议名单。
