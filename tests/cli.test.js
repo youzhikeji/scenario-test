@@ -79,6 +79,54 @@ test("CLI run 失败输出单列 each 元素级明细行（嵌套递归）", asy
     }
 });
 
+test("CLI run 失败长值输出结构化 diff 分块（多行拆行/差异定位/短值保持单行）", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-cli-diff-"));
+    // 长 JSON 响应体（bodyText 断言序列化超 80 字符触发分块）+ 短 JSON（保持单行格式）
+    const longBody = JSON.stringify({ code: "OK", message: "处理成功", payload: { items: [1, 2, 3], traceId: "trace-0001" } });
+    const server = http.createServer((request, response) => {
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(request.url === "/long" ? longBody : JSON.stringify({ status: "UP" }));
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+        const port = server.address().port;
+        fs.mkdirSync(path.join(directory, "scenarios"));
+        fs.writeFileSync(path.join(directory, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1:${port}"}],scenarios:[{id:"longdiff",name:"LongDiff",url:"scenarios/longdiff.js"},{id:"shortdiff",name:"ShortDiff",url:"scenarios/shortdiff.js"}]}));`, "utf8");
+        // bodyText 与整 body 期望值差异足够大：长值分块 + 字符串首个差异定位
+        fs.writeFileSync(path.join(directory, "scenarios/longdiff.js"), `ScenarioTest.registerScenario("longdiff",ScenarioTest.defineScenario({name:"LongDiff",steps:[{name:"长响应体",path:"long",assertions:[{name:"响应原文比对",from:"bodyText",equals:"${"x".repeat(100)}"}]}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/shortdiff.js"), `ScenarioTest.registerScenario("shortdiff",ScenarioTest.defineScenario({name:"ShortDiff",steps:[{name:"短响应体",path:"short",assertions:[{path:"status",equals:"DOWN"}]}]}));`, "utf8");
+        const cli = path.resolve(import.meta.dirname, "../src/cli.js");
+        const result = await new Promise((resolve) => {
+            const child = spawn(process.execPath, [cli, "--config", path.join(directory, "scenario.config.js"), "--all"], { stdio: ["ignore", "pipe", "pipe"] });
+            let stdout = "";
+            let stderr = "";
+            child.stdout.setEncoding("utf8");
+            child.stderr.setEncoding("utf8");
+            child.stdout.on("data", (chunk) => { stdout += chunk; });
+            child.stderr.on("data", (chunk) => { stderr += chunk; });
+            child.on("close", (code) => resolve({ code, stdout, stderr }));
+        });
+        assert.notEqual(result.code, 0, "存在失败场景，退出码应非 0");
+        // 长值断言：单行头（值经 JSON.stringify 截断展示）后跟结构化分块
+        assert.match(result.stdout, /\[FAIL\] 长响应体/);
+        assert.match(result.stdout, /- 响应原文比对: expected=/);
+        assert.match(result.stdout, /期望值（expected）:/);
+        assert.match(result.stdout, /实际值（actual）:/);
+        // 多行响应体按真实换行拆行，行号 1 基 + | 前缀
+        assert.match(result.stdout, /\| 1 \| /);
+        // 字符串首个差异定位：两串首字符即异（期望 x 开头、实际 { 开头）
+        assert.match(result.stdout, /首个差异在第 1 个字符/);
+        // 短值断言：不产生任何分块行（保持既有单行格式）
+        assert.match(result.stdout, /\[FAIL\] 短响应体/);
+        assert.match(result.stdout, /- status: expected="DOWN" actual="UP"/);
+        // 极性守卫：分块标题只出现一次（长值断言），短值断言不产生分块
+        assert.equal(result.stdout.split("期望值（expected）:").length - 1, 1, "分块标题只应来自长值断言一处");
+    } finally {
+        server.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
 test("CLI 拒绝旧 window 全局配置与场景格式", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-legacy-"));
     const cli = path.resolve(import.meta.dirname, "../dist/scenario-test-cli.cjs");

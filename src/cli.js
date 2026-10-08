@@ -14,6 +14,7 @@ import { VERSION } from "./version.generated.js";
 import { validatePath } from "./utils/path-validator.js";
 import { mergeGlobals } from "./core.js";
 import { FRAMEWORK_FILES, resolveProjectLayout } from "./project-layout.js";
+import { failureDiffLines } from "./utils/failure-diff.js";
 
 class CliUsageError extends Error {
     constructor(message, hint) {
@@ -589,12 +590,22 @@ async function runCommand(args) {
                         for (const sub of item.assertions) {
                             if (sub.passed) continue;
                             console.log(`      ↳ ${label} ${sub.name}: expected=${JSON.stringify(sub.expected)} actual=${JSON.stringify(sub.actual)}`);
+                            // 值超短值上限时展开为分块 diff（多行字符串/长 JSON），与顶层断言同口径
+                            for (const line of failureDiffLines(sub.expected, sub.actual, "        ")) {
+                                console.log(line);
+                            }
                             printEachDetail(sub.detail, `${label} › `);
                         }
                     }
                 };
                 for (const assertion of result.assertions.filter((item) => !item.passed)) {
                     console.log(`  - ${assertion.name}: expected=${JSON.stringify(assertion.expected)} actual=${JSON.stringify(assertion.actual)}`);
+                    // 短值保持单行口径；任一值序列化超 80 字符时展开结构化 diff 分块：
+                    // 多行字符串按真实换行拆行（行号 + | 前缀，行内容转义防 CRLF 打乱终端）、
+                    // 长对象/数组缩进展开、字符串值定位首个差异字符（1 基）并给上下文窗口
+                    for (const line of failureDiffLines(assertion.expected, assertion.actual, "    ")) {
+                        console.log(line);
+                    }
                     printEachDetail(assertion.detail, "");
                 }
             }
