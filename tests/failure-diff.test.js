@@ -100,3 +100,25 @@ test("each 明细 prefix 对齐：分块行带缩进前缀", () => {
         assert.ok(line.startsWith("      "), `分块行应带 6 空格前缀: ${JSON.stringify(line.slice(0, 12))}`);
     }
 });
+
+test("循环引用等无法序列化的值回落 String() 不抛错", () => {
+    const circular = { a: 1 };
+    circular.self = circular;
+    const lines = failureDiffLines({ ok: true }, circular);
+    assert.ok(lines.length > 0, "应产生分块输出");
+    assert.ok(lines.some((line) => line.includes("[object Object]")), "循环引用对象应降级为 String() 输出");
+});
+
+test("多行字符串超过 MAX_LINES 时截断并显示总行数", () => {
+    const longMultiline = Array.from({ length: 25 }, (_, i) => `line-${i + 1}-padding-to-exceed-short-limit`).join("\n");
+    const lines = failureDiffLines(longMultiline, "short");
+    assert.ok(lines.some((line) => line.includes("共 25 行，已截断")), "应显示截断提示与总行数");
+    const contentLines = lines.filter((line) => line.includes("| line-"));
+    assert.ok(contentLines.length === 20, `应只展示前 20 行内容，实际: ${contentLines.length}`);
+});
+
+test("对象/数组超过 MAX_LINES 时截断", () => {
+    const deepArray = Array.from({ length: 30 }, (_, i) => ({ index: i, padding: "x".repeat(10) }));
+    const lines = failureDiffLines(deepArray, []);
+    assert.ok(lines.some((line) => line.includes("共") && line.includes("行，已截断")), "应显示截断提示");
+});

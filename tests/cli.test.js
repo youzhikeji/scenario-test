@@ -527,3 +527,91 @@ test("CLI run 结束输出结论行：失败/全部跳过/完成三态口径可�
     }
 });
 
+test("CLI SCENARIO_AUTH 与 --authorization 冲突时环境变量优先并警告", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-cli-auth-conflict-"));
+    const server = http.createServer((req, res) => {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ auth: req.headers.authorization }));
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+        const port = server.address().port;
+        fs.mkdirSync(path.join(directory, "scenarios"), { recursive: true });
+        fs.writeFileSync(path.join(directory, "scenario.config.js"),
+            `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1:${port}"}],scenarios:[{id:"test",name:"Test",url:"scenarios/test.js"}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/test.js"),
+            `ScenarioTest.registerScenario("test",ScenarioTest.defineScenario({name:"Test",steps:[{name:"s",path:"api",assertions:[{path:"auth",equals:"Bearer env-token"}]}]}));`, "utf8");
+
+        const result = await runCli(
+            ["--config", path.join(directory, "scenario.config.js"), "--all", "--authorization", "Bearer cli-token"],
+            { SCENARIO_AUTH: "Bearer env-token" }
+        );
+
+        assert.equal(result.code, 0, result.stderr);
+        assert.match(result.stderr, /⚠️\s+警告: 同时检测到 SCENARIO_AUTH 环境变量和 --authorization 参数/);
+        assert.match(result.stderr, /环境变量优先级更高，--authorization 参数将被忽略/);
+        assert.match(result.stdout, /\[PASS\]/);
+    } finally {
+        server.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
+test("CLI --authorization 单独使用时输出弃用警告", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-cli-auth-deprecated-"));
+    const server = http.createServer((req, res) => {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ auth: req.headers.authorization }));
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+        const port = server.address().port;
+        fs.mkdirSync(path.join(directory, "scenarios"), { recursive: true });
+        fs.writeFileSync(path.join(directory, "scenario.config.js"),
+            `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1:${port}"}],scenarios:[{id:"test",name:"Test",url:"scenarios/test.js"}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/test.js"),
+            `ScenarioTest.registerScenario("test",ScenarioTest.defineScenario({name:"Test",steps:[{name:"s",path:"api",assertions:[{path:"auth",equals:"Bearer deprecated-token"}]}]}));`, "utf8");
+
+        const result = await runCli(
+            ["--config", path.join(directory, "scenario.config.js"), "--all", "--authorization", "Bearer deprecated-token"],
+
+        );
+
+        assert.equal(result.code, 0, result.stderr);
+        assert.match(result.stderr, /⚠️\s+弃用警告: --authorization 参数将在未来版本中移除/);
+        assert.match(result.stderr, /推荐使用环境变量: export SCENARIO_AUTH/);
+        assert.match(result.stderr, /原因: 命令行参数在进程列表中可见，存在安全风险/);
+        assert.match(result.stdout, /\[PASS\]/);
+    } finally {
+        server.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
+test("CLI SCENARIO_GLOBALS 项缺少必需字段时报错", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-cli-globals-invalid-"));
+    try {
+        fs.mkdirSync(path.join(directory, "scenarios"), { recursive: true });
+        fs.writeFileSync(path.join(directory, "scenario.config.js"),
+            `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1:1"}],scenarios:[{id:"test",name:"Test",url:"scenarios/test.js"}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/test.js"),
+            `ScenarioTest.registerScenario("test",ScenarioTest.defineScenario({name:"Test",steps:[{name:"s",path:"api"}]}));`, "utf8");
+
+        const cases = [
+            { value: '[{"name":"X-Token","value":"abc"}]', error: /第 1 项无效.*type/ },
+            { value: '[{"type":"header","value":"abc"}]', error: /第 1 项无效.*name/ },
+            { value: '[{"type":"invalid","name":"X-Token","value":"abc"}]', error: /第 1 项无效.*type/ },
+        ];
+
+        for (const { value, error } of cases) {
+            const result = await runCli(
+                ["--config", path.join(directory, "scenario.config.js"), "--all"],
+                { SCENARIO_GLOBALS: value }
+            );
+            assert.equal(result.code, 1, `应因 SCENARIO_GLOBALS 格式错误退出码 1: ${value}`);
+            assert.match(result.stderr, error, `错误消息应匹配: ${value}`);
+        }
+    } finally {
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});

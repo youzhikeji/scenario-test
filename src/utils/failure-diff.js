@@ -18,7 +18,12 @@ function isPlainObject(value) {
 function isShortValue(value) {
     if (value === undefined) return true;
     if (value === null || typeof value !== "object") return JSON.stringify(value ?? null).length <= SHORT_VALUE_LIMIT;
-    return JSON.stringify(value).length <= SHORT_VALUE_LIMIT;
+    try {
+        return JSON.stringify(value).length <= SHORT_VALUE_LIMIT;
+    } catch {
+        // 循环引用等无法序列化的值视为长值，走分块路径（prettyLines 的 catch 会回落 String）
+        return false;
+    }
 }
 
 // 字符串值分块：按真实换行拆行（含转义字符的 JSON 形态），行号 1 基右侧对齐
