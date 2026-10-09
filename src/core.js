@@ -226,6 +226,21 @@ function assertionActual(definition, response, runtime) {
     return definition.path ? getByPath(response.body, definition.path) : response.body;
 }
 
+// 深比较底座：键序不敏感的稳定序列化。
+// JSON.stringify 直接比较时对象键顺序不同即判不等（如 Java 服务端 HashMap 序列化顺序不稳定），
+// 与契约中 equals 的「JSON 深比较相等」描述不符。此处先按键名排序再序列化，使
+// equals / notEquals / includes / oneOf（含 each 子断言递归）对键序不敏感；
+// 值语义与 JSON 对齐：对象里值为 undefined 的键与 JSON.stringify 一样忽略（{a:undefined} ≡ {}）。
+function stableStringify(value) {
+    if (value === undefined) return "undefined";
+    if (value === null || typeof value !== "object") return JSON.stringify(value);
+    if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+    return `{${Object.keys(value).sort()
+        .filter((key) => stableStringify(value[key]) !== "undefined")
+        .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
+        .join(",")}}`;
+}
+
 export function evaluateAssertion(definition, response, runtime, context) {
     // 执行期也校验：防止插件 transform 之后产生非法断言定义
     validateAssertion(definition, context);
@@ -241,16 +256,16 @@ export function evaluateAssertion(definition, response, runtime, context) {
     }
     if (Object.prototype.hasOwnProperty.call(definition, "equals")) {
         expected = resolve(definition.equals, runtime);
-        passed = passed && JSON.stringify(actual) === JSON.stringify(expected);
+        passed = passed && stableStringify(actual) === stableStringify(expected);
     }
     if (Object.prototype.hasOwnProperty.call(definition, "notEquals")) {
         expected = resolve(definition.notEquals, runtime);
-        passed = passed && JSON.stringify(actual) !== JSON.stringify(expected);
+        passed = passed && stableStringify(actual) !== stableStringify(expected);
     }
     if (Object.prototype.hasOwnProperty.call(definition, "includes")) {
         expected = resolve(definition.includes, runtime);
         passed = passed && (Array.isArray(actual)
-            ? actual.some((item) => JSON.stringify(item) === JSON.stringify(expected))
+            ? actual.some((item) => stableStringify(item) === stableStringify(expected))
             : String(actual == null ? "" : actual).includes(String(expected)));
     }
     // each：数组逐项断言——对实际数组的每个元素套用子断言（对象或其数组），
@@ -288,7 +303,7 @@ export function evaluateAssertion(definition, response, runtime, context) {
     if (definition.oneOf !== undefined) {
         expected = resolve(definition.oneOf, runtime);
         passed = passed && Array.isArray(expected)
-            && expected.some((item) => JSON.stringify(item) === JSON.stringify(actual));
+            && expected.some((item) => stableStringify(item) === stableStringify(actual));
     }
     // startsWith/endsWith：字符串化后比较，口径与 includes 字符串分支一致
     // （null/undefined 实际值视为空串；大小写敏感，无隐式类型转换放行）

@@ -140,6 +140,38 @@ test("五个新增操作符 pass/fail", () => {
     assert.equal(evaluateAssertion({ path: "total", lte: 9 }, response, runtime).passed, false);
 });
 
+test("equals/notEquals/includes/oneOf 深比较对对象键序不敏感", () => {
+    const runtime = runtimeWith();
+    const response = responseWith({
+        obj: { b: 2, a: 1 },
+        nested: { x: { d: 4, c: 3 }, list: [{ y: 2, x: 1 }] },
+        items: [{ q: 2, p: 1 }, { r: 3 }]
+    });
+
+    // equals：键序重排的等值对象仍相等（Java 服务端 HashMap 序列化顺序常见不稳定）
+    assert.equal(evaluateAssertion({ path: "obj", equals: { a: 1, b: 2 } }, response, runtime).passed, true);
+    assert.equal(evaluateAssertion({ path: "nested", equals: { list: [{ x: 1, y: 2 }], x: { c: 3, d: 4 } } }, response, runtime).passed, true);
+    // 值不同/键名不同仍然判不等（键序不敏感 ≠ 宽松比较）
+    assert.equal(evaluateAssertion({ path: "obj", equals: { a: 1, b: 3 } }, response, runtime).passed, false);
+    assert.equal(evaluateAssertion({ path: "obj", equals: { a: 1, c: 2 } }, response, runtime).passed, false);
+
+    // notEquals：深层相等时键序重排不误判为不等
+    assert.equal(evaluateAssertion({ path: "obj", notEquals: { b: 2, a: 1 } }, response, runtime).passed, false);
+    assert.equal(evaluateAssertion({ path: "obj", notEquals: { a: 1, b: 9 } }, response, runtime).passed, true);
+
+    // includes：数组内对象成员按键序不敏感匹配
+    assert.equal(evaluateAssertion({ path: "items", includes: { p: 1, q: 2 } }, response, runtime).passed, true);
+    assert.equal(evaluateAssertion({ path: "items", includes: { p: 2, q: 1 } }, response, runtime).passed, false);
+
+    // oneOf：候选对象键序不敏感
+    assert.equal(evaluateAssertion({ path: "obj", oneOf: [{ z: 0 }, { b: 2, a: 1 }] }, response, runtime).passed, true);
+    assert.equal(evaluateAssertion({ path: "obj", oneOf: [{ z: 0 }, { a: 1, b: 8 }] }, response, runtime).passed, false);
+
+    // undefined 值键与 JSON.stringify 语义对齐（序列化时被忽略）：不构成差异
+    assert.equal(evaluateAssertion({ path: "obj", equals: { a: 1, b: 2, extra: undefined } }, response, runtime).passed, true);
+});
+
+
 test("数字比较断言：类型不符合时断言失败而非抛异常，并保留 actual/expected", () => {
     const runtime = runtimeWith();
     const stringBody = responseWith({ total: "10" });
