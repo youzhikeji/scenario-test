@@ -57,11 +57,9 @@ function prettyLines(value) {
 // 差异字符用 «» 包裹，两侧各留 CONTEXT_RADIUS 字符窗口；超长时省略号提示
 export function firstDifferenceLines(expected, actual, prefix) {
     if (typeof expected !== "string" || typeof actual !== "string" || expected === actual) return [];
-    const common = [];
     const maxLength = Math.max(expected.length, actual.length);
     let index = 0;
     while (index < maxLength && expected[index] === actual[index]) {
-        common.push(expected[index]);
         index += 1;
     }
     // 差异定位块固定 3 行，不参与截断；窗口内字符经 JSON.stringify 转义保证单行宽度可控
