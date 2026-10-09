@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### ✨ DSL / Engine
+
+- 断言深比较对对象键序不敏感：`equals` / `notEquals` / `includes` / `oneOf`（含 `each` 子断言递归）由 `JSON.stringify` 直比改为按键名排序后的稳定序列化比较。此前 Java 服务端等键序不稳定的响应体会被误判不等（契约描述的「JSON 深比较相等」名不副实）。值语义保持严格：键名不同、值不同仍判不等；对象中值为 `undefined` 的键与 JSON 序列化口径一致（忽略，`{a:1}` ≡ `{a:1,b:undefined}`）。
+
 ### 🛠 CLI
 
 - `run` 失败断言的长值降级为结构化 diff 分块：`expected`/`actual` 序列化超 80 字符时展开为可读分块——多行字符串按真实换行拆行（行号 1 基 + `|` 前缀，行内容 JSON 转义，CRLF/不可见字符以字面量透出，「看起来一样其实含 `\r`」的差异可见）、对象/数组两空格缩进展开、超 20 行截断；字符串值额外定位首个差异字符（1 基）并给前后 40 字符上下文窗口，差异字符 `«»` 高亮。短值保持既有单行 `expected=... actual=...` 口径不变；`each` 递归明细同口径。完整值仍可经编程接口 `runScenario` 返回的断言结果获取。
@@ -21,6 +25,12 @@ All notable changes to this project will be documented in this file.
 - 失败诊断新增「定位步骤」按钮：点击后重置筛选、展开对应步骤详情、高亮 2.4s 并平滑滚动居中（尊重 `prefers-reduced-motion`）——长场景失败排查不再需要在报告中人工比对步骤序号。
 - 修复步骤筛选工具行窄容器溢出：390px 视口下「显示 x / y 个步骤」摘要遮挡「失败」筛选按钮致其不可点击（Playwright mobile 视口实测抓到）；`filterBar` 现允许换行、摘要可收缩截断。
 - 主题切换（含编程赋值）同步自定义下拉标签文案；步骤行补 focus-visible 焦点环。
+- `esc()` 转义统一补齐引号（`&quot;`）并移除浏览器端 `textContent→innerHTML` 分支，双端行为一致：属性上下文（如步骤搜索框 `value="${esc(kw)}"`）不再存在引号逃出属性边界的注入面，文本上下文显示不变。
+- 全量执行循环取消语义对齐引擎 `runScenario`：取消信号中止时立即停止，不再多产生一条引擎不会记录的 CANCELLED 步骤（此前「本步已通过但信号已中止」会漏进下一轮）。
+
+### 🔧 工程
+
+- 新增 `.gitattributes` 统一行尾策略（文本文件一律 LF 入库与检出、`.ps1` 保留 CRLF、图片按二进制），根治 R6 以来 Windows（`core.autocrlf=true`）下 `dist/` 投射物与生成文件反复出现的 CRLF 幻影改动（git status 标记 M 而 diff 为空）。
 
 ## [0.5.24] - 2026-10-07
 
