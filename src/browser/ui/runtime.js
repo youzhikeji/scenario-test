@@ -941,7 +941,9 @@ export function createWorkbenchRuntime(options) {
                 renderFilterAll();
                 uiView.appendStepResult(result, i, list, state.executionMode, buildVarsView(i));
                 renderReportPanel();
-                if (!result.passed && (failurePolicy !== 'continue' || runtime.abortController.signal.aborted)) break;
+                // 与 engine.runScenario 对齐：stop 策略失败即停；取消信号中止时不论本步成败都停。
+                // 此前条件把「信号已中止但本步通过」漏进下一轮，会多产生一条引擎不会有的 CANCELLED 步骤
+                if ((!result.passed && failurePolicy !== 'continue') || runtime.abortController.signal.aborted) break;
             }
             clearActiveStepHighlight();
             finishExecutionState(runtime);
@@ -1006,6 +1008,8 @@ export function createWorkbenchRuntime(options) {
             renderReportPanel();
 
             if (runtime.cancelled || result.cancelled || result.timedOut) {
+                // 取消/超时终止单步会话（有意设计并有浏览器测试钉住：超时后从第 1 步重来，
+                // 与「失败可继续下一步」刻意区分——超时通常意味着服务不可用，继续执行意义不大）
                 state.stepRuntime = null;
                 finishExecutionState(runtime);
             } else if (state.nextStepIndex >= list.length) {

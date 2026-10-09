@@ -5,14 +5,16 @@
 
 // ===== HTML 转义 =====
 
+// 统一转义 & < > "（双端一致）：文本上下文中 &quot; 仍渲染为引号，属性上下文（value="${esc(x)}"）
+// 中引号被转义后无法逃出属性边界。此前浏览器分支用 div.textContent→innerHTML 只转义 & < >、
+// 不转义引号，与 Node 回退分支行为不一致，属性上下文存在注入面。
 export function esc(s) {
     if (s == null) return '';
-    if (typeof document !== 'undefined' && document.createElement) {
-        var d = document.createElement('div');
-        d.textContent = s;
-        return d.innerHTML;
-    }
-    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
 }
 
 // ===== 耗时格式化（保留浏览器端历史语义：<1s 显示 "500.00ms"，勿改用 Node formatDuration）=====
