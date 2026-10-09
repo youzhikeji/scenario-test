@@ -654,6 +654,12 @@ var ScenarioTest = (() => {
     if (definition.from === "bodyText") return response.bodyText;
     return definition.path ? getByPath(response.body, definition.path) : response.body;
   }
+  function stableStringify(value) {
+    if (value === void 0) return "undefined";
+    if (value === null || typeof value !== "object") return JSON.stringify(value);
+    if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+    return `{${Object.keys(value).sort().filter((key) => stableStringify(value[key]) !== "undefined").map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
+  }
   function evaluateAssertion(definition, response, runtime, context) {
     validateAssertion(definition, context);
     let actual = assertionActual(definition, response, runtime);
@@ -667,15 +673,15 @@ var ScenarioTest = (() => {
     }
     if (Object.prototype.hasOwnProperty.call(definition, "equals")) {
       expected = resolve(definition.equals, runtime);
-      passed = passed && JSON.stringify(actual) === JSON.stringify(expected);
+      passed = passed && stableStringify(actual) === stableStringify(expected);
     }
     if (Object.prototype.hasOwnProperty.call(definition, "notEquals")) {
       expected = resolve(definition.notEquals, runtime);
-      passed = passed && JSON.stringify(actual) !== JSON.stringify(expected);
+      passed = passed && stableStringify(actual) !== stableStringify(expected);
     }
     if (Object.prototype.hasOwnProperty.call(definition, "includes")) {
       expected = resolve(definition.includes, runtime);
-      passed = passed && (Array.isArray(actual) ? actual.some((item) => JSON.stringify(item) === JSON.stringify(expected)) : String(actual == null ? "" : actual).includes(String(expected)));
+      passed = passed && (Array.isArray(actual) ? actual.some((item) => stableStringify(item) === stableStringify(expected)) : String(actual == null ? "" : actual).includes(String(expected)));
     }
     if (Object.prototype.hasOwnProperty.call(definition, "each")) {
       expected = resolve(definition.each, runtime);
@@ -704,7 +710,7 @@ var ScenarioTest = (() => {
     }
     if (definition.oneOf !== void 0) {
       expected = resolve(definition.oneOf, runtime);
-      passed = passed && Array.isArray(expected) && expected.some((item) => JSON.stringify(item) === JSON.stringify(actual));
+      passed = passed && Array.isArray(expected) && expected.some((item) => stableStringify(item) === stableStringify(actual));
     }
     for (const op of ["startsWith", "endsWith"]) {
       if (!Object.prototype.hasOwnProperty.call(definition, op)) continue;
@@ -1798,11 +1804,6 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
   // src/browser/ui/ui-utils.js
   function esc(s) {
     if (s == null) return "";
-    if (typeof document !== "undefined" && document.createElement) {
-      var d = document.createElement("div");
-      d.textContent = s;
-      return d.innerHTML;
-    }
     return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
   function fmt(ms) {
@@ -4978,7 +4979,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
           renderFilterAll();
           uiView.appendStepResult(result, i, list, state.executionMode, buildVarsView(i));
           renderReportPanel();
-          if (!result.passed && (failurePolicy !== "continue" || runtime.abortController.signal.aborted)) break;
+          if (!result.passed && failurePolicy !== "continue" || runtime.abortController.signal.aborted) break;
         }
         clearActiveStepHighlight();
         finishExecutionState(runtime);
