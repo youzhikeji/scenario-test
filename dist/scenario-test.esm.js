@@ -2672,6 +2672,7 @@ var workbenchStyle = function() {
             .report-progress { margin-top: 11px; }
             .report-progress__labels { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--workspace-muted); font-size: 10px; }
             .report-progress__labels strong { color: var(--workspace-text); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-variant-numeric: tabular-nums; }
+            .report-progress__outcome { margin-top: 8px; }
             .report-progress__track {
                 height: 6px;
                 margin-top: 5px;
@@ -3177,15 +3178,15 @@ var workbenchView = function() {
                 </div>
                 </div>
                 <div class="scenario-header-run-actions">
-                <button id="stepBtn" class="scenario-header-button scenario-header-button--secondary" title="\u5355\u6B65\u6267\u884C\u4E0B\u4E00\u6761\u7528\u4F8B">\u4E0B\u4E00\u6B65</button>
-                <button id="runBtn" class="scenario-header-button scenario-header-button--primary" title="\u6267\u884C\u5F53\u524D\u573A\u666F\u4E2D\u7684\u5168\u90E8\u6B65\u9AA4">
+                <button id="stepBtn" class="scenario-header-button scenario-header-button--secondary" title="\u5355\u6B65\u6267\u884C\u4E0B\u4E00\u6761\u7528\u4F8B\uFF08Alt+Enter\uFF1B\u975E\u7F16\u8F91\u72B6\u6001\u4E5F\u53EF\u6309\u7A7A\u683C\uFF09">\u4E0B\u4E00\u6B65</button>
+                <button id="runBtn" class="scenario-header-button scenario-header-button--primary" title="\u6267\u884C\u5F53\u524D\u573A\u666F\u4E2D\u7684\u5168\u90E8\u6B65\u9AA4\uFF08Ctrl+Enter / \u2318+Enter\uFF09">
                     <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                     <span id="runBtnLabel">\u6267\u884C\u5168\u90E8</span>
                 </button>
                 <button id="cancelBtn" disabled class="scenario-header-text-action scenario-header-text-action--danger">\u505C\u6B62</button>
                 </div>
                 <div class="scenario-header-secondary-actions">
-                <button id="resetBtn" class="scenario-header-text-action scenario-header-reset">\u6E05\u9664\u7ED3\u679C</button>
+                <button id="resetBtn" class="scenario-header-text-action scenario-header-reset" title="\u6E05\u9664\u5F53\u524D\u573A\u666F\u7684\u6267\u884C\u7ED3\u679C\uFF08Alt+R\uFF09">\u6E05\u9664\u7ED3\u679C</button>
                 <button id="configToggleBtn" class="scenario-header-button scenario-header-button--config" title="\u914D\u7F6E\u73AF\u5883\u53C2\u6570\u4E0E\u5168\u5C40\u53D8\u91CF" aria-haspopup="dialog" aria-controls="configModal">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                     <span class="scenario-header-config-label">\u914D\u7F6E</span>
@@ -3231,7 +3232,7 @@ var workbenchView = function() {
                         </div>
                         <div class="relative mt-2">
                             <svg class="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-slate-400" style="top:50%;transform:translateY(-50%)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                            <input id="scenarioSearchInput" type="text" aria-label="\u641C\u7D22\u573A\u666F\u540D\u79F0\u6216\u8DEF\u5F84" aria-controls="scenarioList" placeholder="\u641C\u7D22\u573A\u666F\u540D\u79F0\u6216\u8DEF\u5F84..." class="w-full pl-8 pr-8 py-1.5 rounded-md border border-slate-200 bg-white text-xs text-slate-700 placeholder-slate-400 outline-none transition-all focus:border-slate-800 focus:ring-1 focus:ring-slate-800">
+                            <input id="scenarioSearchInput" type="text" aria-label="\u641C\u7D22\u573A\u666F\u540D\u79F0\u6216\u8DEF\u5F84" aria-controls="scenarioList" title="\u641C\u7D22\u573A\u666F\uFF08Ctrl+K / \u2318+K\uFF1B\u975E\u7F16\u8F91\u72B6\u6001\u4E5F\u53EF\u6309 /\uFF09" placeholder="\u641C\u7D22\u573A\u666F\u540D\u79F0\u6216\u8DEF\u5F84..." class="w-full pl-8 pr-8 py-1.5 rounded-md border border-slate-200 bg-white text-xs text-slate-700 placeholder-slate-400 outline-none transition-all focus:border-slate-800 focus:ring-1 focus:ring-slate-800">
                             <button id="scenarioSearchClearBtn" type="button" class="scenario-search-clear" aria-label="\u6E05\u9664\u573A\u666F\u641C\u7D22" title="\u6E05\u9664\u641C\u7D22" hidden>
                                 <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15" stroke-linecap="round"/></svg>
                             </button>
@@ -3951,6 +3952,7 @@ var workbenchView = function() {
     var statusText = cancelled ? "\u5DF2\u53D6\u6D88" : hasFailure ? "\u5B58\u5728\u5931\u8D25" : allSkipped ? "\u5168\u90E8\u8DF3\u8FC7" : completed ? "\u5168\u90E8\u901A\u8FC7" : "\u6267\u884C\u4E2D";
     var modeText = report.executionMode === "step" ? "\u5355\u6B65\u6267\u884C" : "\u5168\u91CF\u6267\u884C";
     var progressText = summary.executedSteps + " / " + summary.totalSteps;
+    var progressPercent = summary.totalSteps ? summary.executedSteps / summary.totalSteps * 100 : 0;
     var reportSteps = report.steps.filter(function(step) {
       return !step.passed && !step.skipped && !step.cancelled;
     });
@@ -3971,7 +3973,7 @@ var workbenchView = function() {
     }).join("");
     var diagnosisHtml = hasRealFailure ? '<div class="report-steps"><div class="report-steps__title">\u5931\u8D25\u6B65\u9AA4</div>' + stepHtml + "</div>" : cancelled ? '<div class="report-healthy"><div class="report-healthy__title">\u6267\u884C\u5DF2\u53D6\u6D88</div><div class="report-healthy__hint">\u53D6\u6D88\u7684\u6B65\u9AA4\u4E0D\u8BA1\u5165\u5931\u8D25\uFF1B\u8BE6\u7EC6\u8BF7\u6C42\u4E0E\u54CD\u5E94\u8BF7\u5728\u5DE6\u4FA7\u6B65\u9AA4\u5217\u8868\u67E5\u770B\u3002</div></div>' : allSkipped ? '<div class="report-healthy"><div class="report-healthy__title">\u6240\u6709\u6B65\u9AA4\u5747\u56E0\u6761\u4EF6\u4E0D\u6EE1\u8DB3\u800C\u8DF3\u8FC7</div><div class="report-healthy__hint">\u672C\u6B21\u6267\u884C\u672A\u53D1\u8D77\u4EFB\u4F55\u8BF7\u6C42\uFF0C\u8BE6\u7EC6\u8DF3\u8FC7\u539F\u56E0\u8BF7\u5728\u5DE6\u4FA7\u6B65\u9AA4\u5217\u8868\u67E5\u770B\u3002</div></div>' : '<div class="report-healthy"><div class="report-healthy__title">' + (completed ? "\u6240\u6709\u6B65\u9AA4\u5747\u5DF2\u901A\u8FC7" : "\u5F53\u524D\u5DF2\u6267\u884C\u6B65\u9AA4\u5747\u901A\u8FC7") + '</div><div class="report-healthy__hint">\u8BE6\u7EC6\u8BF7\u6C42\u4E0E\u54CD\u5E94\u8BF7\u5728\u5DE6\u4FA7\u6B65\u9AA4\u5217\u8868\u67E5\u770B\uFF1B\u53EF\u901A\u8FC7\u4E0B\u65B9\u64CD\u4F5C\u590D\u5236\u5B8C\u6574\u62A5\u544A\u3002</div></div>';
     var diagnosisTitle = hasRealFailure ? "\u5931\u8D25\u8BCA\u65AD \xB7 " + reportSteps.length : "\u6267\u884C\u7ED3\u8BBA";
-    node.innerHTML = '<div class="report-content"><div class="report-overview"><div class="report-overview__top"><div class="report-overview__title">' + esc(report.title || "\u6D4B\u8BD5\u62A5\u544A") + '</div><span class="report-status ' + statusClass + '">' + statusText + '</span></div><div class="report-overview__meta"><span>' + esc(report.environment || "\u9ED8\u8BA4\u73AF\u5883") + "</span><span>" + modeText + "</span><span>\u901A\u8FC7 " + summary.passedSteps + "</span><span>\u5931\u8D25 " + summary.failedSteps + "</span>" + (summary.skippedSteps > 0 ? "<span>\u8DF3\u8FC7 " + summary.skippedSteps + "</span>" : "") + "<span>" + esc(summary.totalDurationFmt) + '</span></div><div class="report-progress"><div class="report-progress__labels"><span>\u8FDB\u5EA6 ' + progressText + "</span><strong>" + esc(summary.passRate) + '</strong></div><div class="report-progress__track' + (hasFailure ? " report-progress__track--failed" : "") + '"><span style="width:' + (summary.totalSteps ? summary.executedSteps / summary.totalSteps * 100 : 0) + '%"></span></div></div></div><details class="report-diagnosis"' + (hasRealFailure ? " open" : "") + "><summary>" + diagnosisTitle + '</summary><div class="report-diagnosis__body">' + diagnosisHtml + '</div></details><div class="report-actions flex flex-col gap-2 pt-1"><button id="copyDiagnosisMarkdownBtn" type="button" class="w-full stats-action-btn stats-action-btn--primary justify-center py-2 text-xs" title="\u590D\u5236\u683C\u5F0F\u5316 Markdown \u62A5\u544A (\u53EF\u76F4\u63A5\u6295\u5582\u7ED9 AI \u63D0\u95EE/\u6392\u67E5)"><svg class="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg><span>\u590D\u5236\u8BCA\u65AD\u62A5\u544A (AI \u6392\u67E5)</span></button><button id="copyDiagnosisJsonBtn" type="button" class="w-full stats-action-btn justify-center py-2 text-xs" title="\u5BFC\u51FA\u6267\u884C\u7ED3\u679C JSON"><svg class="w-3.5 h-3.5 mr-1.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg><span>\u5BFC\u51FA\u7ED3\u679C JSON</span></button></div></div>';
+    node.innerHTML = '<div class="report-content"><div class="report-overview"><div class="report-overview__top"><div class="report-overview__title">' + esc(report.title || "\u6D4B\u8BD5\u62A5\u544A") + '</div><span class="report-status ' + statusClass + '">' + statusText + '</span></div><div class="report-overview__meta"><span>' + esc(report.environment || "\u9ED8\u8BA4\u73AF\u5883") + "</span><span>" + modeText + "</span><span>\u901A\u8FC7 " + summary.passedSteps + "</span><span>\u5931\u8D25 " + summary.failedSteps + "</span>" + (summary.skippedSteps > 0 ? "<span>\u8DF3\u8FC7 " + summary.skippedSteps + "</span>" : "") + "<span>" + esc(summary.totalDurationFmt) + '</span></div><div class="report-progress"><div class="report-progress__labels"><span>\u6267\u884C\u8FDB\u5EA6 ' + progressText + "</span><strong>" + progressPercent.toFixed(1) + '%</strong></div><div class="report-progress__track' + (hasFailure ? " report-progress__track--failed" : "") + '" role="progressbar" aria-label="\u6B65\u9AA4\u6267\u884C\u8FDB\u5EA6" aria-valuemin="0" aria-valuemax="' + (summary.totalSteps || 1) + '" aria-valuenow="' + summary.executedSteps + '" aria-valuetext="\u5DF2\u6267\u884C ' + summary.executedSteps + " / " + summary.totalSteps + ' \u4E2A\u6B65\u9AA4"><span style="width:' + progressPercent + '%"></span></div><div class="report-progress__labels report-progress__outcome"><span>\u901A\u8FC7\u7387</span><strong>' + esc(summary.passRate) + '</strong></div></div></div><details class="report-diagnosis"' + (hasRealFailure ? " open" : "") + "><summary>" + diagnosisTitle + '</summary><div class="report-diagnosis__body">' + diagnosisHtml + '</div></details><div class="report-actions flex flex-col gap-2 pt-1"><button id="copyDiagnosisMarkdownBtn" type="button" class="w-full stats-action-btn stats-action-btn--primary justify-center py-2 text-xs" title="\u590D\u5236\u683C\u5F0F\u5316 Markdown \u62A5\u544A (\u53EF\u76F4\u63A5\u6295\u5582\u7ED9 AI \u63D0\u95EE/\u6392\u67E5)"><svg class="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg><span>\u590D\u5236\u8BCA\u65AD\u62A5\u544A (AI \u6392\u67E5)</span></button><button id="copyDiagnosisJsonBtn" type="button" class="w-full stats-action-btn justify-center py-2 text-xs" title="\u5BFC\u51FA\u6267\u884C\u7ED3\u679C JSON"><svg class="w-3.5 h-3.5 mr-1.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg><span>\u5BFC\u51FA\u7ED3\u679C JSON</span></button></div></div>';
     return report;
   }
   return {
@@ -5723,6 +5725,8 @@ function createWorkbenchRuntime(options) {
   }
   function bindGlobalShortcuts() {
     document.addEventListener("keydown", function(event) {
+      if (event.defaultPrevented || event.isComposing) return;
+      if (document.querySelector('#scenario-test-root [role="dialog"][aria-hidden="false"], #scenario-test-root .custom-dropdown.open')) return;
       var activeEl = document.activeElement;
       var isEditing = activeEl && (activeEl.tagName === "INPUT" || activeEl.tagName === "TEXTAREA" || activeEl.tagName === "SELECT" || activeEl.tagName === "BUTTON" || activeEl.isContentEditable);
       if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
@@ -5743,25 +5747,20 @@ function createWorkbenchRuntime(options) {
         if (resetBtn && !resetBtn.disabled) resetBtn.click();
         return;
       }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k" || !isEditing && event.key === "/") {
+        event.preventDefault();
+        var searchInput = document.getElementById("scenarioSearchInput");
+        if (searchInput) {
+          searchInput.focus();
+          searchInput.select();
+        }
+        return;
+      }
       if (!isEditing) {
         if (event.key === " " || event.code === "Space") {
-          var configModal = document.getElementById("configModal");
-          var adhocModal = document.getElementById("adhocModal");
-          var isModalOpen = configModal && !configModal.classList.contains("hidden") || adhocModal && !adhocModal.classList.contains("hidden");
-          if (!isModalOpen) {
-            event.preventDefault();
-            var stepBtn2 = document.getElementById("stepBtn");
-            if (stepBtn2 && !stepBtn2.disabled) stepBtn2.click();
-            return;
-          }
-        }
-        if (event.key === "/" || (event.ctrlKey || event.metaKey) && (event.key === "k" || event.key === "K")) {
           event.preventDefault();
-          var searchInput = document.getElementById("scenarioSearchInput");
-          if (searchInput) {
-            searchInput.focus();
-            searchInput.select();
-          }
+          var stepBtn2 = document.getElementById("stepBtn");
+          if (stepBtn2 && !stepBtn2.disabled) stepBtn2.click();
           return;
         }
       }
