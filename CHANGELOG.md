@@ -3,7 +3,7 @@
 All notable changes to this project will be documented in this file.
 
 
-## [Unreleased]
+## [0.5.25] - 2026-10-10
 
 ### 🎨 UI/UX 优化
 
