@@ -8,3 +8,4 @@ examples/**/downloads/
 examples/**/temp/
 *.log
 tmp-*/
+dist.staging-*/
