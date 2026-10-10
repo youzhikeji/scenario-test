@@ -9,7 +9,7 @@
   1. **feat(workbench)**：`ui-view.js` 新增 `fenceFor(content)` 纯函数——围栏取「内容中最长反引号连续序列 + 1」与 3 的较大者（CommonMark：闭合围栏需不短于开启围栏；围栏长于内容中任何序列即不会被误闭合）；`buildMarkdownReport` 的响应头（带 `json` info string）与响应体两处围栏改为动态长度。内容原样保留（不转义/不改写，复制用途保留完整内容）；常规响应（无反引号）输出格式不变。
   2. **build**：4 个 dist 产物再生，无 tailwind 变化（纯输出层修复）。
 - **测试 +3**：`tests/report.test.js`（单元，纯函数可测）：无反引号保持 3 个（锁定既有格式）；响应体含 3 连/5 连反引号升级为 4/6 个且内容原样（判别用例：固定长度实现必失败）；响应头含反引号时 json 围栏同口径。
-- **验证**：`npm run check` **217/217 全绿**（214 基线 + 3）；`npm run test:browser` 桌面视口全绿（ui-view 改动进 dist 后工作台复制 MD 路径无回归）。contractVersion 仍为 5、版本号不动 0.5.24（无 DSL 能力变化）。全部提交留本地未 push。
+- **验证**：`npm run check` **217/217 全绿**（214 基线 + 3）；`npm run test:browser` 桌面视口全绿（ui-view 改动进 dist 后工作台复制 MD 路径无回归）。contractVersion 仍为 5、版本号不动 0.5.24（无 DSL 能力变化）。全部提交已推送 `github/master`（2026-10-10 用户指示）。
 
 ### 本轮遗留事项
 
@@ -17,7 +17,8 @@
 2. **枚举随机（带权重）造数仍在队列**（R5~R8 连续顺延）：属**新增 DSL 能力**（generatedVars 新类型，需递增 contractVersion 5→6 + 浏览器镜像 + dts/提示词投射 + 名单锁同步），涉及公开契约扩展，建议先确认设计（类型名 / 参数形状 / 权重语义 / 确定性派生 vs 真随机）再实施。
 3. **2 个开发辅助脚本已入库**：`scripts/ui-visual-check.mjs`（6 个关键界面状态截图，输出至 `test-results/ui-screens/`）、`scripts/ui-debug-rule.mjs`（打印元素实际命中的 CSS border 规则，排查样式覆盖）——均为无断言的手动工具，不进入 CI；如确认不再需要可直接删除（同类脚本 `ui-style-verify.mjs` 已提升为 `tests/ui-style.test.mjs` 自动断言测试）。
 4. **dist.staging-* 物理残留**：5 个构建中断残留目录仍在磁盘（已 `.gitignore` 忽略，不再污染 git status）。如需回收磁盘可手动删除；若频繁出现，可考虑 build.mjs 启动时按 pid 存活检测清理孤儿目录（本轮未做，避免并发构建误删活跃 staging）。
-5. 硬边界提醒不变：`dist/` 与 `*.generated.js` 勿手改；contract 投射文本不能含 `}`；types 名单锁第二份副本在 `tests/cli.test.js`；所有提交留本地不 push；中文文案。
+5. 硬边界提醒：`dist/` 与 `*.generated.js` 勿手改；contract 投射文本不能含 `}`；types 名单锁第二份副本在 `tests/cli.test.js`；中文文案。推送策略：本轮已推 `github/master`（用户指示）；后续轮次默认留本地待过目，由用户决定是否推送。
+6. **依赖安全提示**（推送时 GitHub 报告）：`npm audit` 显示 8 个漏洞（6 high / 2 moderate），全部位于 devDependencies 传递链（tailwindcss 3.x 的 braces/chokidar/micromatch/fast-glob/postcss-selector-parser/postcss-nested/source-map-js），运行时依赖无告警；`npm audit fix`（非破坏性）可修 source-map-js 1 项，其余需 `--force` 升级 tailwindcss 3→4（破坏性，需评估构建配置）。本轮未处理，待决策。
 
 ## 第 9 轮（2026-10-09 ~ 10-10）
 
