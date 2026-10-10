@@ -1,5 +1,12 @@
 # NEXT_STEPS — 优化迭代交接点
 
+## 发版记录：v0.5.25（2026-10-10，用户指示）
+
+- 覆盖第 5~10 轮全部迭代（断言深比较键序稳定化、CLI 失败 diff/报错两段式/结论行、工作台交互反馈与 Markdown 围栏、工程 .gitattributes/dist.staging 忽略等），contractVersion 仍为 5，测试 195→217。
+- 版本号同步：package.json/lock、CHANGELOG（Unreleased→0.5.25）、install.ps1/install.sh、README jsDelivr URL；build 再生 version.generated.js + dist。
+- 三方验证一致：GitHub Release `v0.5.25`（Latest、非 Draft/Prerelease）、npm Registry `dist-tags.latest=0.5.25`（publish 后 registry 传播约 1~2 分钟生效，shasum 与本地 pack 一致）、远端 Tag `v0.5.25`。
+- npm publish 成功：现有 `npm_` granular token 直接可用（RELEASING.md 所述 403 未出现）。
+
 ## 第 10 轮（2026-10-10）
 
 ### 本轮完成
