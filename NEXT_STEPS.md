@@ -15,7 +15,7 @@
 
 1. **行内代码边界未处理**（同类问题的小面）：`- **请求**: \`GET /path\`` 等行内代码用单反引号包裹，path/scenarioFile 含反引号时行内渲染失真（影响远小于围栏破坏，URL 含反引号罕见）。如需，后续可做行内代码动态包裹（`` `` `` 规则）。
 2. **枚举随机（带权重）造数仍在队列**（R5~R8 连续顺延）：属**新增 DSL 能力**（generatedVars 新类型，需递增 contractVersion 5→6 + 浏览器镜像 + dts/提示词投射 + 名单锁同步），涉及公开契约扩展，建议先确认设计（类型名 / 参数形状 / 权重语义 / 确定性派生 vs 真随机）再实施。
-3. **2 个未跟踪脚本待决定**：`scripts/ui-debug-rule.mjs`（一次性 CSS 规则调试）、`scripts/ui-visual-check.mjs`（截图工具，输出需人工查看）——本会话已将同类脚本 `ui-style-verify.mjs` 提升为 `tests/ui-style.test.mjs`（自动断言，纳入 `test:ui-style`）；这两个未提交，保留或删除请人工决定。
+3. **2 个开发辅助脚本已入库**：`scripts/ui-visual-check.mjs`（6 个关键界面状态截图，输出至 `test-results/ui-screens/`）、`scripts/ui-debug-rule.mjs`（打印元素实际命中的 CSS border 规则，排查样式覆盖）——均为无断言的手动工具，不进入 CI；如确认不再需要可直接删除（同类脚本 `ui-style-verify.mjs` 已提升为 `tests/ui-style.test.mjs` 自动断言测试）。
 4. **dist.staging-* 物理残留**：5 个构建中断残留目录仍在磁盘（已 `.gitignore` 忽略，不再污染 git status）。如需回收磁盘可手动删除；若频繁出现，可考虑 build.mjs 启动时按 pid 存活检测清理孤儿目录（本轮未做，避免并发构建误删活跃 staging）。
 5. 硬边界提醒不变：`dist/` 与 `*.generated.js` 勿手改；contract 投射文本不能含 `}`；types 名单锁第二份副本在 `tests/cli.test.js`；所有提交留本地不 push；中文文案。
 
