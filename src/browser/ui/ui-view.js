@@ -51,6 +51,16 @@ const workbenchView = (function () {
         });
     }
 
+    // 代码围栏自适应：响应内容含反引号序列（如响应体本身就是 Markdown）时，
+    // 固定三反引号围栏会被内容提前闭合，报告结构被破坏（喂给 AI 排查时失真）。
+    // 围栏取「内容中最长反引号连续序列 + 1」与 3 的较大者（CommonMark：闭合围栏
+    // 需不短于开启围栏；围栏长于内容中任何序列即可保证不被误闭合）
+    function fenceFor(content) {
+        var runs = String(content).match(/`+/g) || [];
+        var maxRun = runs.reduce(function (max, run) { return run.length > max ? run.length : max; }, 0);
+        return '`'.repeat(Math.max(3, maxRun + 1));
+    }
+
     function formatReportPayload(value, options) {
         var text = stringify(value);
         if (!text) return '(空)';
@@ -1141,13 +1151,17 @@ const workbenchView = (function () {
             var response = step.response || {};
             lines.push('- **完整响应**:');
             lines.push('  - **响应头**:');
-            lines.push('```json');
-            lines.push(formatReportPayload(response.headers || {}, { full: true }));
-            lines.push('```');
+            var headersPayload = formatReportPayload(response.headers || {}, { full: true });
+            var headersFence = fenceFor(headersPayload);
+            lines.push(headersFence + 'json');
+            lines.push(headersPayload);
+            lines.push(headersFence);
             lines.push('  - **响应体**:');
-            lines.push('```');
-            lines.push(formatReportPayload(response.bodyText !== undefined ? response.bodyText : response.body, { full: true }));
-            lines.push('```');
+            var bodyPayload = formatReportPayload(response.bodyText !== undefined ? response.bodyText : response.body, { full: true });
+            var bodyFence = fenceFor(bodyPayload);
+            lines.push(bodyFence);
+            lines.push(bodyPayload);
+            lines.push(bodyFence);
             lines.push('');
         });
 

@@ -122,3 +122,31 @@ test("断言表明细行 eachDetailRows 递归展开且只含失败子断言", (
     // 无明细时输出空串（通过断言路径）
     assert.equal(eachDetailRows(undefined, ""), "");
 });
+
+test("Markdown 报告代码围栏自适应：内容无反引号时保持三反引号（既有格式不变）", () => {
+    const report = {
+        steps: [failedStep({
+            response: { headers: { "content-type": "application/json" }, bodyText: "{\"ok\":true}" }
+        })]
+    };
+    const md = buildMarkdownReport(report);
+    assert.ok(md.includes("```json\n{\n  \"content-type\": \"application/json\"\n}\n```"), "响应头围栏保持 3 个反引号");
+    assert.ok(md.includes("```\n{\"ok\":true}\n```"), "响应体围栏保持 3 个反引号");
+});
+
+test("Markdown 报告代码围栏自适应：响应体含反引号序列时围栏加长且内容原样保留", () => {
+    const body = "示例\n```\ncode\n```\n结束";
+    const md = buildMarkdownReport({ steps: [failedStep({ response: { bodyText: body } })] });
+    // 最长反引号序列 3 → 围栏升级为 4；内容原样（不转义/不改写，复制用途保留完整内容）
+    assert.ok(md.includes("````\n" + body + "\n````"), "围栏应升级为 4 个反引号且响应体原样");
+    // 更长序列：5 个反引号 → 围栏 6（判别用例：固定 3 或固定 4 的实现均失败）
+    const longBody = "`````\n五连反引号\n`````";
+    const md2 = buildMarkdownReport({ steps: [failedStep({ response: { bodyText: longBody } })] });
+    assert.ok(md2.includes("``````\n" + longBody + "\n``````"), "围栏应随最长序列升级为 6 个反引号");
+});
+
+test("Markdown 报告代码围栏自适应：响应头含反引号时 json 围栏同样加长", () => {
+    const md = buildMarkdownReport({ steps: [failedStep({ response: { headers: { "x-note": "```" } } })] });
+    assert.ok(md.includes("````json\n"), "带 json 标记的围栏应升级为 4 个反引号");
+    assert.ok(md.includes("\n````\n"), "闭合围栏同为 4 个反引号");
+});
