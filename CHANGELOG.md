@@ -29,6 +29,8 @@ All notable changes to this project will be documented in this file.
 
 ### 🖥 浏览器工作台
 
+- 工作台快捷键在配置、临时请求弹窗和下拉菜单打开时暂停，避免编辑期间误执行场景或清除结果；忽略已处理事件及输入法组词事件。`Ctrl+K` / `⌘+K` 支持从其他输入框进入场景搜索，相关控件提示补充快捷键说明。
+- 报告概览分开显示执行进度与通过率，进度百分比与进度条保持一致（如 3 步全部执行、2 步通过时分别显示 100.0% 与 66.7%）；进度条补充可访问的名称和数值。
 - 场景搜索：输入后显示清除按钮，`Escape` 一键清空并回焦，无匹配时提供「清除搜索」空态入口。
 - 步骤筛选：筛选按钮组补 `aria-pressed` 状态；新增「显示 x / y 个步骤」实时摘要与「清除筛选」一键恢复；搜索无匹配时列表区展示空态并可一键清除。
 - 失败诊断新增「定位步骤」按钮：点击后重置筛选、展开对应步骤详情、高亮 2.4s 并平滑滚动居中（尊重 `prefers-reduced-motion`）——长场景失败排查不再需要在报告中人工比对步骤序号。
@@ -39,6 +41,7 @@ All notable changes to this project will be documented in this file.
 
 ### 🔧 工程
 
+- `.gitignore` 忽略 `npm run build` 中断残留的 `dist.staging-*` 原子交换暂存目录，避免污染 `git status`。
 - 新增 `.gitattributes` 统一行尾策略（文本文件一律 LF 入库与检出、`.ps1` 保留 CRLF、图片按二进制），根治 R6 以来 Windows（`core.autocrlf=true`）下 `dist/` 投射物与生成文件反复出现的 CRLF 幻影改动（git status 标记 M 而 diff 为空）。
 
 ## [0.5.24] - 2026-10-07
