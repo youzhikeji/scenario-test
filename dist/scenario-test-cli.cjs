@@ -3198,6 +3198,13 @@ var workbenchView = function() {
       });
     });
   }
+  function fenceFor(content) {
+    var runs = String(content).match(/`+/g) || [];
+    var maxRun = runs.reduce(function(max, run) {
+      return run.length > max ? run.length : max;
+    }, 0);
+    return "`".repeat(Math.max(3, maxRun + 1));
+  }
   function formatReportPayload(value, options) {
     var text = stringify(value);
     if (!text) return "(\u7A7A)";
@@ -3995,13 +4002,17 @@ var workbenchView = function() {
       var response = step.response || {};
       lines.push("- **\u5B8C\u6574\u54CD\u5E94**:");
       lines.push("  - **\u54CD\u5E94\u5934**:");
-      lines.push("```json");
-      lines.push(formatReportPayload(response.headers || {}, { full: true }));
-      lines.push("```");
+      var headersPayload = formatReportPayload(response.headers || {}, { full: true });
+      var headersFence = fenceFor(headersPayload);
+      lines.push(headersFence + "json");
+      lines.push(headersPayload);
+      lines.push(headersFence);
       lines.push("  - **\u54CD\u5E94\u4F53**:");
-      lines.push("```");
-      lines.push(formatReportPayload(response.bodyText !== void 0 ? response.bodyText : response.body, { full: true }));
-      lines.push("```");
+      var bodyPayload = formatReportPayload(response.bodyText !== void 0 ? response.bodyText : response.body, { full: true });
+      var bodyFence = fenceFor(bodyPayload);
+      lines.push(bodyFence);
+      lines.push(bodyPayload);
+      lines.push(bodyFence);
       lines.push("");
     });
     return lines.join("\n");
