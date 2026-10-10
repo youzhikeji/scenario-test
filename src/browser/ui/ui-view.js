@@ -123,15 +123,15 @@ const workbenchView = (function () {
                 </div>
                 </div>
                 <div class="scenario-header-run-actions">
-                <button id="stepBtn" class="scenario-header-button scenario-header-button--secondary" title="单步执行下一条用例">下一步</button>
-                <button id="runBtn" class="scenario-header-button scenario-header-button--primary" title="执行当前场景中的全部步骤">
+                <button id="stepBtn" class="scenario-header-button scenario-header-button--secondary" title="单步执行下一条用例（Alt+Enter；非编辑状态也可按空格）">下一步</button>
+                <button id="runBtn" class="scenario-header-button scenario-header-button--primary" title="执行当前场景中的全部步骤（Ctrl+Enter / ⌘+Enter）">
                     <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                     <span id="runBtnLabel">执行全部</span>
                 </button>
                 <button id="cancelBtn" disabled class="scenario-header-text-action scenario-header-text-action--danger">停止</button>
                 </div>
                 <div class="scenario-header-secondary-actions">
-                <button id="resetBtn" class="scenario-header-text-action scenario-header-reset">清除结果</button>
+                <button id="resetBtn" class="scenario-header-text-action scenario-header-reset" title="清除当前场景的执行结果（Alt+R）">清除结果</button>
                 <button id="configToggleBtn" class="scenario-header-button scenario-header-button--config" title="配置环境参数与全局变量" aria-haspopup="dialog" aria-controls="configModal">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                     <span class="scenario-header-config-label">配置</span>
@@ -177,7 +177,7 @@ const workbenchView = (function () {
                         </div>
                         <div class="relative mt-2">
                             <svg class="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-slate-400" style="top:50%;transform:translateY(-50%)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                            <input id="scenarioSearchInput" type="text" aria-label="搜索场景名称或路径" aria-controls="scenarioList" placeholder="搜索场景名称或路径..." class="w-full pl-8 pr-8 py-1.5 rounded-md border border-slate-200 bg-white text-xs text-slate-700 placeholder-slate-400 outline-none transition-all focus:border-slate-800 focus:ring-1 focus:ring-slate-800">
+                            <input id="scenarioSearchInput" type="text" aria-label="搜索场景名称或路径" aria-controls="scenarioList" title="搜索场景（Ctrl+K / ⌘+K；非编辑状态也可按 /）" placeholder="搜索场景名称或路径..." class="w-full pl-8 pr-8 py-1.5 rounded-md border border-slate-200 bg-white text-xs text-slate-700 placeholder-slate-400 outline-none transition-all focus:border-slate-800 focus:ring-1 focus:ring-slate-800">
                             <button id="scenarioSearchClearBtn" type="button" class="scenario-search-clear" aria-label="清除场景搜索" title="清除搜索" hidden>
                                 <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15" stroke-linecap="round"/></svg>
                             </button>
@@ -1183,6 +1183,7 @@ const workbenchView = (function () {
         var statusText = cancelled ? '已取消' : hasFailure ? '存在失败' : (allSkipped ? '全部跳过' : (completed ? '全部通过' : '执行中'));
         var modeText = report.executionMode === 'step' ? '单步执行' : '全量执行';
         var progressText = summary.executedSteps + ' / ' + summary.totalSteps;
+        var progressPercent = summary.totalSteps ? (summary.executedSteps / summary.totalSteps) * 100 : 0;
         var reportSteps = report.steps.filter(function (step) { return !step.passed && !step.skipped && !step.cancelled; });
         var hasRealFailure = reportSteps.length > 0;
         var stepHtml = reportSteps.map(function (step) {
@@ -1230,7 +1231,11 @@ const workbenchView = (function () {
                 '<div class="report-overview__meta"><span>' + esc(report.environment || '默认环境') + '</span><span>' + modeText + '</span><span>通过 ' + summary.passedSteps + '</span><span>失败 ' + summary.failedSteps + '</span>' +
                     (summary.skippedSteps > 0 ? '<span>跳过 ' + summary.skippedSteps + '</span>' : '') +
                     '<span>' + esc(summary.totalDurationFmt) + '</span></div>' +
-                '<div class="report-progress"><div class="report-progress__labels"><span>进度 ' + progressText + '</span><strong>' + esc(summary.passRate) + '</strong></div><div class="report-progress__track' + (hasFailure ? ' report-progress__track--failed' : '') + '"><span style="width:' + (summary.totalSteps ? (summary.executedSteps / summary.totalSteps) * 100 : 0) + '%"></span></div></div>' +
+                '<div class="report-progress">' +
+                    '<div class="report-progress__labels"><span>执行进度 ' + progressText + '</span><strong>' + progressPercent.toFixed(1) + '%</strong></div>' +
+                    '<div class="report-progress__track' + (hasFailure ? ' report-progress__track--failed' : '') + '" role="progressbar" aria-label="步骤执行进度" aria-valuemin="0" aria-valuemax="' + (summary.totalSteps || 1) + '" aria-valuenow="' + summary.executedSteps + '" aria-valuetext="已执行 ' + summary.executedSteps + ' / ' + summary.totalSteps + ' 个步骤"><span style="width:' + progressPercent + '%"></span></div>' +
+                    '<div class="report-progress__labels report-progress__outcome"><span>通过率</span><strong>' + esc(summary.passRate) + '</strong></div>' +
+                '</div>' +
             '</div>' +
             '<details class="report-diagnosis"' + (hasRealFailure ? ' open' : '') + '><summary>' + diagnosisTitle + '</summary><div class="report-diagnosis__body">' + diagnosisHtml + '</div></details>' +
             '<div class="report-actions flex flex-col gap-2 pt-1">' +

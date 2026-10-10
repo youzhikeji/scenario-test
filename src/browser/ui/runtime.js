@@ -1557,6 +1557,10 @@ export function createWorkbenchRuntime(options) {
 
     function bindGlobalShortcuts() {
         document.addEventListener('keydown', function (event) {
+            // 弹窗编辑与下拉选择拥有当前键盘操作，避免快捷键执行背后的场景。
+            if (event.defaultPrevented || event.isComposing) return;
+            if (document.querySelector('#scenario-test-root [role="dialog"][aria-hidden="false"], #scenario-test-root .custom-dropdown.open')) return;
+
             var activeEl = document.activeElement;
             var isEditing = activeEl && (
                 activeEl.tagName === 'INPUT' ||
@@ -1582,7 +1586,7 @@ export function createWorkbenchRuntime(options) {
                 return;
             }
 
-            // Alt + R -> 清除行
+            // Alt + R -> 清除结果
             if ((event.key === 'r' || event.key === 'R') && event.altKey) {
                 event.preventDefault();
                 var resetBtn = document.getElementById('resetBtn');
@@ -1590,28 +1594,23 @@ export function createWorkbenchRuntime(options) {
                 return;
             }
 
+            // Ctrl+K / Meta+K 在输入框中也可切换到场景搜索；/ 只在非编辑状态触发。
+            if (((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') || (!isEditing && event.key === '/')) {
+                event.preventDefault();
+                var searchInput = document.getElementById('scenarioSearchInput');
+                if (searchInput) {
+                    searchInput.focus();
+                    searchInput.select();
+                }
+                return;
+            }
+
             if (!isEditing) {
                 // Space -> 执行下一步
                 if (event.key === ' ' || event.code === 'Space') {
-                    var configModal = document.getElementById('configModal');
-                    var adhocModal = document.getElementById('adhocModal');
-                    var isModalOpen = (configModal && !configModal.classList.contains('hidden')) || (adhocModal && !adhocModal.classList.contains('hidden'));
-                    if (!isModalOpen) {
-                        event.preventDefault();
-                        var stepBtn2 = document.getElementById('stepBtn');
-                        if (stepBtn2 && !stepBtn2.disabled) stepBtn2.click();
-                        return;
-                    }
-                }
-
-                // / 键 或 Ctrl+K 聚焦场景搜索框
-                if (event.key === '/' || ((event.ctrlKey || event.metaKey) && (event.key === 'k' || event.key === 'K'))) {
                     event.preventDefault();
-                    var searchInput = document.getElementById('scenarioSearchInput');
-                    if (searchInput) {
-                        searchInput.focus();
-                        searchInput.select();
-                    }
+                    var stepBtn2 = document.getElementById('stepBtn');
+                    if (stepBtn2 && !stepBtn2.disabled) stepBtn2.click();
                     return;
                 }
             }

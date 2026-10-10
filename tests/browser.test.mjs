@@ -73,6 +73,14 @@ try {
 
         if (!await page.locator("#scenarioVar_expectedStatus").isVisible()) {
             await page.locator("#configToggleBtn").click();
+            // 弹窗打开后经 rAF 异步聚焦第一个输入框，等待初始化完成再测快捷键，避免抢焦点竞态。
+            await page.waitForFunction(() => document.activeElement && document.activeElement.id === "environmentInput");
+        }
+        // 弹窗内的工作台快捷键不得执行背景场景或把焦点带出编辑区。
+        for (const key of ["Control+Enter", "Alt+Enter", "Alt+r", "Control+k"]) {
+            await page.locator("#baseUrlInput").press(key);
+            assert.equal(await page.locator("#execStartTime").textContent(), "-", `${key} 不应从配置弹窗执行场景`);
+            assert.equal(await page.evaluate(() => document.activeElement.id), "baseUrlInput", `${key} 不应移走配置焦点`);
         }
         // 凭据变量显隐切换（面板已展开，按钮可点击）
         await page.locator('[data-toggle-var="exampleToken"]').click();
@@ -83,7 +91,10 @@ try {
         await page.locator("#saveSettingsBtn").click();
         assert.match(await page.locator("#settingsNotice").textContent(), /已保存并生效/);
         await page.locator("#configCloseBtn").click();
-        await page.locator("#runBtn").click();
+        // 搜索快捷键可从另一个输入框进入场景搜索，正常执行快捷键仍然可用。
+        await page.locator("#stepSearchInput").press("Control+k");
+        assert.equal(await page.evaluate(() => document.activeElement.id), "scenarioSearchInput");
+        await page.locator("#scenarioSearchInput").press("Control+Enter");
         await page.waitForFunction(() => !document.querySelector("#runBtn").disabled && document.querySelector('#stepsList li[data-passed="false"]'));
         assert.equal(await page.locator('#stepsList li[data-passed="false"]').count(), 1);
 
@@ -194,6 +205,15 @@ try {
         assert.deepEqual(pageErrors, [], `复制失败不应产生 pageerror: ${pageErrors.join(", ")}`);
 
         await page.locator("[data-adhoc-step='0']").click();
+        // 弹窗打开后经 rAF 异步聚焦第一个输入框，等待初始化完成再测快捷键，避免抢焦点竞态。
+        await page.waitForFunction(() => document.activeElement && document.activeElement.id === "adhocNameInput");
+        const beforeAdhocShortcuts = await page.locator("#execStartTime").textContent();
+        for (const key of ["Control+Enter", "Alt+Enter", "Alt+r", "Control+k"]) {
+            await page.locator("#adhocHeadersInput").press(key);
+            assert.equal(await page.locator("#execStartTime").textContent(), beforeAdhocShortcuts, `${key} 不应改动临时请求背后的场景`);
+            assert.equal(await page.locator('#stepsList li[data-passed="true"]').count(), 1, `${key} 不应清除场景结果`);
+            assert.equal(await page.evaluate(() => document.activeElement.id), "adhocHeadersInput", `${key} 不应移走临时请求焦点`);
+        }
         await page.locator("#adhocExecuteBtn").click();
         await page.waitForFunction(() => !document.querySelector("#adhocResult").classList.contains("hidden"));
         assert.match(await page.locator("#adhocResult").textContent(), /状态：200/);
@@ -266,6 +286,18 @@ try {
         await page.waitForFunction(() => !document.querySelector("#stepBtn").disabled);
         assert.equal(await page.locator('#stepsList li[data-passed="false"]').count(), 0, "单步超时后 stepRuntime 已清空，失败记录应消失（从第 1 步重来）");
         assert.equal(await page.locator('#stepsList li[data-passed="true"]').count(), 1, "再次执行应从第 1 步开始且成功");
+
+        // 混合结果：全部执行完成的进度是 100%，通过率仍独立显示为 2/3。
+        await page.locator('[data-scenario-file="scenarios/continue-after-failure.js"]').click();
+        await page.locator("#runBtn").click();
+        await page.waitForFunction(() => !document.querySelector("#runBtn").disabled && document.querySelectorAll('#stepsList li[data-passed="true"]').length === 2);
+        assert.equal(await page.locator('#stepsList li[data-passed="false"]').count(), 1);
+        assert.match(await page.locator("#reportPanel .report-progress__labels").first().textContent(), /执行进度 3 \/ 3.*100\.0%/);
+        assert.match(await page.locator("#reportPanel .report-progress__outcome").textContent(), /通过率.*66\.7%/);
+        const progressBar = page.getByRole("progressbar", { name: "步骤执行进度" });
+        assert.equal(await progressBar.getAttribute("aria-valuenow"), "3");
+        assert.equal(await progressBar.getAttribute("aria-valuemax"), "3");
+        await page.screenshot({ path: path.join(artifacts, `${viewport.name}-failure-diagnosis.png`), fullPage: true });
 
         await page.locator('[data-scenario-file="scenarios/health.js"]').click();
         await page.locator("#runBtn").click();

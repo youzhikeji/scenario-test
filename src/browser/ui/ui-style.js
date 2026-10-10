@@ -880,6 +880,7 @@ const workbenchStyle = (function () {
             .report-progress { margin-top: 11px; }
             .report-progress__labels { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--workspace-muted); font-size: 10px; }
             .report-progress__labels strong { color: var(--workspace-text); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-variant-numeric: tabular-nums; }
+            .report-progress__outcome { margin-top: 8px; }
             .report-progress__track {
                 height: 6px;
                 margin-top: 5px;
