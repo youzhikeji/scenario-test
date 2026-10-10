@@ -1,5 +1,42 @@
 # NEXT_STEPS — 优化迭代交接点
 
+## 第 10 轮（2026-10-10）
+
+### 本轮完成
+
+- **选题**：R8 价值排序首位「Markdown 报告围栏转义小修」——工作台「复制为 Markdown」报告的代码围栏在响应内容含反引号序列时被提前闭合，报告结构破坏（喂给 AI 排查失真）。
+- **改动**（3 个原子提交：`714f70c` feat → `99f048a` build → `5e1fa99` docs）：
+  1. **feat(workbench)**：`ui-view.js` 新增 `fenceFor(content)` 纯函数——围栏取「内容中最长反引号连续序列 + 1」与 3 的较大者（CommonMark：闭合围栏需不短于开启围栏；围栏长于内容中任何序列即不会被误闭合）；`buildMarkdownReport` 的响应头（带 `json` info string）与响应体两处围栏改为动态长度。内容原样保留（不转义/不改写，复制用途保留完整内容）；常规响应（无反引号）输出格式不变。
+  2. **build**：4 个 dist 产物再生，无 tailwind 变化（纯输出层修复）。
+- **测试 +3**：`tests/report.test.js`（单元，纯函数可测）：无反引号保持 3 个（锁定既有格式）；响应体含 3 连/5 连反引号升级为 4/6 个且内容原样（判别用例：固定长度实现必失败）；响应头含反引号时 json 围栏同口径。
+- **验证**：`npm run check` **217/217 全绿**（214 基线 + 3）；`npm run test:browser` 桌面视口全绿（ui-view 改动进 dist 后工作台复制 MD 路径无回归）。contractVersion 仍为 5、版本号不动 0.5.24（无 DSL 能力变化）。全部提交留本地未 push。
+
+### 本轮遗留事项
+
+1. **行内代码边界未处理**（同类问题的小面）：`- **请求**: \`GET /path\`` 等行内代码用单反引号包裹，path/scenarioFile 含反引号时行内渲染失真（影响远小于围栏破坏，URL 含反引号罕见）。如需，后续可做行内代码动态包裹（`` `` `` 规则）。
+2. **枚举随机（带权重）造数仍在队列**（R5~R8 连续顺延）：属**新增 DSL 能力**（generatedVars 新类型，需递增 contractVersion 5→6 + 浏览器镜像 + dts/提示词投射 + 名单锁同步），涉及公开契约扩展，建议先确认设计（类型名 / 参数形状 / 权重语义 / 确定性派生 vs 真随机）再实施。
+3. **2 个未跟踪脚本待决定**：`scripts/ui-debug-rule.mjs`（一次性 CSS 规则调试）、`scripts/ui-visual-check.mjs`（截图工具，输出需人工查看）——本会话已将同类脚本 `ui-style-verify.mjs` 提升为 `tests/ui-style.test.mjs`（自动断言，纳入 `test:ui-style`）；这两个未提交，保留或删除请人工决定。
+4. **dist.staging-* 物理残留**：5 个构建中断残留目录仍在磁盘（已 `.gitignore` 忽略，不再污染 git status）。如需回收磁盘可手动删除；若频繁出现，可考虑 build.mjs 启动时按 pid 存活检测清理孤儿目录（本轮未做，避免并发构建误删活跃 staging）。
+5. 硬边界提醒不变：`dist/` 与 `*.generated.js` 勿手改；contract 投射文本不能含 `}`；types 名单锁第二份副本在 `tests/cli.test.js`；所有提交留本地不 push；中文文案。
+
+## 第 9 轮（2026-10-09 ~ 10-10）
+
+### 本轮完成
+
+- **选题**：工作台交互反馈与可观测性（延续 R8 的 UI/UX 方向）。主体由上一会话完成（`ca19084`），快捷键/进度分离为未提交半成品；本会话审查收尾、修复测试竞态并补测试，未扩大功能范围。
+- **改动**（前一会话 1 提交 + 本会话 5 提交）：
+  1. `ca19084` feat(workbench)：交互反馈与失败诊断展示——按钮/筛选/弹窗/进度状态悬停与按下反馈、空态虚线边框、弹窗入场过渡、加载动画、`prefers-reduced-motion` 降级、滚动条 8px；failure-diff 失败值无法序列化时安全降级；cli.test +88 行、failure-diff.test +22 行。
+  2. `f347ca9` feat(workbench)：配置/临时请求弹窗与下拉菜单打开时暂停工作台快捷键（忽略已处理事件与输入法组词事件）；`Ctrl+K` / `⌘+K` 从任意输入框进入场景搜索（`/` 仍限非编辑状态）；相关控件 title 补快捷键说明；报告概览分开显示执行进度与通过率 + 进度条 `aria-valuenow/valuemin/valuemax/valuetext`。
+  3. `73cdbac` test：`scripts/ui-style-verify.mjs` 提升为 `tests/ui-style.test.mjs` + `test:ui-style` script（悬停过渡、空态虚线边框、毛玻璃 6px、滚动条 8px、reduced-motion 降级计算样式断言）。
+  4. `a9eb1ac` build、`ab11703` docs、`db27f62` chore：dist 再生、CHANGELOG、`.gitignore` 忽略 `dist.staging-*`。
+- **测试**：npm test 214/214；browser test 桌面视口全绿（新增断言：弹窗内快捷键不执行背景场景/不移走焦点、`Ctrl+K` 跨输入框进入搜索、混合结果「执行进度 3/3 100.0%」与「通过率 66.7%」分离、进度条 aria 数值）；`npm run test:ui-style` 通过。
+- **竞态定位取证**（browser test 首跑失败）：用 rAF 补丁 + 焦点日志定位到弹窗打开后 `requestAnimationFrame` 异步聚焦第一个输入框与测试 `press` 的 13ms 抢焦点竞态（rAF 排队 4488ms/执行 4501ms 晚于 press 的 focus）；确认为**测试竞态而非产品缺陷**（窗口期内用户不可操作），修复为等待弹窗初始化完成再按键；复跑全绿。
+
+### 本轮遗留事项
+
+1. 遗留事项与第 10 轮记录合并（行内代码边界、枚举随机造数、未跟踪脚本、staging 残留），见上。
+2. **发布前按惯例补跑一次 `npm run test:browser`**（本会话已在最终代码上跑过全绿；若发版前还有新改动需再跑）。
+
 ## 第 8 轮（2026-10-09）
 
 ### 本轮完成
